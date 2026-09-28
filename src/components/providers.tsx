@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { SessionProvider } from "next-auth/react";
+import { ToastProvider } from "@/components/toast";
 import { syncPendingTransactions } from "@/lib/offline-queue";
 
 function OfflineSync() {
@@ -30,9 +31,11 @@ function ServiceWorkerRegister() {
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <SessionProvider>
-      <ServiceWorkerRegister />
-      <OfflineSync />
-      {children}
+      <ToastProvider>
+        <ServiceWorkerRegister />
+        <OfflineSync />
+        {children}
+      </ToastProvider>
     </SessionProvider>
   );
 }

@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import { ActionForm } from "@/components/action-form";
 import { DebtReductionChart } from "@/components/charts";
 import {
   createDebtAccount,
@@ -53,7 +54,13 @@ export default async function DebtPage() {
             Track accounts, payments, and projected vs actual payoff.
           </p>
         </div>
-        <form action={updateDebtGoal} className="form-row" style={{ maxWidth: 320 }}>
+        <ActionForm
+          action={updateDebtGoal}
+          successMessage="Debt payoff goal saved"
+          errorMessage="Could not save goal"
+          className="form-row"
+          style={{ maxWidth: 320 }}
+        >
           <div className="field">
             <label htmlFor="goalPayoffDate">Goal payoff date</label>
             <input
@@ -67,7 +74,7 @@ export default async function DebtPage() {
           <button className="btn btn-primary" type="submit">
             Save goal
           </button>
-        </form>
+        </ActionForm>
       </div>
 
       <div
@@ -79,7 +86,14 @@ export default async function DebtPage() {
       >
         <section className="panel">
           <h2>Master Debt & Account Tracker</h2>
-          <form action={createDebtAccount} className="form-row" style={{ marginBottom: "1rem" }}>
+          <ActionForm
+            action={createDebtAccount}
+            successMessage="Debt account added"
+            errorMessage="Could not add account"
+            className="form-row"
+            style={{ marginBottom: "1rem" }}
+            resetOnSuccess
+          >
             <div className="field">
               <label htmlFor="name">Account / card</label>
               <input id="name" name="name" required placeholder="AXIS MY Zone" />
@@ -107,7 +121,7 @@ export default async function DebtPage() {
             <button className="btn btn-primary" type="submit">
               Add account
             </button>
-          </form>
+          </ActionForm>
 
           {data.accounts.length === 0 ? (
             <div className="empty">Add a debt account to get started.</div>
@@ -135,12 +149,17 @@ export default async function DebtPage() {
                       <td className="num">{formatINR(a.pending)}</td>
                       <td>{a.status}</td>
                       <td>
-                        <form action={deleteDebtAccount}>
+                        <ActionForm
+                          action={deleteDebtAccount}
+                          successMessage="Account deleted"
+                          errorMessage="Could not delete account"
+                          confirmMessage={`Delete “${a.name}”?`}
+                        >
                           <input type="hidden" name="id" value={a.id} />
                           <button className="btn btn-danger" type="submit" style={{ padding: "0.3rem 0.55rem" }}>
                             Delete
                           </button>
-                        </form>
+                        </ActionForm>
                       </td>
                     </tr>
                   ))}
@@ -177,7 +196,14 @@ export default async function DebtPage() {
       >
         <section className="panel">
           <h2>Payment Log</h2>
-          <form action={createDebtPayment} className="form-row" style={{ marginBottom: "1rem" }}>
+          <ActionForm
+            action={createDebtPayment}
+            successMessage="Payment logged"
+            errorMessage="Could not add payment"
+            className="form-row"
+            style={{ marginBottom: "1rem" }}
+            resetOnSuccess
+          >
             <div className="field">
               <label htmlFor="dueDate">Due date</label>
               <input id="dueDate" name="dueDate" type="date" required />
@@ -210,7 +236,7 @@ export default async function DebtPage() {
             <button className="btn btn-primary" type="submit" disabled={data.accounts.length === 0}>
               Add payment
             </button>
-          </form>
+          </ActionForm>
 
           {data.payments.length === 0 ? (
             <div className="empty">No payments logged yet.</div>
@@ -235,21 +261,30 @@ export default async function DebtPage() {
                       <td>{p.paymentType}</td>
                       <td className="num">{formatINR(p.amount)}</td>
                       <td>
-                        <form action={toggleDebtPaymentPaid}>
+                        <ActionForm
+                          action={toggleDebtPaymentPaid}
+                          successMessage={p.isPaid ? "Marked unpaid" : "Marked paid"}
+                          errorMessage="Could not update payment"
+                        >
                           <input type="hidden" name="id" value={p.id} />
                           <input type="hidden" name="isPaid" value={String(p.isPaid)} />
                           <button className="btn btn-ghost" type="submit" style={{ padding: "0.3rem 0.55rem" }}>
                             {p.isPaid ? "✓ Paid" : "○ Unpaid"}
                           </button>
-                        </form>
+                        </ActionForm>
                       </td>
                       <td>
-                        <form action={deleteDebtPayment}>
+                        <ActionForm
+                          action={deleteDebtPayment}
+                          successMessage="Payment deleted"
+                          errorMessage="Could not delete payment"
+                          confirmMessage="Delete this payment?"
+                        >
                           <input type="hidden" name="id" value={p.id} />
                           <button className="btn btn-danger" type="submit" style={{ padding: "0.3rem 0.55rem" }}>
                             Delete
                           </button>
-                        </form>
+                        </ActionForm>
                       </td>
                     </tr>
                   ))}

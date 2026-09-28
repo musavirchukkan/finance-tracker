@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ActionForm } from "@/components/action-form";
 import { TransactionForm } from "@/components/transaction-form";
 import { deleteTransaction, listCategories, listTransactions } from "@/lib/actions";
 import { formatINR } from "@/lib/money";
@@ -88,12 +89,17 @@ export default async function TransactionsPage({
                       {formatINR(row.amount)}
                     </td>
                     <td>
-                      <form action={deleteTransaction}>
+                      <ActionForm
+                        action={deleteTransaction}
+                        successMessage="Transaction deleted"
+                        errorMessage="Could not delete"
+                        confirmMessage="Delete this transaction?"
+                      >
                         <input type="hidden" name="id" value={row.id} />
                         <button className="btn btn-danger btn-xs" type="submit">
                           Del
                         </button>
-                      </form>
+                      </ActionForm>
                     </td>
                   </tr>
                 ))}

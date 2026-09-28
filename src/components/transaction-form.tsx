@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/components/toast";
 import {
   listPendingTransactions,
   queueTransaction,
@@ -29,6 +30,7 @@ export function TransactionForm({
   onSaved,
 }: Props) {
   const router = useRouter();
+  const toast = useToast();
   const [type, setType] = useState<"expense" | "income">("expense");
   const [status, setStatus] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
@@ -59,6 +61,7 @@ export function TransactionForm({
         const result = await syncPendingTransactions();
         await refreshPending();
         if (result.synced > 0) {
+          toast.success(`Synced ${result.synced} offline transaction(s)`);
           setStatus(`Synced ${result.synced} offline transaction(s).`);
           router.refresh();
         }
@@ -88,6 +91,7 @@ export function TransactionForm({
     };
 
     if (!payload.date || !payload.description || !payload.categoryId) {
+      toast.error("Fill all fields");
       setStatus("Fill all fields.");
       return;
     }
@@ -95,6 +99,7 @@ export function TransactionForm({
     if (!navigator.onLine) {
       await queueTransaction(payload);
       form.reset();
+      toast.info("Saved offline — will sync when you're back online");
       setStatus("Saved offline — will sync when you're back online.");
       await refreshPending();
       onSaved?.();
@@ -109,18 +114,20 @@ export function TransactionForm({
           body: JSON.stringify(payload),
         });
         if (!res.ok) {
-          // Network flake — queue locally
           await queueTransaction(payload);
+          toast.info("Network issue — queued offline");
           setStatus("Network issue — queued offline.");
           await refreshPending();
         } else {
           form.reset();
+          toast.success(type === "income" ? "Income added" : "Expense added");
           setStatus(type === "income" ? "Income added." : "Expense added.");
           router.refresh();
           onSaved?.();
         }
       } catch {
         await queueTransaction(payload);
+        toast.info("Saved offline — will sync when online");
         setStatus("Saved offline — will sync when online.");
         await refreshPending();
         onSaved?.();

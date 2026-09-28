@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ActionForm } from "@/components/action-form";
 import {
   ActualDonut,
   BudgetVsActualBars,
@@ -101,7 +102,12 @@ export default async function BudgetPage({
                 <tr key={row.categoryId}>
                   <td>{row.category}</td>
                   <td className="num">
-                    <form action={upsertBudgetAmount} className="inline-budget">
+                    <ActionForm
+                      action={upsertBudgetAmount}
+                      successMessage={`${row.category} budget saved`}
+                      errorMessage="Could not save budget"
+                      className="inline-budget"
+                    >
                       <input type="hidden" name="categoryId" value={row.categoryId} />
                       <input type="hidden" name="yearMonth" value={month} />
                       <input
@@ -116,7 +122,7 @@ export default async function BudgetPage({
                       <button className="btn btn-ghost btn-xs" type="submit">
                         Save
                       </button>
-                    </form>
+                    </ActionForm>
                   </td>
                   <td className="num">{formatINR(row.actual)}</td>
                   <td className={`num ${row.difference < 0 ? "neg" : "pos"}`}>

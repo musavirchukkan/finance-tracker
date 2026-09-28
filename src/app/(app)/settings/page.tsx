@@ -1,10 +1,5 @@
-import {
-  createCategory,
-  deleteCategory,
-  listCategories,
-  updateDebtGoal,
-  getDebtDashboard,
-} from "@/lib/actions";
+import { SettingsForms } from "@/components/settings-forms";
+import { listCategories, getDebtDashboard } from "@/lib/actions";
 import { defaultGoalDate } from "@/lib/debt-projection";
 import { requireUser } from "@/lib/session";
 
@@ -33,74 +28,11 @@ export default async function SettingsPage() {
         </p>
       </section>
 
-      <section className="panel">
-        <h2>Categories</h2>
-        <form action={createCategory} className="form-stack" style={{ marginBottom: "1rem" }}>
-          <div className="field">
-            <label htmlFor="name">New category</label>
-            <input id="name" name="name" required placeholder="Subscriptions" />
-          </div>
-          <div className="field">
-            <label htmlFor="kind">Type</label>
-            <select id="kind" name="kind" defaultValue="expense">
-              <option value="expense">Expense</option>
-              <option value="income">Income</option>
-            </select>
-          </div>
-          <button className="btn btn-primary" type="submit">
-            Add
-          </button>
-        </form>
-
-        <h3 className="section-sub">Expense</h3>
-        <ul className="cat-list">
-          {expenses.map((c) => (
-            <li key={c.id}>
-              <span>{c.name}</span>
-              <form action={deleteCategory}>
-                <input type="hidden" name="id" value={c.id} />
-                <button className="btn btn-danger btn-xs" type="submit">
-                  Delete
-                </button>
-              </form>
-            </li>
-          ))}
-        </ul>
-
-        <h3 className="section-sub">Income</h3>
-        <ul className="cat-list">
-          {incomes.map((c) => (
-            <li key={c.id}>
-              <span>{c.name}</span>
-              <form action={deleteCategory}>
-                <input type="hidden" name="id" value={c.id} />
-                <button className="btn btn-danger btn-xs" type="submit">
-                  Delete
-                </button>
-              </form>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="panel">
-        <h2>Debt payoff goal</h2>
-        <form action={updateDebtGoal} className="form-stack">
-          <div className="field">
-            <label htmlFor="goalPayoffDate">Target zero-debt date</label>
-            <input
-              id="goalPayoffDate"
-              name="goalPayoffDate"
-              type="date"
-              required
-              defaultValue={goal}
-            />
-          </div>
-          <button className="btn btn-primary" type="submit">
-            Save
-          </button>
-        </form>
-      </section>
+      <SettingsForms
+        goal={goal}
+        expenses={expenses.map((c) => ({ id: c.id, name: c.name }))}
+        incomes={incomes.map((c) => ({ id: c.id, name: c.name }))}
+      />
     </div>
   );
 }
