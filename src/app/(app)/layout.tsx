@@ -12,8 +12,13 @@ export default async function AppLayout({
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main">
+        Skip to content
+      </a>
       <AppNav name={user.name} />
-      {children}
+      <main id="main" className="main-content" tabIndex={-1}>
+        {children}
+      </main>
     </div>
   );
 }

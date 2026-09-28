@@ -35,12 +35,22 @@ export default async function TransactionsPage({
             Add income or expenses. Works offline — syncs when you reconnect.
           </p>
         </div>
-        <div className="month-switcher">
-          <Link className="btn btn-ghost" href={`/transactions?month=${prev}`}>
+        <div className="month-switcher" role="group" aria-label="Month">
+          <Link
+            className="btn btn-ghost btn-xs"
+            href={`/transactions?month=${prev}`}
+            aria-label={`Previous month, ${formatYearMonthLabel(prev)}`}
+          >
             ←
           </Link>
-          <span className="month-label">{formatYearMonthLabel(month)}</span>
-          <Link className="btn btn-ghost" href={`/transactions?month=${next}`}>
+          <span className="month-label" aria-current="date">
+            {formatYearMonthLabel(month)}
+          </span>
+          <Link
+            className="btn btn-ghost btn-xs"
+            href={`/transactions?month=${next}`}
+            aria-label={`Next month, ${formatYearMonthLabel(next)}`}
+          >
             →
           </Link>
         </div>

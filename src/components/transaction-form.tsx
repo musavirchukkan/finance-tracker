@@ -206,6 +206,7 @@ export function TransactionForm({
           <button
             type="button"
             className={type === "expense" ? "active expense" : ""}
+            aria-pressed={type === "expense"}
             onClick={() => setType("expense")}
           >
             Expense
@@ -213,16 +214,14 @@ export function TransactionForm({
           <button
             type="button"
             className={type === "income" ? "active income" : ""}
+            aria-pressed={type === "income"}
             onClick={() => setType("income")}
           >
             Income
           </button>
         </div>
 
-        <div
-          className="field"
-          style={{ gridColumn: compact ? undefined : "span 2" }}
-        >
+        <div className="field field-span-2">
           <div className="when-row">
             <span className="when-summary muted">
               {editWhen
@@ -269,10 +268,7 @@ export function TransactionForm({
           ) : null}
         </div>
 
-        <div
-          className="field"
-          style={{ gridColumn: compact ? undefined : "span 2" }}
-        >
+        <div className="field field-span-2">
           <label htmlFor="tx-desc">Description</label>
           <input
             id="tx-desc"

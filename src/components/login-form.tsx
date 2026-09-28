@@ -53,7 +53,7 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} style={{ display: "grid", gap: "1rem" }}>
+    <form onSubmit={onSubmit} className="form-stack">
       <div className="field">
         <label htmlFor="email">Email</label>
         <input
@@ -62,6 +62,8 @@ export function LoginForm() {
           type="email"
           required
           autoComplete="email"
+          autoCapitalize="none"
+          spellCheck={false}
         />
       </div>
       <div className="field">
@@ -79,6 +81,7 @@ export function LoginForm() {
             type="button"
             className="password-toggle"
             aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-pressed={showPassword}
             onClick={() => setShowPassword((v) => !v)}
           >
             {showPassword ? (
@@ -97,7 +100,7 @@ export function LoginForm() {
         </div>
       </div>
       {error ? (
-        <p className="neg" style={{ margin: 0 }}>
+        <p className="neg form-status" role="alert" style={{ margin: 0 }}>
           {error}
         </p>
       ) : null}

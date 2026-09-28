@@ -18,8 +18,7 @@ import { requireUser } from "@/lib/session";
 export default async function DebtPage() {
   const user = await requireUser();
   const data = await getDebtDashboard(user.id);
-  const goal =
-    data.settings?.goalPayoffDate ?? defaultGoalDate(19);
+  const goal = data.settings?.goalPayoffDate ?? defaultGoalDate(19);
   const baselineMonth = currentYearMonth();
 
   const curve = buildPayoffCurve({
@@ -30,39 +29,22 @@ export default async function DebtPage() {
   });
 
   return (
-    <div style={{ display: "grid", gap: "1.25rem" }}>
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "flex-end",
-          justifyContent: "space-between",
-          gap: "1rem",
-        }}
-      >
+    <div className="page-stack">
+      <div className="page-header">
         <div>
-          <h2
-            style={{
-              margin: 0,
-              fontFamily: "var(--font-fraunces), Georgia, serif",
-              fontSize: "1.5rem",
-            }}
-          >
-            Debt Account Tracker
-          </h2>
-          <p className="muted" style={{ margin: "0.25rem 0 0" }}>
-            Track accounts, payments, and projected vs actual payoff.
+          <h2 className="page-title">Debt</h2>
+          <p className="muted page-sub">
+            Accounts, payments, and your path to zero.
           </p>
         </div>
         <ActionForm
           action={updateDebtGoal}
           successMessage="Debt payoff goal saved"
           errorMessage="Could not save goal"
-          className="form-row"
-          style={{ maxWidth: 320 }}
+          className="form-row goal-form"
         >
           <div className="field">
-            <label htmlFor="goalPayoffDate">Goal payoff date</label>
+            <label htmlFor="goalPayoffDate">Goal payoff</label>
             <input
               id="goalPayoffDate"
               name="goalPayoffDate"
@@ -77,15 +59,24 @@ export default async function DebtPage() {
         </ActionForm>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gap: "1rem",
-          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-        }}
-      >
+      <div className="stat-grid debt-stats">
+        <div className="stat-card">
+          <span>Starting</span>
+          <strong>{formatINR(data.totals.starting)}</strong>
+        </div>
+        <div className="stat-card income">
+          <span>Paid down</span>
+          <strong>{formatINR(data.totals.paid)}</strong>
+        </div>
+        <div className={`stat-card ${data.totals.pending > 0 ? "expense" : "left"}`}>
+          <span>Remaining</span>
+          <strong>{formatINR(data.totals.pending)}</strong>
+        </div>
+      </div>
+
+      <div className="chart-grid">
         <section className="panel">
-          <h2>Master Debt & Account Tracker</h2>
+          <h2>Accounts</h2>
           <ActionForm
             action={createDebtAccount}
             successMessage="Debt account added"
@@ -96,11 +87,23 @@ export default async function DebtPage() {
           >
             <div className="field">
               <label htmlFor="name">Account / card</label>
-              <input id="name" name="name" required placeholder="AXIS MY Zone" />
+              <input
+                id="name"
+                name="name"
+                required
+                placeholder="AXIS MY Zone"
+                autoComplete="off"
+              />
             </div>
             <div className="field">
               <label htmlFor="type">Type</label>
-              <input id="type" name="type" required placeholder="Credit Card EMI" />
+              <input
+                id="type"
+                name="type"
+                required
+                placeholder="Credit Card EMI"
+                autoComplete="off"
+              />
             </div>
             <div className="field">
               <label htmlFor="startingBalance">Starting balance</label>
@@ -111,6 +114,7 @@ export default async function DebtPage() {
                 step="0.01"
                 min="0"
                 required
+                inputMode="decimal"
                 defaultValue="0"
               />
             </div>
@@ -136,13 +140,15 @@ export default async function DebtPage() {
                     <th className="num">Paid</th>
                     <th className="num">Pending</th>
                     <th>Status</th>
-                    <th></th>
+                    <th>
+                      <span className="sr-only">Actions</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.accounts.map((a) => (
                     <tr key={a.id}>
-                      <td>{a.name}</td>
+                      <td className="tx-main">{a.name}</td>
                       <td>{a.type}</td>
                       <td className="num">{formatINR(a.startingBalanceNum)}</td>
                       <td className="num">{formatINR(a.totalPaid)}</td>
@@ -156,8 +162,11 @@ export default async function DebtPage() {
                           confirmMessage={`Delete “${a.name}”?`}
                         >
                           <input type="hidden" name="id" value={a.id} />
-                          <button className="btn btn-danger" type="submit" style={{ padding: "0.3rem 0.55rem" }}>
-                            Delete
+                          <button
+                            className="btn btn-danger btn-xs"
+                            type="submit"
+                          >
+                            Del
                           </button>
                         </ActionForm>
                       </td>
@@ -179,23 +188,18 @@ export default async function DebtPage() {
         </section>
 
         <section className="panel">
-          <h2>Debt Reduction</h2>
-          <p className="muted" style={{ marginTop: 0, fontSize: "0.9rem" }}>
-            Blue = projected path to ₹0 by {format(new Date(goal), "MMM yyyy")}. Green = actual remaining.
+          <h2>Debt reduction</h2>
+          <p className="muted page-sub" style={{ marginBottom: "1rem" }}>
+            Projected path to ₹0 by{" "}
+            {format(new Date(goal), "MMM yyyy")} vs actual remaining.
           </p>
           <DebtReductionChart points={curve} />
         </section>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gap: "1rem",
-          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-        }}
-      >
+      <div className="chart-grid">
         <section className="panel">
-          <h2>Payment Log</h2>
+          <h2>Payment log</h2>
           <ActionForm
             action={createDebtPayment}
             successMessage="Payment logged"
@@ -210,7 +214,12 @@ export default async function DebtPage() {
             </div>
             <div className="field">
               <label htmlFor="accountId">Account</label>
-              <select id="accountId" name="accountId" required defaultValue={data.accounts[0]?.id}>
+              <select
+                id="accountId"
+                name="accountId"
+                required
+                defaultValue={data.accounts[0]?.id}
+              >
                 {data.accounts.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name}
@@ -224,7 +233,15 @@ export default async function DebtPage() {
             </div>
             <div className="field">
               <label htmlFor="amount">Amount</label>
-              <input id="amount" name="amount" type="number" step="0.01" min="0" required />
+              <input
+                id="amount"
+                name="amount"
+                type="number"
+                step="0.01"
+                min="0"
+                required
+                inputMode="decimal"
+              />
             </div>
             <div className="field">
               <label htmlFor="isPaid">Paid?</label>
@@ -233,7 +250,11 @@ export default async function DebtPage() {
                 <option value="false">No</option>
               </select>
             </div>
-            <button className="btn btn-primary" type="submit" disabled={data.accounts.length === 0}>
+            <button
+              className="btn btn-primary"
+              type="submit"
+              disabled={data.accounts.length === 0}
+            >
               Add payment
             </button>
           </ActionForm>
@@ -250,26 +271,38 @@ export default async function DebtPage() {
                     <th>Type</th>
                     <th className="num">Amount</th>
                     <th>Paid?</th>
-                    <th></th>
+                    <th>
+                      <span className="sr-only">Actions</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.payments.map((p) => (
                     <tr key={p.id}>
-                      <td>{p.dueDate}</td>
+                      <td className="nowrap">{p.dueDate}</td>
                       <td>{p.accountName}</td>
                       <td>{p.paymentType}</td>
                       <td className="num">{formatINR(p.amount)}</td>
                       <td>
                         <ActionForm
                           action={toggleDebtPaymentPaid}
-                          successMessage={p.isPaid ? "Marked unpaid" : "Marked paid"}
+                          successMessage={
+                            p.isPaid ? "Marked unpaid" : "Marked paid"
+                          }
                           errorMessage="Could not update payment"
                         >
                           <input type="hidden" name="id" value={p.id} />
-                          <input type="hidden" name="isPaid" value={String(p.isPaid)} />
-                          <button className="btn btn-ghost" type="submit" style={{ padding: "0.3rem 0.55rem" }}>
-                            {p.isPaid ? "✓ Paid" : "○ Unpaid"}
+                          <input
+                            type="hidden"
+                            name="isPaid"
+                            value={String(p.isPaid)}
+                          />
+                          <button
+                            className="btn btn-ghost btn-xs"
+                            type="submit"
+                            aria-pressed={p.isPaid}
+                          >
+                            {p.isPaid ? "Paid" : "Unpaid"}
                           </button>
                         </ActionForm>
                       </td>
@@ -281,8 +314,11 @@ export default async function DebtPage() {
                           confirmMessage="Delete this payment?"
                         >
                           <input type="hidden" name="id" value={p.id} />
-                          <button className="btn btn-danger" type="submit" style={{ padding: "0.3rem 0.55rem" }}>
-                            Delete
+                          <button
+                            className="btn btn-danger btn-xs"
+                            type="submit"
+                          >
+                            Del
                           </button>
                         </ActionForm>
                       </td>
@@ -295,14 +331,14 @@ export default async function DebtPage() {
         </section>
 
         <section className="panel">
-          <h2>Payoff Curve</h2>
+          <h2>Payoff curve</h2>
           <div className="table-wrap">
             <table className="data">
               <thead>
                 <tr>
                   <th>Month</th>
-                  <th className="num">Projected target</th>
-                  <th className="num">Actual remaining</th>
+                  <th className="num">Projected</th>
+                  <th className="num">Actual left</th>
                 </tr>
               </thead>
               <tbody>

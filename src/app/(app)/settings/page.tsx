@@ -12,19 +12,22 @@ export default async function SettingsPage() {
   const incomes = cats.filter((c) => c.kind === "income");
 
   return (
-    <div className="page-stack" style={{ maxWidth: 720 }}>
+    <div className="page-stack settings-page">
       <div className="page-header">
         <div>
           <h2 className="page-title">Settings</h2>
-          <p className="muted page-sub">Categories, debt goal, and app tips.</p>
+          <p className="muted page-sub">
+            Categories, debt goal, and install tips.
+          </p>
         </div>
       </div>
 
       <section className="panel">
-        <h2>Install as app (PWA)</h2>
-        <p className="muted" style={{ marginTop: 0 }}>
-          On phone: open in Safari/Chrome → Share / menu → <strong>Add to Home Screen</strong>.
-          Long-press the icon for <strong>Quick add</strong> (Android Chrome shortcuts).
+        <h2>Install as app</h2>
+        <p className="muted page-sub" style={{ maxWidth: "42ch", marginTop: 0 }}>
+          On your phone, open Ledger in Safari or Chrome, then use Share / menu
+          → <strong>Add to Home Screen</strong>. On Android Chrome, long-press
+          the icon for a <strong>Quick add</strong> shortcut.
         </p>
       </section>
 

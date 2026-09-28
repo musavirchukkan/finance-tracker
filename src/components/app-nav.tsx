@@ -130,7 +130,7 @@ export function AppNav({ name }: { name?: string | null }) {
           <h1 className="brand">Ledger</h1>
         </div>
         <nav className="desktop-nav" aria-label="Main">
-          {links.map((link) => {
+                {links.map((link) => {
             const active =
               pathname.startsWith(link.href) || pendingHref === link.href;
             return (
@@ -138,6 +138,7 @@ export function AppNav({ name }: { name?: string | null }) {
                 key={link.href}
                 type="button"
                 className={active ? "nav-pill active" : "nav-pill"}
+                aria-current={active ? "page" : undefined}
                 onPointerDown={() => router.prefetch(link.href)}
                 onClick={() => go(link.href)}
               >
@@ -149,14 +150,14 @@ export function AppNav({ name }: { name?: string | null }) {
         <div className="top-bar-user">
           <span className="muted hide-sm">{name}</span>
           <button
-            className="btn btn-ghost"
+            className="btn btn-ghost btn-xs"
             type="button"
             onClick={async () => {
               await clearClientState();
               await signOut({ callbackUrl: "/login" });
             }}
           >
-            Out
+            Sign out
           </button>
         </div>
       </header>
@@ -170,6 +171,7 @@ export function AppNav({ name }: { name?: string | null }) {
               key={link.href}
               type="button"
               className={active ? "bottom-link active" : "bottom-link"}
+              aria-current={active ? "page" : undefined}
               onPointerDown={() => router.prefetch(link.href)}
               onClick={() => go(link.href)}
             >

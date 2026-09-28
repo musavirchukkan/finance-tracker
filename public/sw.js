@@ -1,10 +1,11 @@
-const STATIC_CACHE = "ledger-static-v3";
-const PAGE_CACHE = "ledger-pages-v3";
+const STATIC_CACHE = "ledger-static-v4";
+const PAGE_CACHE = "ledger-pages-v4";
 
 const STATIC_PRECACHE = [
   "/manifest.webmanifest",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
+  "/icons/apple-touch-icon.png",
 ];
 
 /** Routes that contain user-specific data — only serve from cache if logged in. */

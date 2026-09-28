@@ -35,17 +35,27 @@ export default async function BudgetPage({
     <div className="page-stack">
       <div className="page-header">
         <div>
-          <h2 className="page-title">Monthly Budget</h2>
+          <h2 className="page-title">Budget</h2>
           <p className="muted page-sub">
-            Income in, spending out, and budget vs actual.
+            See what came in, what went out, and what’s left this month.
           </p>
         </div>
-        <div className="month-switcher">
-          <Link className="btn btn-ghost" href={`/budget?month=${prev}`}>
+        <div className="month-switcher" role="group" aria-label="Month">
+          <Link
+            className="btn btn-ghost btn-xs"
+            href={`/budget?month=${prev}`}
+            aria-label={`Previous month, ${formatYearMonthLabel(prev)}`}
+          >
             ←
           </Link>
-          <span className="month-label">{formatYearMonthLabel(month)}</span>
-          <Link className="btn btn-ghost" href={`/budget?month=${next}`}>
+          <span className="month-label" aria-current="date">
+            {formatYearMonthLabel(month)}
+          </span>
+          <Link
+            className="btn btn-ghost btn-xs"
+            href={`/budget?month=${next}`}
+            aria-label={`Next month, ${formatYearMonthLabel(next)}`}
+          >
             →
           </Link>
         </div>

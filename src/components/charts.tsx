@@ -18,15 +18,14 @@ import {
 import { formatINR } from "@/lib/money";
 
 const COLORS = [
-  "#0f6b4c",
-  "#2f6fed",
-  "#c45c26",
-  "#7a3e9d",
-  "#1a9a6c",
-  "#b54708",
-  "#2563eb",
+  "#0a5c45",
+  "#2f4d6a",
+  "#9a4b16",
   "#0e7490",
-  "#64748b",
+  "#365314",
+  "#7c2d12",
+  "#1e3a5f",
+  "#57534e",
 ];
 
 type BudgetRow = {
@@ -76,13 +75,13 @@ export function BudgetVsActualBars({ rows }: { rows: BudgetRow[] }) {
   return (
     <ResponsiveContainer width="100%" height={280}>
       <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#d5e0da" />
+        <CartesianGrid strokeDasharray="3 3" stroke="#cfd8d2" />
         <XAxis dataKey="category" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={60} />
         <YAxis tickFormatter={(v) => `₹${v}`} width={70} tick={{ fontSize: 11 }} />
         <Tooltip formatter={(v) => formatINR(Number(v ?? 0))} />
         <Legend />
-        <Bar dataKey="Budget" fill="#2f6fed" radius={[4, 4, 0, 0]} />
-        <Bar dataKey="Actual" fill="#1a9a6c" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="Budget" fill="#2f4d6a" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="Actual" fill="#0a5c45" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -104,7 +103,7 @@ export function DebtReductionChart({ points }: { points: CurvePoint[] }) {
   return (
     <ResponsiveContainer width="100%" height={260}>
       <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 40 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#d5e0da" />
+        <CartesianGrid strokeDasharray="3 3" stroke="#cfd8d2" />
         <XAxis
           dataKey="label"
           tick={{ fontSize: 10 }}
@@ -119,14 +118,14 @@ export function DebtReductionChart({ points }: { points: CurvePoint[] }) {
         <Line
           type="monotone"
           dataKey="Projected"
-          stroke="#2f6fed"
+          stroke="#2f4d6a"
           strokeWidth={2}
           dot={false}
         />
         <Line
           type="monotone"
           dataKey="Actual"
-          stroke="#1a9a6c"
+          stroke="#0a5c45"
           strokeWidth={2}
           connectNulls={false}
           dot={{ r: 3 }}
@@ -144,19 +143,19 @@ export function CashflowBars({
   expense: number;
 }) {
   const data = [
-    { name: "Income", amount: income, fill: "#1a9a6c" },
-    { name: "Spent", amount: expense, fill: "#b54708" },
+    { name: "Income", amount: income, fill: "#0a5c45" },
+    { name: "Spent", amount: expense, fill: "#9a4b16" },
     {
       name: "Left",
       amount: Math.max(0, income - expense),
-      fill: "#2f6fed",
+      fill: "#2f4d6a",
     },
   ];
 
   return (
     <ResponsiveContainer width="100%" height={220}>
       <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#d5e0da" />
+        <CartesianGrid strokeDasharray="3 3" stroke="#cfd8d2" />
         <XAxis dataKey="name" tick={{ fontSize: 12 }} />
         <YAxis tickFormatter={(v) => `₹${v}`} width={64} tick={{ fontSize: 11 }} />
         <Tooltip formatter={(v) => formatINR(Number(v ?? 0))} />
