@@ -1,36 +1,76 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Ledger — Personal Finance Tracker
 
-## Getting Started
+Budget vs actual, transactions, and debt payoff — features from your Numbers sheets, as a web app.
 
-First, run the development server:
+## Stack
+
+- **Next.js** (App Router) + TypeScript + Tailwind
+- **Auth.js** (email/password, portable to VPS)
+- **Postgres** via Neon (or local Docker / any Postgres)
+- **Drizzle ORM** + **Recharts**
+- Deploy: **Vercel** + your **Cloudflare** domain
+
+## Pages
+
+| Route | Purpose |
+|-------|---------|
+| `/login` | Sign in |
+| `/budget` | Monthly budget, donut + bar charts, category summary |
+| `/transactions` | Log expenses (feeds Actual on Budget) |
+| `/debt` | Debt accounts, payment log, payoff curve |
+| `/settings` | Categories + debt goal date |
+
+## Local setup
+
+### 1. Env
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Set:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `AUTH_SECRET` — `openssl rand -base64 32`
+- `DATABASE_URL` — Neon connection string **or** local Docker below
+- Optional `SEED_EMAIL` / `SEED_PASSWORD` / `SEED_NAME` for the first user
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 2. Database
 
-## Learn More
+**Option A — Neon (recommended for deploy)**  
+Create a free project at [neon.tech](https://neon.tech), copy the connection string into `DATABASE_URL`.
 
-To learn more about Next.js, take a look at the following resources:
+**Option B — Local Docker**
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run db:up
+# DATABASE_URL=postgresql://finance:finance@localhost:5432/finance
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 3. Schema + seed user
 
-## Deploy on Vercel
+```bash
+npm run db:push
+npm run db:seed
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 4. Run
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm install
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) and sign in with the seeded email/password.
+
+## Deploy (Vercel + Cloudflare)
+
+1. Push repo to GitHub.
+2. Import project in [Vercel](https://vercel.com) — set env vars `AUTH_SECRET`, `DATABASE_URL` (Neon).
+3. Deploy.
+4. Vercel → Domains → add `finance.yourdomain.com`.
+5. Cloudflare DNS: `CNAME` → `cname.vercel-dns.com` (grey cloud / DNS only for SSL).
+6. Run `db:push` and `db:seed` once against the Neon DB (from your machine with production `DATABASE_URL`).
+
+## Later: VPS
+
+Same Next.js app + Auth.js. Point `DATABASE_URL` at Postgres on the VPS (or keep Neon). Update Cloudflare A/CNAME to the VPS. No auth rewrite.
