@@ -1,16 +1,12 @@
 import "dotenv/config";
 import { hash } from "bcryptjs";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import {
-  categories,
-  debtSettings,
-  users,
-} from "./schema";
+import { categories, debtSettings, users } from "./schema";
 import { defaultGoalDate } from "../debt-projection";
 
-const DEFAULT_CATEGORIES = [
+const EXPENSE_CATEGORIES = [
   "Auto",
   "Entertainment",
   "Food",
@@ -21,6 +17,49 @@ const DEFAULT_CATEGORIES = [
   "Utilities",
   "Other",
 ];
+
+const INCOME_CATEGORIES = ["Salary", "Freelance", "Other Income"];
+
+async function ensureCategories(
+  db: ReturnType<typeof drizzle>,
+  userId: string,
+) {
+  const existing = await db
+    .select()
+    .from(categories)
+    .where(eq(categories.userId, userId));
+
+  const names = new Set(existing.map((c) => c.name));
+
+  const toInsert = [
+    ...EXPENSE_CATEGORIES.map((name, index) => ({
+      userId,
+      name,
+      kind: "expense" as const,
+      sortOrder: index,
+    })),
+    ...INCOME_CATEGORIES.map((name, index) => ({
+      userId,
+      name,
+      kind: "income" as const,
+      sortOrder: 100 + index,
+    })),
+  ].filter((c) => !names.has(c.name));
+
+  if (toInsert.length > 0) {
+    await db.insert(categories).values(toInsert);
+  }
+
+  // Backfill kind for legacy rows without income names
+  for (const row of existing) {
+    if (INCOME_CATEGORIES.includes(row.name) && row.kind !== "income") {
+      await db
+        .update(categories)
+        .set({ kind: "income" })
+        .where(and(eq(categories.id, row.id), eq(categories.userId, userId)));
+    }
+  }
+}
 
 async function main() {
   const url = process.env.DATABASE_URL;
@@ -42,7 +81,8 @@ async function main() {
     .limit(1);
 
   if (existing.length > 0) {
-    console.log(`User ${email} already exists — skipping seed.`);
+    await ensureCategories(db, existing[0].id);
+    console.log(`User ${email} already exists — ensured categories.`);
     await client.end();
     return;
   }
@@ -53,13 +93,7 @@ async function main() {
     .values({ email, name, passwordHash })
     .returning();
 
-  await db.insert(categories).values(
-    DEFAULT_CATEGORIES.map((catName, index) => ({
-      userId: user.id,
-      name: catName,
-      sortOrder: index,
-    })),
-  );
+  await ensureCategories(db, user.id);
 
   await db.insert(debtSettings).values({
     userId: user.id,

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { DM_Sans, Fraunces } from "next/font/google";
 import { Providers } from "@/components/providers";
 import "./globals.css";
@@ -15,7 +15,26 @@ const fraunces = Fraunces({
 
 export const metadata: Metadata = {
   title: "Ledger — Finance Tracker",
-  description: "Budget, transactions, and debt payoff tracker",
+  description: "Budget, income, expenses, and debt payoff — works offline",
+  applicationName: "Ledger",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Ledger",
+  },
+  icons: {
+    icon: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/icons/icon-192.png", sizes: "192x192" }],
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0f6b4c",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-const APP_PREFIXES = ["/budget", "/transactions", "/debt", "/settings"];
+const APP_PREFIXES = ["/budget", "/transactions", "/debt", "/settings", "/quick-add"];
 
 function safeCallbackUrl(raw: string | null): string {
   if (!raw || !raw.startsWith("/") || raw.startsWith("//")) {

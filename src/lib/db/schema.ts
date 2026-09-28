@@ -29,6 +29,7 @@ export const categories = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
+    kind: text("kind").notNull().default("expense"), // expense | income
     sortOrder: integer("sort_order").notNull().default(0),
   },
   (t) => [uniqueIndex("categories_user_name").on(t.userId, t.name)],
@@ -66,6 +67,7 @@ export const transactions = pgTable("transactions", {
   categoryId: uuid("category_id")
     .notNull()
     .references(() => categories.id, { onDelete: "restrict" }),
+  type: text("type").notNull().default("expense"), // expense | income
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()

@@ -29,7 +29,7 @@ export async function middleware(request: NextRequest) {
   if (!token && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    const appPaths = ["/budget", "/transactions", "/debt", "/settings"];
+    const appPaths = ["/budget", "/transactions", "/debt", "/settings", "/quick-add"];
     const safeReturn =
       pathname === "/" ||
       appPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`))

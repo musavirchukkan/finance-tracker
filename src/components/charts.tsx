@@ -102,8 +102,8 @@ export function DebtReductionChart({ points }: { points: CurvePoint[] }) {
   }));
 
   return (
-    <ResponsiveContainer width="100%" height={280}>
-      <LineChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 40 }}>
+    <ResponsiveContainer width="100%" height={260}>
+      <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 40 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#d5e0da" />
         <XAxis
           dataKey="label"
@@ -113,7 +113,7 @@ export function DebtReductionChart({ points }: { points: CurvePoint[] }) {
           textAnchor="end"
           height={70}
         />
-        <YAxis tickFormatter={(v) => `₹${v}`} width={80} tick={{ fontSize: 11 }} />
+        <YAxis tickFormatter={(v) => `₹${v}`} width={64} tick={{ fontSize: 11 }} />
         <Tooltip formatter={(v) => (v == null ? "—" : formatINR(Number(v)))} />
         <Legend />
         <Line
@@ -132,6 +132,72 @@ export function DebtReductionChart({ points }: { points: CurvePoint[] }) {
           dot={{ r: 3 }}
         />
       </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
+export function CashflowBars({
+  income,
+  expense,
+}: {
+  income: number;
+  expense: number;
+}) {
+  const data = [
+    { name: "Income", amount: income, fill: "#1a9a6c" },
+    { name: "Spent", amount: expense, fill: "#b54708" },
+    {
+      name: "Left",
+      amount: Math.max(0, income - expense),
+      fill: "#2f6fed",
+    },
+  ];
+
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#d5e0da" />
+        <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+        <YAxis tickFormatter={(v) => `₹${v}`} width={64} tick={{ fontSize: 11 }} />
+        <Tooltip formatter={(v) => formatINR(Number(v ?? 0))} />
+        <Bar dataKey="amount" radius={[6, 6, 0, 0]}>
+          {data.map((d, i) => (
+            <Cell key={i} fill={d.fill} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+export function IncomeDonut({
+  rows,
+}: {
+  rows: { name: string; value: number }[];
+}) {
+  const data = rows.filter((r) => r.value > 0);
+  if (data.length === 0) {
+    return <div className="empty">No income this month yet.</div>;
+  }
+
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <PieChart>
+        <Pie
+          data={data}
+          dataKey="value"
+          nameKey="name"
+          innerRadius={48}
+          outerRadius={80}
+          paddingAngle={2}
+        >
+          {data.map((_, i) => (
+            <Cell key={i} fill={COLORS[i % COLORS.length]} />
+          ))}
+        </Pie>
+        <Tooltip formatter={(v) => formatINR(Number(v ?? 0))} />
+        <Legend />
+      </PieChart>
     </ResponsiveContainer>
   );
 }

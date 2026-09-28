@@ -1,5 +1,10 @@
 import Link from "next/link";
-import { ActualDonut, BudgetVsActualBars } from "@/components/charts";
+import {
+  ActualDonut,
+  BudgetVsActualBars,
+  CashflowBars,
+  IncomeDonut,
+} from "@/components/charts";
 import { getBudgetSummary, upsertBudgetAmount } from "@/lib/actions";
 import { formatINR } from "@/lib/money";
 import {
@@ -16,61 +21,61 @@ export default async function BudgetPage({
 }) {
   const user = await requireUser();
   const params = await searchParams;
-  const month = params.month && /^\d{4}-\d{2}$/.test(params.month)
-    ? params.month
-    : currentYearMonth();
+  const month =
+    params.month && /^\d{4}-\d{2}$/.test(params.month)
+      ? params.month
+      : currentYearMonth();
 
-  const { rows, totals } = await getBudgetSummary(user.id, month);
+  const { rows, totals, cashflow } = await getBudgetSummary(user.id, month);
   const prev = shiftYearMonth(month, -1);
   const next = shiftYearMonth(month, 1);
 
   return (
-    <div style={{ display: "grid", gap: "1.25rem" }}>
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "0.75rem",
-        }}
-      >
+    <div className="page-stack">
+      <div className="page-header">
         <div>
-          <h2
-            style={{
-              margin: 0,
-              fontFamily: "var(--font-fraunces), Georgia, serif",
-              fontSize: "1.5rem",
-            }}
-          >
-            Monthly Budget
-          </h2>
-          <p className="muted" style={{ margin: "0.25rem 0 0" }}>
-            Compare planned vs actual spending. Actuals come from Transactions.
+          <h2 className="page-title">Monthly Budget</h2>
+          <p className="muted page-sub">
+            Income in, spending out, and budget vs actual.
           </p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <div className="month-switcher">
           <Link className="btn btn-ghost" href={`/budget?month=${prev}`}>
-            ← Prev
+            ←
           </Link>
-          <span style={{ fontWeight: 700, minWidth: 140, textAlign: "center" }}>
-            {formatYearMonthLabel(month)}
-          </span>
+          <span className="month-label">{formatYearMonthLabel(month)}</span>
           <Link className="btn btn-ghost" href={`/budget?month=${next}`}>
-            Next →
+            →
           </Link>
         </div>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gap: "1rem",
-          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-        }}
-      >
+      <div className="stat-grid">
+        <div className="stat-card income">
+          <span>Income</span>
+          <strong>{formatINR(cashflow.income)}</strong>
+        </div>
+        <div className="stat-card expense">
+          <span>Spent</span>
+          <strong>{formatINR(cashflow.expense)}</strong>
+        </div>
+        <div className={`stat-card ${cashflow.remaining >= 0 ? "left" : "over"}`}>
+          <span>Remaining</span>
+          <strong>{formatINR(cashflow.remaining)}</strong>
+        </div>
+      </div>
+
+      <div className="chart-grid">
         <section className="panel">
-          <h2>Actual Summary</h2>
+          <h2>Cashflow</h2>
+          <CashflowBars income={cashflow.income} expense={cashflow.expense} />
+        </section>
+        <section className="panel">
+          <h2>Income sources</h2>
+          <IncomeDonut rows={cashflow.incomeBreakdown} />
+        </section>
+        <section className="panel">
+          <h2>Spend by category</h2>
           <ActualDonut rows={rows} />
         </section>
         <section className="panel">
@@ -80,7 +85,7 @@ export default async function BudgetPage({
       </div>
 
       <section className="panel">
-        <h2>Summary by Category</h2>
+        <h2>Expense budget by category</h2>
         <div className="table-wrap">
           <table className="data">
             <thead>
@@ -88,7 +93,7 @@ export default async function BudgetPage({
                 <th>Category</th>
                 <th className="num">Budget</th>
                 <th className="num">Actual</th>
-                <th className="num">Difference</th>
+                <th className="num">Left</th>
               </tr>
             </thead>
             <tbody>
@@ -96,15 +101,7 @@ export default async function BudgetPage({
                 <tr key={row.categoryId}>
                   <td>{row.category}</td>
                   <td className="num">
-                    <form
-                      action={upsertBudgetAmount}
-                      style={{
-                        display: "inline-flex",
-                        gap: 6,
-                        justifyContent: "flex-end",
-                        width: "100%",
-                      }}
-                    >
+                    <form action={upsertBudgetAmount} className="inline-budget">
                       <input type="hidden" name="categoryId" value={row.categoryId} />
                       <input type="hidden" name="yearMonth" value={month} />
                       <input
@@ -112,16 +109,11 @@ export default async function BudgetPage({
                         type="number"
                         step="0.01"
                         min="0"
+                        inputMode="decimal"
                         defaultValue={row.budget.toFixed(2)}
-                        style={{
-                          width: 110,
-                          textAlign: "right",
-                          border: "1px solid var(--line)",
-                          borderRadius: 8,
-                          padding: "0.3rem 0.45rem",
-                        }}
+                        className="budget-input"
                       />
-                      <button className="btn btn-ghost" type="submit" style={{ padding: "0.3rem 0.55rem" }}>
+                      <button className="btn btn-ghost btn-xs" type="submit">
                         Save
                       </button>
                     </form>

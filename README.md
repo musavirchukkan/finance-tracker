@@ -10,15 +10,25 @@ Budget vs actual, transactions, and debt payoff — features from your Numbers s
 - **Drizzle ORM** + **Recharts**
 - Deploy: **Vercel** + your **Cloudflare** domain
 
+## Features
+
+- Budget vs actual (expense categories)
+- **Income + expenses** with cashflow stats and charts
+- Debt account tracker
+- **Mobile-first** UI + bottom nav + quick-add FAB
+- **PWA** — install to home screen; shortcuts for Quick add
+- **Offline queue** — add transactions without internet; auto-sync when back online
+
 ## Pages
 
 | Route | Purpose |
 |-------|---------|
 | `/login` | Sign in |
-| `/budget` | Monthly budget, donut + bar charts, category summary |
-| `/transactions` | Log expenses (feeds Actual on Budget) |
-| `/debt` | Debt accounts, payment log, payoff curve |
-| `/settings` | Categories + debt goal date |
+| `/budget` | Income/spend cashflow + budget charts |
+| `/transactions` | Add income/expense (offline-capable) |
+| `/quick-add` | Minimal fast entry (PWA shortcut) |
+| `/debt` | Debt accounts + payoff curve |
+| `/settings` | Categories (income/expense) + install tips |
 
 ## Local setup
 

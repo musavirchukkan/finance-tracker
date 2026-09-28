@@ -20,6 +20,9 @@ export async function createTransaction(formData: FormData) {
   const date = String(formData.get("date") ?? "");
   const description = String(formData.get("description") ?? "").trim();
   const categoryId = String(formData.get("categoryId") ?? "");
+  const type = String(formData.get("type") ?? "expense") === "income"
+    ? "income"
+    : "expense";
   const amount = parseAmount(String(formData.get("amount") ?? "0"));
 
   if (!date || !description || !categoryId) {
@@ -31,11 +34,13 @@ export async function createTransaction(formData: FormData) {
     date,
     description,
     categoryId,
+    type,
     amount: amount.toFixed(2),
   });
 
   revalidatePath("/transactions");
   revalidatePath("/budget");
+  revalidatePath("/quick-add");
 }
 
 export async function updateTransaction(formData: FormData) {
@@ -44,6 +49,9 @@ export async function updateTransaction(formData: FormData) {
   const date = String(formData.get("date") ?? "");
   const description = String(formData.get("description") ?? "").trim();
   const categoryId = String(formData.get("categoryId") ?? "");
+  const type = String(formData.get("type") ?? "expense") === "income"
+    ? "income"
+    : "expense";
   const amount = parseAmount(String(formData.get("amount") ?? "0"));
 
   await db
@@ -52,6 +60,7 @@ export async function updateTransaction(formData: FormData) {
       date,
       description,
       categoryId,
+      type,
       amount: amount.toFixed(2),
     })
     .where(and(eq(transactions.id, id), eq(transactions.userId, user.id)));
@@ -238,6 +247,9 @@ export async function updateDebtGoal(formData: FormData) {
 export async function createCategory(formData: FormData) {
   const user = await requireUser();
   const name = String(formData.get("name") ?? "").trim();
+  const kind = String(formData.get("kind") ?? "expense") === "income"
+    ? "income"
+    : "expense";
   if (!name) throw new Error("Name required");
 
   const max = await db
@@ -250,12 +262,14 @@ export async function createCategory(formData: FormData) {
   await db.insert(categories).values({
     userId: user.id,
     name,
+    kind,
     sortOrder: (max[0]?.sortOrder ?? -1) + 1,
   });
 
   revalidatePath("/settings");
   revalidatePath("/budget");
   revalidatePath("/transactions");
+  revalidatePath("/quick-add");
 }
 
 export async function deleteCategory(formData: FormData) {
@@ -275,7 +289,9 @@ export async function getBudgetSummary(userId: string, yearMonth: string) {
   const cats = await db
     .select()
     .from(categories)
-    .where(eq(categories.userId, userId))
+    .where(
+      and(eq(categories.userId, userId), eq(categories.kind, "expense")),
+    )
     .orderBy(asc(categories.sortOrder));
 
   const budgetRows = await db
@@ -295,6 +311,7 @@ export async function getBudgetSummary(userId: string, yearMonth: string) {
     .where(
       and(
         eq(transactions.userId, userId),
+        eq(transactions.type, "expense"),
         gte(transactions.date, monthStart),
         lte(transactions.date, monthEnd),
       ),
@@ -329,7 +346,58 @@ export async function getBudgetSummary(userId: string, yearMonth: string) {
     { budget: 0, actual: 0, difference: 0 },
   );
 
-  return { rows, totals };
+  const cashflowRows = await db
+    .select({
+      type: transactions.type,
+      total: sql<string>`coalesce(sum(${transactions.amount}), 0)`,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        gte(transactions.date, monthStart),
+        lte(transactions.date, monthEnd),
+      ),
+    )
+    .groupBy(transactions.type);
+
+  let income = 0;
+  let expense = 0;
+  for (const row of cashflowRows) {
+    if (row.type === "income") income = toNumber(row.total);
+    else expense = toNumber(row.total);
+  }
+
+  const incomeByCategory = await db
+    .select({
+      category: categories.name,
+      total: sql<string>`coalesce(sum(${transactions.amount}), 0)`,
+    })
+    .from(transactions)
+    .innerJoin(categories, eq(transactions.categoryId, categories.id))
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        eq(transactions.type, "income"),
+        gte(transactions.date, monthStart),
+        lte(transactions.date, monthEnd),
+      ),
+    )
+    .groupBy(categories.name);
+
+  return {
+    rows,
+    totals,
+    cashflow: {
+      income,
+      expense,
+      remaining: income - expense,
+      incomeBreakdown: incomeByCategory.map((r) => ({
+        name: r.category,
+        value: toNumber(r.total),
+      })),
+    },
+  };
 }
 
 export async function listTransactions(
@@ -349,8 +417,10 @@ export async function listTransactions(
       date: transactions.date,
       description: transactions.description,
       amount: transactions.amount,
+      type: transactions.type,
       categoryId: transactions.categoryId,
       categoryName: categories.name,
+      categoryKind: categories.kind,
     })
     .from(transactions)
     .innerJoin(categories, eq(transactions.categoryId, categories.id))
@@ -358,12 +428,36 @@ export async function listTransactions(
     .orderBy(desc(transactions.date), desc(transactions.createdAt));
 }
 
-export async function listCategories(userId: string) {
+export async function listCategories(userId: string, kind?: "expense" | "income") {
+  const conditions = [eq(categories.userId, userId)];
+  if (kind) conditions.push(eq(categories.kind, kind));
+
   return db
     .select()
     .from(categories)
-    .where(eq(categories.userId, userId))
+    .where(and(...conditions))
     .orderBy(asc(categories.sortOrder));
+}
+
+/** Shared insert used by server actions and offline sync API. */
+export async function insertTransactionForUser(
+  userId: string,
+  input: {
+    date: string;
+    description: string;
+    categoryId: string;
+    type: "expense" | "income";
+    amount: number;
+  },
+) {
+  await db.insert(transactions).values({
+    userId,
+    date: input.date,
+    description: input.description,
+    categoryId: input.categoryId,
+    type: input.type,
+    amount: input.amount.toFixed(2),
+  });
 }
 
 export async function getDebtDashboard(userId: string) {
