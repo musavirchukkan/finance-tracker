@@ -47,6 +47,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   pages: {
     signIn: "/login",
   },
+  // Required on Vercel so cookies/callbacks use the correct host
+  trustHost: true,
   callbacks: {
     jwt: async ({ token, user }) => {
       if (user) {
@@ -65,5 +67,4 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return session;
     },
   },
-  trustHost: true,
 });

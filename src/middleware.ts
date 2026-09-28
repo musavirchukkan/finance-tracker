@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
-import { getToken } from "next-auth/jwt";
+import { auth } from "@/lib/auth";
 
 const publicPaths = ["/login", "/health"];
 
-export async function middleware(request: NextRequest) {
+export default auth((request) => {
   const { pathname } = request.nextUrl;
 
   if (
@@ -17,19 +16,21 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const token = await getToken({
-    req: request,
-    secret: process.env.AUTH_SECRET,
-  });
-
   const isPublic = publicPaths.some(
-    (p) => pathname === p || pathname.startsWith(p + "/"),
+    (p) => pathname === p || pathname.startsWith(`${p}/`),
   );
+  const isLoggedIn = !!request.auth;
 
-  if (!token && !isPublic) {
+  if (!isLoggedIn && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    const appPaths = ["/budget", "/transactions", "/debt", "/settings", "/quick-add"];
+    const appPaths = [
+      "/budget",
+      "/transactions",
+      "/debt",
+      "/settings",
+      "/quick-add",
+    ];
     const safeReturn =
       pathname === "/" ||
       appPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`))
@@ -41,14 +42,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (token && pathname === "/login") {
+  if (isLoggedIn && pathname === "/login") {
     const url = request.nextUrl.clone();
     url.pathname = "/budget";
     return NextResponse.redirect(url);
   }
 
   return NextResponse.next();
-}
+});
 
 export const config = {
   matcher: ["/((?!_next/static|_next/image|.*\\..*).*)"],
