@@ -82,12 +82,34 @@ Open [http://localhost:3000](http://localhost:3000) and sign in with the seeded 
 
 ## Deploy (Vercel + Cloudflare)
 
+### Env vars to set in Vercel
+
+| Key | Required? | What to put |
+|-----|-----------|-------------|
+| `AUTH_SECRET` | Yes | Output of `openssl rand -base64 32` |
+| `DATABASE_URL` | Yes | Neon **pooled** URL (`-pooler` in host) |
+| `DATABASE_MIGRATION_URL` | Yes (for auto schema on deploy) | Neon **direct** URL (no `-pooler`) |
+| `AUTH_URL` | After first deploy | `https://your-app.vercel.app` (or custom domain) |
+| `SEED_*` | No | Not needed on Vercel — seed once from your laptop |
+
+### Auto schema on deploy
+
+`npm run build` runs `drizzle-kit push --force` first (uses `DATABASE_MIGRATION_URL`), then builds Next.js.  
+**Seeding is not automatic** — after the first deploy, from your machine with Neon URLs in `.env`:
+
+```bash
+npm run db:seed
+```
+
+### Steps
+
 1. Push repo to GitHub.
-2. Import project in [Vercel](https://vercel.com) — set `AUTH_SECRET`, `DATABASE_URL` (Neon **pooled**), and optionally `DATABASE_MIGRATION_URL` (not required on Vercel unless you run seeds there).
+2. Import project in [Vercel](https://vercel.com) — set env vars above (Production + Preview).
 3. Deploy.
-4. Vercel → Domains → add `finance.yourdomain.com`.
+4. Vercel → Domains → add `finance.yourdomain.com` (optional).
 5. Cloudflare DNS: `CNAME` → `cname.vercel-dns.com` (grey cloud / DNS only for SSL).
-6. From your machine (with Neon URLs in `.env`): `npm run db:push` then `npm run db:seed`.
+6. Set `AUTH_URL` to the live URL → Redeploy.
+7. Run `npm run db:seed` once against Neon (creates your login user).
 
 ## Later: VPS
 

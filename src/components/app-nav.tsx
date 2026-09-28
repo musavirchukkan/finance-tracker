@@ -11,6 +11,37 @@ const links = [
   { href: "/settings", label: "More", short: "More" },
 ];
 
+async function clearClientState() {
+  try {
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      // Wipe page caches (user data) always; keep static optional wipe for safety
+      await Promise.all(
+        keys
+          .filter(
+            (k) =>
+              k.includes("pages") ||
+              k.includes("shell") ||
+              k.startsWith("ledger-"),
+          )
+          .map((k) => caches.delete(k)),
+      );
+    }
+    if ("serviceWorker" in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      reg?.active?.postMessage({ type: "CLEAR_CACHES" });
+    }
+    const dbReq = indexedDB.deleteDatabase("ledger-offline");
+    await new Promise<void>((resolve) => {
+      dbReq.onsuccess = () => resolve();
+      dbReq.onerror = () => resolve();
+      dbReq.onblocked = () => resolve();
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
 export function AppNav({ name }: { name?: string | null }) {
   const pathname = usePathname();
 
@@ -30,7 +61,11 @@ export function AppNav({ name }: { name?: string | null }) {
                 href={link.href}
                 className={active ? "nav-pill active" : "nav-pill"}
               >
-                {link.label === "Txns" ? "Transactions" : link.label === "More" ? "Settings" : link.label}
+                {link.label === "Txns"
+                  ? "Transactions"
+                  : link.label === "More"
+                    ? "Settings"
+                    : link.label}
               </Link>
             );
           })}
@@ -40,7 +75,10 @@ export function AppNav({ name }: { name?: string | null }) {
           <button
             className="btn btn-ghost"
             type="button"
-            onClick={() => signOut({ callbackUrl: "/login" })}
+            onClick={async () => {
+              await clearClientState();
+              await signOut({ callbackUrl: "/login" });
+            }}
           >
             Out
           </button>
@@ -69,7 +107,11 @@ export function AppNav({ name }: { name?: string | null }) {
             </Link>
           );
         })}
-        <Link href="/quick-add" className="bottom-link fab-slot" aria-label="Quick add">
+        <Link
+          href="/quick-add"
+          className="bottom-link fab-slot"
+          aria-label="Quick add"
+        >
           <span className="fab-mini">+</span>
           Add
         </Link>

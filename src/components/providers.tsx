@@ -19,11 +19,11 @@ function OfflineSync() {
 
 function ServiceWorkerRegister() {
   useEffect(() => {
-    if ("serviceWorker" in navigator) {
-      void navigator.serviceWorker.register("/sw.js").catch(() => {
-        /* ignore in dev if blocked */
-      });
-    }
+    if (!("serviceWorker" in navigator)) return;
+
+    void navigator.serviceWorker.register("/sw.js").then((reg) => {
+      void reg.update();
+    });
   }, []);
   return null;
 }
