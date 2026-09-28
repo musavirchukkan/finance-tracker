@@ -3,7 +3,11 @@ import { auth } from "@/lib/auth";
 
 const publicPaths = ["/login", "/health"];
 
-export default auth((request) => {
+/**
+ * Next.js 16+: `proxy` replaces the deprecated `middleware` file convention.
+ * Auth gate for protected routes (same logic as before).
+ */
+export const proxy = auth((request) => {
   const { pathname } = request.nextUrl;
 
   if (
