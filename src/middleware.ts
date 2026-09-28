@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
-const publicPaths = ["/login"];
+const publicPaths = ["/login", "/health"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (
     pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/health") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
     pathname.includes(".")
@@ -28,7 +29,15 @@ export async function middleware(request: NextRequest) {
   if (!token && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    url.searchParams.set("callbackUrl", pathname);
+    const appPaths = ["/budget", "/transactions", "/debt", "/settings"];
+    const safeReturn =
+      pathname === "/" ||
+      appPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+        ? pathname === "/"
+          ? "/budget"
+          : pathname
+        : "/budget";
+    url.searchParams.set("callbackUrl", safeReturn);
     return NextResponse.redirect(url);
   }
 

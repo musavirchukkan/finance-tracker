@@ -1,6 +1,7 @@
 import {
   addMonths,
   differenceInCalendarMonths,
+  endOfMonth,
   format,
   parse,
   startOfMonth,
@@ -8,6 +9,18 @@ import {
 
 export function currentYearMonth(): string {
   return format(new Date(), "yyyy-MM");
+}
+
+/** Inclusive date bounds for a YYYY-MM month (valid calendar days). */
+export function monthDateBounds(yearMonth: string): {
+  start: string;
+  end: string;
+} {
+  const startDate = parse(yearMonth + "-01", "yyyy-MM-dd", new Date());
+  return {
+    start: format(startDate, "yyyy-MM-dd"),
+    end: format(endOfMonth(startDate), "yyyy-MM-dd"),
+  };
 }
 
 export function formatYearMonthLabel(yearMonth: string): string {

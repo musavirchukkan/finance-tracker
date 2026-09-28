@@ -13,7 +13,7 @@ import {
 } from "@/lib/db/schema";
 import { parseAmount, toNumber } from "@/lib/money";
 import { requireUser } from "@/lib/session";
-import { yearMonthFromDate } from "@/lib/months";
+import { monthDateBounds, yearMonthFromDate } from "@/lib/months";
 
 export async function createTransaction(formData: FormData) {
   const user = await requireUser();
@@ -285,8 +285,7 @@ export async function getBudgetSummary(userId: string, yearMonth: string) {
       and(eq(budgets.userId, userId), eq(budgets.yearMonth, yearMonth)),
     );
 
-  const monthStart = `${yearMonth}-01`;
-  // last day approx via next month - use date range with SQL
+  const { start: monthStart, end: monthEnd } = monthDateBounds(yearMonth);
   const actualRows = await db
     .select({
       categoryId: transactions.categoryId,
@@ -297,7 +296,7 @@ export async function getBudgetSummary(userId: string, yearMonth: string) {
       and(
         eq(transactions.userId, userId),
         gte(transactions.date, monthStart),
-        lte(transactions.date, `${yearMonth}-31`),
+        lte(transactions.date, monthEnd),
       ),
     )
     .groupBy(transactions.categoryId);
@@ -339,8 +338,9 @@ export async function listTransactions(
 ) {
   const conditions = [eq(transactions.userId, userId)];
   if (yearMonth) {
-    conditions.push(gte(transactions.date, `${yearMonth}-01`));
-    conditions.push(lte(transactions.date, `${yearMonth}-31`));
+    const { start, end } = monthDateBounds(yearMonth);
+    conditions.push(gte(transactions.date, start));
+    conditions.push(lte(transactions.date, end));
   }
 
   return db
