@@ -415,6 +415,7 @@ export async function listTransactions(
     .select({
       id: transactions.id,
       date: transactions.date,
+      occurredAt: transactions.occurredAt,
       description: transactions.description,
       amount: transactions.amount,
       type: transactions.type,
@@ -425,7 +426,7 @@ export async function listTransactions(
     .from(transactions)
     .innerJoin(categories, eq(transactions.categoryId, categories.id))
     .where(and(...conditions))
-    .orderBy(desc(transactions.date), desc(transactions.createdAt));
+    .orderBy(desc(transactions.occurredAt), desc(transactions.createdAt));
 }
 
 export async function listCategories(userId: string, kind?: "expense" | "income") {
@@ -448,16 +449,69 @@ export async function insertTransactionForUser(
     categoryId: string;
     type: "expense" | "income";
     amount: number;
+    occurredAt?: string;
+    clientId?: string;
   },
-) {
-  await db.insert(transactions).values({
-    userId,
-    date: input.date,
-    description: input.description,
-    categoryId: input.categoryId,
-    type: input.type,
-    amount: input.amount.toFixed(2),
-  });
+): Promise<{ id: string; duplicate: boolean }> {
+  // Idempotent offline sync: same clientId → return existing, don't insert again
+  if (input.clientId) {
+    const existing = await db
+      .select({ id: transactions.id })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          eq(transactions.clientId, input.clientId),
+        ),
+      )
+      .limit(1);
+    if (existing[0]) {
+      return { id: existing[0].id, duplicate: true };
+    }
+  }
+
+  const occurredAt = input.occurredAt
+    ? new Date(input.occurredAt)
+    : new Date(`${input.date}T12:00:00`);
+  const dateOnly =
+    input.date ||
+    (Number.isNaN(occurredAt.getTime())
+      ? new Date().toISOString().slice(0, 10)
+      : occurredAt.toISOString().slice(0, 10));
+
+  try {
+    const [row] = await db
+      .insert(transactions)
+      .values({
+        userId,
+        date: dateOnly,
+        occurredAt: Number.isNaN(occurredAt.getTime()) ? new Date() : occurredAt,
+        description: input.description,
+        categoryId: input.categoryId,
+        type: input.type,
+        amount: input.amount.toFixed(2),
+        clientId: input.clientId ?? null,
+      })
+      .returning();
+
+    return { id: row.id, duplicate: false };
+  } catch (err) {
+    // Race: another sync already inserted this clientId
+    if (input.clientId) {
+      const again = await db
+        .select({ id: transactions.id })
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.userId, userId),
+            eq(transactions.clientId, input.clientId),
+          ),
+        )
+        .limit(1);
+      if (again[0]) return { id: again[0].id, duplicate: true };
+    }
+    throw err;
+  }
 }
 
 export async function getDebtDashboard(userId: string) {

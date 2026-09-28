@@ -6,12 +6,13 @@ import { parseAmount } from "@/lib/money";
 import { revalidatePath } from "next/cache";
 
 const bodySchema = z.object({
-  date: z.string().min(1),
+  date: z.string().min(1).optional(),
+  occurredAt: z.string().optional(),
   description: z.string().min(1),
   categoryId: z.string().uuid(),
   type: z.enum(["expense", "income"]),
   amount: z.union([z.string(), z.number()]),
-  clientId: z.string().optional(),
+  clientId: z.string().min(1).optional(),
 });
 
 export async function POST(request: Request) {
@@ -32,19 +33,35 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
+  const occurredAt =
+    parsed.data.occurredAt ??
+    (parsed.data.date
+      ? `${parsed.data.date}T${new Date().toISOString().slice(11, 19)}`
+      : new Date().toISOString());
+  const date = parsed.data.date ?? occurredAt.slice(0, 10);
+
   try {
     const amount = parseAmount(String(parsed.data.amount));
-    await insertTransactionForUser(session.user.id, {
-      date: parsed.data.date,
+    const result = await insertTransactionForUser(session.user.id, {
+      date,
+      occurredAt,
       description: parsed.data.description.trim(),
       categoryId: parsed.data.categoryId,
       type: parsed.data.type,
       amount,
+      clientId: parsed.data.clientId,
     });
-    revalidatePath("/transactions");
-    revalidatePath("/budget");
-    revalidatePath("/quick-add");
-    return NextResponse.json({ ok: true, clientId: parsed.data.clientId });
+    if (!result.duplicate) {
+      revalidatePath("/transactions");
+      revalidatePath("/budget");
+      revalidatePath("/quick-add");
+    }
+    return NextResponse.json({
+      ok: true,
+      id: result.id,
+      duplicate: result.duplicate,
+      clientId: parsed.data.clientId,
+    });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Failed to save" }, { status: 500 });

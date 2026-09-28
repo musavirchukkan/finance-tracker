@@ -57,22 +57,32 @@ export const budgets = pgTable(
   ],
 );
 
-export const transactions = pgTable("transactions", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  date: date("date").notNull(),
-  description: text("description").notNull(),
-  categoryId: uuid("category_id")
-    .notNull()
-    .references(() => categories.id, { onDelete: "restrict" }),
-  type: text("type").notNull().default("expense"), // expense | income
-  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-});
+export const transactions = pgTable(
+  "transactions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    date: date("date").notNull(),
+    /** Actual moment of the transaction (for timeline ordering). */
+    occurredAt: timestamp("occurred_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    description: text("description").notNull(),
+    categoryId: uuid("category_id")
+      .notNull()
+      .references(() => categories.id, { onDelete: "restrict" }),
+    type: text("type").notNull().default("expense"), // expense | income
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    /** Client-generated id for offline sync idempotency. */
+    clientId: text("client_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [uniqueIndex("transactions_user_client").on(t.userId, t.clientId)],
+);
 
 export const debtAccounts = pgTable("debt_accounts", {
   id: uuid("id").defaultRandom().primaryKey(),

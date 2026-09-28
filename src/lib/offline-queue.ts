@@ -1,6 +1,7 @@
 export type PendingTransaction = {
   clientId: string;
   date: string;
+  occurredAt: string; // ISO
   description: string;
   categoryId: string;
   type: "expense" | "income";
@@ -10,7 +11,10 @@ export type PendingTransaction = {
 
 const DB_NAME = "ledger-offline";
 const STORE = "pending-transactions";
-const VERSION = 1;
+const VERSION = 2;
+
+let syncInFlight: Promise<{ synced: number; failed: number }> | null = null;
+const claimedIds = new Set<string>();
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -27,13 +31,16 @@ function openDb(): Promise<IDBDatabase> {
 }
 
 export async function queueTransaction(
-  tx: Omit<PendingTransaction, "clientId" | "createdAt"> & {
+  tx: Omit<PendingTransaction, "clientId" | "createdAt" | "occurredAt"> & {
     clientId?: string;
+    occurredAt?: string;
   },
 ): Promise<PendingTransaction> {
+  const occurredAt = tx.occurredAt ?? new Date().toISOString();
   const pending: PendingTransaction = {
     clientId: tx.clientId ?? crypto.randomUUID(),
-    date: tx.date,
+    date: tx.date || occurredAt.slice(0, 10),
+    occurredAt,
     description: tx.description,
     categoryId: tx.categoryId,
     type: tx.type,
@@ -61,7 +68,7 @@ export async function listPendingTransactions(): Promise<PendingTransaction[]> {
     req.onerror = () => reject(req.error);
   });
   db.close();
-  return rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  return rows.sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
 }
 
 export async function removePendingTransaction(clientId: string) {
@@ -75,6 +82,10 @@ export async function removePendingTransaction(clientId: string) {
   db.close();
 }
 
+/**
+ * Sync offline queue once. Concurrent callers share the same in-flight promise
+ * so Providers + TransactionForm don't double-insert.
+ */
 export async function syncPendingTransactions(): Promise<{
   synced: number;
   failed: number;
@@ -83,27 +94,52 @@ export async function syncPendingTransactions(): Promise<{
     return { synced: 0, failed: 0 };
   }
 
-  const pending = await listPendingTransactions();
-  let synced = 0;
-  let failed = 0;
+  if (syncInFlight) return syncInFlight;
 
-  for (const item of pending) {
-    try {
-      const res = await fetch("/api/transactions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(item),
-      });
-      if (!res.ok) {
+  syncInFlight = (async () => {
+    const pending = await listPendingTransactions();
+    let synced = 0;
+    let failed = 0;
+
+    for (const item of pending) {
+      if (claimedIds.has(item.clientId)) continue;
+      claimedIds.add(item.clientId);
+
+      try {
+        // Remove from queue first so a parallel sync won't re-send the same item
+        await removePendingTransaction(item.clientId);
+
+        const res = await fetch("/api/transactions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(item),
+        });
+
+        if (!res.ok) {
+          // Put back so user can retry
+          await queueTransaction(item);
+          failed += 1;
+          claimedIds.delete(item.clientId);
+          continue;
+        }
+
+        synced += 1;
+        claimedIds.delete(item.clientId);
+      } catch {
+        try {
+          await queueTransaction(item);
+        } catch {
+          /* ignore */
+        }
         failed += 1;
-        continue;
+        claimedIds.delete(item.clientId);
       }
-      await removePendingTransaction(item.clientId);
-      synced += 1;
-    } catch {
-      failed += 1;
     }
-  }
 
-  return { synced, failed };
+    return { synced, failed };
+  })().finally(() => {
+    syncInFlight = null;
+  });
+
+  return syncInFlight;
 }

@@ -10,7 +10,7 @@ function OfflineSync() {
     const run = () => {
       void syncPendingTransactions();
     };
-    run();
+    // Only sync on reconnect — form also syncs but shares a mutex
     window.addEventListener("online", run);
     return () => window.removeEventListener("online", run);
   }, []);

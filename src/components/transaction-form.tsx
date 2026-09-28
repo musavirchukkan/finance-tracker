@@ -7,7 +7,6 @@ import {
   listPendingTransactions,
   queueTransaction,
   syncPendingTransactions,
-  type PendingTransaction,
 } from "@/lib/offline-queue";
 
 export type CategoryOption = {
@@ -23,6 +22,20 @@ type Props = {
   onSaved?: () => void;
 };
 
+function pad(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+function todayLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function nowTimeLocal(): string {
+  const d = new Date();
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export function TransactionForm({
   categories,
   defaultDate,
@@ -36,6 +49,9 @@ export function TransactionForm({
   const [pendingCount, setPendingCount] = useState(0);
   const [online, setOnline] = useState(true);
   const [isPending, startTransition] = useTransition();
+  const [editWhen, setEditWhen] = useState(false);
+  const [dateValue, setDateValue] = useState(defaultDate ?? todayLocal());
+  const [timeValue, setTimeValue] = useState(nowTimeLocal());
 
   const filtered = useMemo(
     () => categories.filter((c) => c.kind === type),
@@ -75,30 +91,46 @@ export function TransactionForm({
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
     };
-  }, [router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function buildOccurredAt(date: string, time: string) {
+    return new Date(`${date}T${time}:00`).toISOString();
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setStatus(null);
     const form = e.currentTarget;
     const fd = new FormData(form);
+
+    // If user didn't open "edit when", refresh time to "now" at submit
+    const date = editWhen ? dateValue : todayLocal();
+    const time = editWhen ? timeValue : nowTimeLocal();
+    const occurredAt = buildOccurredAt(date, time);
+    const clientId = crypto.randomUUID();
+
     const payload = {
-      date: String(fd.get("date") ?? ""),
+      clientId,
+      date,
+      occurredAt,
       description: String(fd.get("description") ?? "").trim(),
       categoryId: String(fd.get("categoryId") ?? ""),
       type,
       amount: Number(String(fd.get("amount") ?? "0")),
     };
 
-    if (!payload.date || !payload.description || !payload.categoryId) {
+    if (!payload.description || !payload.categoryId) {
       toast.error("Fill all fields");
-      setStatus("Fill all fields.");
       return;
     }
 
     if (!navigator.onLine) {
       await queueTransaction(payload);
       form.reset();
+      setDateValue(todayLocal());
+      setTimeValue(nowTimeLocal());
+      setEditWhen(false);
       toast.info("Saved offline — will sync when you're back online");
       setStatus("Saved offline — will sync when you're back online.");
       await refreshPending();
@@ -116,10 +148,12 @@ export function TransactionForm({
         if (!res.ok) {
           await queueTransaction(payload);
           toast.info("Network issue — queued offline");
-          setStatus("Network issue — queued offline.");
           await refreshPending();
         } else {
           form.reset();
+          setDateValue(todayLocal());
+          setTimeValue(nowTimeLocal());
+          setEditWhen(false);
           toast.success(type === "income" ? "Income added" : "Expense added");
           setStatus(type === "income" ? "Income added." : "Expense added.");
           router.refresh();
@@ -128,7 +162,6 @@ export function TransactionForm({
       } catch {
         await queueTransaction(payload);
         toast.info("Saved offline — will sync when online");
-        setStatus("Saved offline — will sync when online.");
         await refreshPending();
         onSaved?.();
       }
@@ -138,21 +171,23 @@ export function TransactionForm({
   return (
     <div>
       {!online ? (
-        <p className="offline-banner">You're offline. New entries will sync later.</p>
+        <p className="offline-banner">
+          You&apos;re offline. New entries will sync later.
+        </p>
       ) : null}
       {pendingCount > 0 ? (
         <p className="pending-banner">
-          {pendingCount} transaction(s) waiting to sync.
+          {pendingCount} waiting to sync.
           <button
             type="button"
-            className="btn btn-ghost"
-            style={{ marginLeft: 8, padding: "0.25rem 0.5rem" }}
+            className="btn btn-ghost btn-xs"
+            style={{ marginLeft: 8 }}
             onClick={() =>
               startTransition(async () => {
                 const r = await syncPendingTransactions();
                 await refreshPending();
                 if (r.synced) {
-                  setStatus(`Synced ${r.synced}.`);
+                  toast.success(`Synced ${r.synced}`);
                   router.refresh();
                 }
               })
@@ -163,7 +198,10 @@ export function TransactionForm({
         </p>
       ) : null}
 
-      <form onSubmit={handleSubmit} className={compact ? "form-stack" : "form-row"}>
+      <form
+        onSubmit={handleSubmit}
+        className={compact ? "form-stack" : "form-row"}
+      >
         <div className="type-toggle" role="group" aria-label="Transaction type">
           <button
             type="button"
@@ -181,23 +219,67 @@ export function TransactionForm({
           </button>
         </div>
 
-        <div className="field">
-          <label htmlFor="tx-date">Date</label>
-          <input
-            id="tx-date"
-            name="date"
-            type="date"
-            required
-            defaultValue={defaultDate ?? new Date().toISOString().slice(0, 10)}
-          />
+        <div
+          className="field"
+          style={{ gridColumn: compact ? undefined : "span 2" }}
+        >
+          <div className="when-row">
+            <span className="when-summary muted">
+              {editWhen
+                ? `${dateValue} · ${timeValue}`
+                : "Today · now (auto)"}
+            </span>
+            <button
+              type="button"
+              className="linkish"
+              onClick={() => {
+                if (!editWhen) {
+                  setDateValue(todayLocal());
+                  setTimeValue(nowTimeLocal());
+                }
+                setEditWhen((v) => !v);
+              }}
+            >
+              {editWhen ? "Use now" : "Change date / time"}
+            </button>
+          </div>
+          {editWhen ? (
+            <div className="when-fields">
+              <div className="field">
+                <label htmlFor="tx-date">Date</label>
+                <input
+                  id="tx-date"
+                  type="date"
+                  value={dateValue}
+                  onChange={(e) => setDateValue(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="tx-time">Time</label>
+                <input
+                  id="tx-time"
+                  type="time"
+                  value={timeValue}
+                  onChange={(e) => setTimeValue(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+          ) : null}
         </div>
-        <div className="field" style={{ gridColumn: compact ? undefined : "span 2" }}>
+
+        <div
+          className="field"
+          style={{ gridColumn: compact ? undefined : "span 2" }}
+        >
           <label htmlFor="tx-desc">Description</label>
           <input
             id="tx-desc"
             name="description"
             required
             placeholder={type === "income" ? "Salary" : "Groceries"}
+            autoComplete="off"
           />
         </div>
         <div className="field">
@@ -229,27 +311,14 @@ export function TransactionForm({
           />
         </div>
         <button className="btn btn-primary" type="submit" disabled={isPending}>
-          {isPending ? "Saving…" : type === "income" ? "Add income" : "Add expense"}
+          {isPending
+            ? "Saving…"
+            : type === "income"
+              ? "Add income"
+              : "Add expense"}
         </button>
       </form>
       {status ? <p className="form-status muted">{status}</p> : null}
     </div>
-  );
-}
-
-export function PendingList({ initial }: { initial?: PendingTransaction[] }) {
-  const [rows, setRows] = useState(initial ?? []);
-  useEffect(() => {
-    void listPendingTransactions().then(setRows);
-  }, []);
-  if (rows.length === 0) return null;
-  return (
-    <ul className="pending-list">
-      {rows.map((r) => (
-        <li key={r.clientId}>
-          <strong>{r.type}</strong> {r.description} — ₹{r.amount.toFixed(2)} ({r.date})
-        </li>
-      ))}
-    </ul>
   );
 }

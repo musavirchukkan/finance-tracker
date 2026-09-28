@@ -67,16 +67,29 @@ export default async function TransactionsPage({
             <table className="data">
               <thead>
                 <tr>
-                  <th>Date</th>
+                  <th>When</th>
                   <th>Details</th>
                   <th className="num">Amount</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {rows.map((row) => {
+                  const when = row.occurredAt
+                    ? new Date(row.occurredAt)
+                    : new Date(`${row.date}T12:00:00`);
+                  const whenLabel = Number.isNaN(when.getTime())
+                    ? row.date
+                    : when.toLocaleString("en-IN", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      });
+                  return (
                   <tr key={row.id}>
-                    <td className="nowrap">{row.date}</td>
+                    <td className="nowrap">{whenLabel}</td>
                     <td>
                       <div className="tx-main">{row.description}</div>
                       <div className="muted tx-meta">
@@ -102,7 +115,8 @@ export default async function TransactionsPage({
                       </ActionForm>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
