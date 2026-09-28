@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { categories, debtSettings, users } from "./schema";
 import { defaultGoalDate } from "../debt-projection";
+import { getMigrationDatabaseUrl } from "./env";
 
 const EXPENSE_CATEGORIES = [
   "Auto",
@@ -62,10 +63,7 @@ async function ensureCategories(
 }
 
 async function main() {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error("DATABASE_URL is required");
-  }
+  const url = getMigrationDatabaseUrl();
 
   const email = (process.env.SEED_EMAIL ?? "you@example.com").toLowerCase();
   const password = process.env.SEED_PASSWORD ?? "changeme123";

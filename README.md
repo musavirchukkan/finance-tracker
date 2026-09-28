@@ -41,19 +41,24 @@ cp .env.example .env.local
 Set:
 
 - `AUTH_SECRET` — `openssl rand -base64 32`
-- `DATABASE_URL` — Neon connection string **or** local Docker below
+- `DATABASE_URL` — Neon **pooled** URL (app runtime) **or** local Docker
+- `DATABASE_MIGRATION_URL` — Neon **direct** URL (drizzle `db:push` / seeds). For Docker, same as `DATABASE_URL`
 - Optional `SEED_EMAIL` / `SEED_PASSWORD` / `SEED_NAME` for the first user
 
 ### 2. Database
 
 **Option A — Neon (recommended for deploy)**  
-Create a free project at [neon.tech](https://neon.tech), copy the connection string into `DATABASE_URL`.
+Create a project at [neon.tech](https://neon.tech). In Connection details copy:
+
+1. **Pooled** → `DATABASE_URL` (host often has `-pooler`)
+2. **Direct** → `DATABASE_MIGRATION_URL` (no `-pooler`)
 
 **Option B — Local Docker**
 
 ```bash
 npm run db:up
-# DATABASE_URL=postgresql://finance:finance@localhost:5432/finance
+# Both URLs can be:
+# postgresql://finance:finance@localhost:5432/finance
 ```
 
 ### 3. Schema + seed user
@@ -78,11 +83,11 @@ Open [http://localhost:3000](http://localhost:3000) and sign in with the seeded 
 ## Deploy (Vercel + Cloudflare)
 
 1. Push repo to GitHub.
-2. Import project in [Vercel](https://vercel.com) — set env vars `AUTH_SECRET`, `DATABASE_URL` (Neon).
+2. Import project in [Vercel](https://vercel.com) — set `AUTH_SECRET`, `DATABASE_URL` (Neon **pooled**), and optionally `DATABASE_MIGRATION_URL` (not required on Vercel unless you run seeds there).
 3. Deploy.
 4. Vercel → Domains → add `finance.yourdomain.com`.
 5. Cloudflare DNS: `CNAME` → `cname.vercel-dns.com` (grey cloud / DNS only for SSL).
-6. Run `db:push` and `db:seed` once against the Neon DB (from your machine with production `DATABASE_URL`).
+6. From your machine (with Neon URLs in `.env`): `npm run db:push` then `npm run db:seed`.
 
 ## Later: VPS
 
