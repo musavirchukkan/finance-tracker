@@ -39,13 +39,8 @@ const toolLinks = [
   { href: "/settings", label: "Settings", short: "More", icon: "settings" },
 ] as const;
 
-const mobileLinks = [
-  menuLinks[0],
-  menuLinks[1],
-  menuLinks[3],
-  menuLinks[4],
-  toolLinks[0],
-] as const;
+const mobileLeft = [menuLinks[0], menuLinks[1]] as const;
+const mobileRight = [menuLinks[4], toolLinks[0]] as const;
 
 function NavIcon({ name }: { name: string }) {
   const common = {
@@ -114,23 +109,6 @@ function NavIcon({ name }: { name: string }) {
   );
 }
 
-function SearchIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      aria-hidden
-    >
-      <circle cx="11" cy="11" r="7" />
-      <path d="m20 20-3-3" />
-    </svg>
-  );
-}
-
 export function AppNav({ name }: { name?: string | null }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -176,16 +154,6 @@ export function AppNav({ name }: { name?: string | null }) {
         <div style={{ marginBottom: "1.25rem" }}>
           <h1 className="sr-only">Ledger</h1>
           <BrandMark size={28} />
-        </div>
-
-        <div className="sidebar-search">
-          <SearchIcon />
-          <input
-            className="search-input"
-            type="search"
-            placeholder="Search"
-            aria-label="Search"
-          />
         </div>
 
         <p className="nav-section-label">Menu</p>
@@ -271,20 +239,43 @@ export function AppNav({ name }: { name?: string | null }) {
         </div>
       </header>
 
-      <div className="mobile-search">
-        <div className="mobile-search-wrap">
-          <SearchIcon />
-          <input
-            className="search-input"
-            type="search"
-            placeholder="Search"
-            aria-label="Search"
-          />
-        </div>
-      </div>
-
       <nav className="bottom-nav" aria-label="Mobile">
-        {mobileLinks.map((link) => {
+        {mobileLeft.map((link) => {
+          const active = isActive(link.href);
+          return (
+            <button
+              key={link.href}
+              type="button"
+              className={active ? "bottom-link active" : "bottom-link"}
+              aria-current={active ? "page" : undefined}
+              onPointerDown={() => router.prefetch(link.href)}
+              onClick={() => go(link.href)}
+            >
+              <span className="bottom-icon">
+                <NavIcon name={link.icon} />
+              </span>
+              {link.short}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          className={
+            pathname.startsWith("/quick-add")
+              ? "bottom-link bottom-add active"
+              : "bottom-link bottom-add"
+          }
+          aria-label="Quick add transaction"
+          aria-current={pathname.startsWith("/quick-add") ? "page" : undefined}
+          onPointerDown={() => router.prefetch("/quick-add")}
+          onClick={() => go("/quick-add")}
+        >
+          <span className="bottom-add-btn" aria-hidden>
+            +
+          </span>
+          Add
+        </button>
+        {mobileRight.map((link) => {
           const active = isActive(link.href);
           return (
             <button

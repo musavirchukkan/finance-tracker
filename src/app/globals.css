@@ -75,6 +75,8 @@
 html {
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -93,6 +95,8 @@ html {
 body {
   margin: 0;
   min-height: 100dvh;
+  max-width: 100%;
+  overflow-x: clip;
   color: var(--ink);
   font-family: var(--font-sans);
   font-size: var(--text-md);
@@ -125,12 +129,17 @@ textarea {
 /* ——— Shell ——— */
 .app-shell {
   min-height: 100dvh;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
   padding: calc(var(--space-4) + var(--safe-top)) var(--space-4)
     calc(var(--nav-h) + var(--space-6) + var(--safe-bottom));
 }
 
 .main-content {
   width: min(72rem, 100%);
+  max-width: 100%;
+  min-width: 0;
   margin-inline: auto;
 }
 
@@ -141,6 +150,8 @@ textarea {
 .page-stack {
   display: grid;
   gap: var(--space-5);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .page-header {
@@ -149,6 +160,13 @@ textarea {
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--space-3);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.page-header > div {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .page-title {
@@ -201,6 +219,8 @@ textarea {
   border-radius: var(--radius);
   padding: var(--space-4);
   box-shadow: var(--shadow-soft);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .panel h2,
@@ -235,8 +255,9 @@ textarea {
 .table-wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  margin-inline: calc(var(--space-4) * -1);
-  padding-inline: var(--space-4);
+  margin-inline: 0;
+  padding-inline: 0;
+  max-width: 100%;
 }
 
 table.data {
@@ -383,8 +404,7 @@ table.data tfoot td {
 
 .field input,
 .field select,
-.field textarea,
-.search-input {
+.field textarea {
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   padding: 0.7rem 0.85rem;
@@ -397,8 +417,7 @@ table.data tfoot td {
 
 .field input:focus,
 .field select:focus,
-.field textarea:focus,
-.search-input:focus {
+.field textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
   outline: none;
@@ -563,26 +582,6 @@ table.data tfoot td {
 /* ——— Sidebar (desktop) ——— */
 .sidebar {
   display: none;
-}
-
-.sidebar-search {
-  position: relative;
-  margin: 0 0 var(--space-5);
-}
-
-.sidebar-search svg {
-  position: absolute;
-  left: 0.85rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--muted);
-  pointer-events: none;
-}
-
-.sidebar-search .search-input {
-  border-radius: var(--radius-pill);
-  padding-left: 2.4rem;
-  min-height: 2.5rem;
 }
 
 .nav-section-label {
@@ -851,6 +850,33 @@ button:disabled {
   place-items: center;
 }
 
+.bottom-add {
+  position: relative;
+}
+
+.bottom-add-btn {
+  display: grid;
+  place-items: center;
+  width: 2.65rem;
+  height: 2.65rem;
+  margin-top: -1.15rem;
+  border-radius: 0.9rem;
+  background: var(--accent);
+  color: #fff;
+  font-size: 1.55rem;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: var(--glow-orange);
+}
+
+.bottom-link.bottom-add.active {
+  color: var(--accent);
+}
+
+.bottom-link.bottom-add.active .bottom-add-btn {
+  background: var(--accent-hover);
+}
+
 .fab {
   display: none;
 }
@@ -964,22 +990,18 @@ button:disabled {
 .dash-grid-2,
 .chart-grid,
 .masonry-grid {
-  column-count: 1;
-  column-gap: var(--space-3);
-  column-fill: balance;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
 }
 
 .dash-grid > .panel,
 .dash-grid-2 > .panel,
 .chart-grid > .panel,
 .masonry-grid > .panel {
-  break-inside: avoid;
-  -webkit-column-break-inside: avoid;
-  page-break-inside: avoid;
-  display: block;
+  margin: 0;
+  min-width: 0;
   width: 100%;
-  margin: 0 0 var(--space-3);
-  height: auto;
 }
 
 /* Two independent columns — bottom cards sit tight under their column */
@@ -1001,6 +1023,14 @@ button:disabled {
   margin: 0;
   height: auto;
   flex: 0 0 auto;
+  min-width: 0;
+}
+
+/* Charts need an explicit sized box — CSS columns used to collapse them */
+.chart-box {
+  width: 100%;
+  min-width: 0;
+  position: relative;
 }
 
 /* Rich insight cards (debt / summary strips) */
@@ -1059,6 +1089,11 @@ button:disabled {
 .insight-icon.orange {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+.insight-icon.violet {
+  background: rgba(99, 102, 241, 0.15);
+  color: #818cf8;
 }
 
 .insight-value-row {
@@ -1260,7 +1295,7 @@ button:disabled {
 .category-layout {
   display: grid;
   gap: var(--space-4);
-  align-items: center;
+  align-items: start;
 }
 
 .category-legend {
@@ -1414,28 +1449,6 @@ button:disabled {
 
 .seg-bar i.on {
   background: linear-gradient(90deg, #a855f7, #6366f1, #ff5c00);
-}
-
-.mobile-search {
-  margin-bottom: var(--space-3);
-}
-
-.mobile-search .search-input {
-  border-radius: var(--radius-pill);
-  padding-left: 2.5rem;
-}
-
-.mobile-search-wrap {
-  position: relative;
-}
-
-.mobile-search-wrap svg {
-  position: absolute;
-  left: 0.9rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--muted);
-  pointer-events: none;
 }
 
 .tx-filters {
@@ -1860,7 +1873,7 @@ button:disabled {
 }
 
 .stat-grid.cols-3 {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: var(--space-3);
 }
 
@@ -2489,6 +2502,10 @@ button:disabled {
   .pwa-tips {
     grid-template-columns: 1fr 1fr;
   }
+
+  .insight-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .when-row {
@@ -2526,6 +2543,9 @@ button:disabled {
 /* ——— Login ——— */
 .login-screen {
   min-height: 100dvh;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
   display: grid;
   place-items: center;
   padding: var(--space-5);
@@ -2599,6 +2619,9 @@ button:disabled {
 }
 .skeleton-block.card {
   height: 5.25rem;
+}
+.skeleton-block.card.insight {
+  height: 10.5rem;
 }
 .skeleton-block.tall {
   height: 11rem;
@@ -2723,6 +2746,10 @@ button:disabled {
     grid-template-columns: repeat(2, 1fr);
   }
 
+  .stat-grid.cols-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .form-row {
     grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
   }
@@ -2790,8 +2817,7 @@ button:disabled {
 }
 
 @media (min-width: 56rem) {
-  .mobile-top,
-  .mobile-search {
+  .mobile-top {
     display: none;
   }
 
@@ -2834,7 +2860,7 @@ button:disabled {
   .dash-grid-2,
   .chart-grid,
   .masonry-grid {
-    column-count: 2;
+    grid-template-columns: 1fr 1fr;
   }
 
   .split-board {
@@ -2843,6 +2869,10 @@ button:disabled {
 
   .insight-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .insight-grid.cols-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .settings-page {
@@ -2864,6 +2894,10 @@ button:disabled {
   }
 
   .skeleton-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .skeleton-grid.cols-4 {
     grid-template-columns: repeat(4, 1fr);
   }
 }

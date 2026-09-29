@@ -253,8 +253,10 @@ export function PwaInstallCard() {
           <div>
             <h3>Apple iOS / Safari</h3>
             <p>
-              Tap Share → <strong>Add to Home Screen</strong> for offline
-              launch.
+              Tap Share → <strong>Add to Home Screen</strong> for Ledger.
+              For a dedicated Quick Add icon, open <strong>Add</strong> in the
+              app first, then Share → Add to Home Screen again (named Quick
+              Add).
             </p>
           </div>
         </article>
@@ -265,9 +267,9 @@ export function PwaInstallCard() {
           <div>
             <h3>Android &amp; Desktop</h3>
             <p>
-              Use <strong>Install Ledger</strong> when the browser offers it, or
-              the install icon in the address bar. Android can also add a Quick
-              Add shortcut.
+              Use <strong>Install Ledger</strong> when offered. On Android,
+              long-press the Ledger icon → <strong>Quick add</strong> for a
+              home-screen shortcut straight to Add.
             </p>
           </div>
         </article>

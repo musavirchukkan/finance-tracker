@@ -1,8 +1,24 @@
 import Image from "next/image";
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/login-form";
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  // Never keep credentials in the URL (happens if JS-less GET submit leaked them)
+  if ("password" in params || "email" in params) {
+    const callback = params.callbackUrl;
+    const qs =
+      typeof callback === "string" && callback.startsWith("/")
+        ? `?callbackUrl=${encodeURIComponent(callback)}`
+        : "";
+    redirect(`/login${qs}`);
+  }
+
   return (
     <main className="login-screen">
       <div className="login-stage">

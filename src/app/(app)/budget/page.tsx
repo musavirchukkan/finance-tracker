@@ -16,6 +16,29 @@ import {
 } from "@/lib/months";
 import { requireUser } from "@/lib/session";
 
+function IconBudget() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect
+        x="3"
+        y="6"
+        width="18"
+        height="12"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M3 10h18"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <circle cx="16" cy="14" r="1.25" fill="currentColor" />
+    </svg>
+  );
+}
+
 function IconInflow() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -119,6 +142,9 @@ export default async function BudgetPage({
         ? 100
         : 0;
 
+  const budgetLeft = budgetTotal - totals.actual;
+  const budgetedCategories = rows.filter((r) => r.budget > 0).length;
+
   const day = new Date().getDate();
   const daysInMonth = new Date(
     Number(month.slice(0, 4)),
@@ -205,7 +231,7 @@ export default async function BudgetPage({
         </div>
       </div>
 
-      <div className="insight-grid">
+      <div className="insight-grid cols-4">
         <article className="insight-card">
           <div className="insight-card-top">
             <p className="insight-label">Monthly inflow</p>
@@ -224,6 +250,29 @@ export default async function BudgetPage({
           <div className="insight-foot">
             <span>Primary source</span>
             <span className="insight-pill good">{primarySource}</span>
+          </div>
+        </article>
+
+        <article className="insight-card">
+          <div className="insight-card-top">
+            <p className="insight-label">Total budget</p>
+            <span className="insight-icon violet">
+              <IconBudget />
+            </span>
+          </div>
+          <p className="insight-value">{formatINR(budgetTotal)}</p>
+          <p className="insight-sub">
+            {budgetTotal > 0
+              ? `${formatINR(Math.max(0, budgetLeft))} left · ${utilizedPct}% used`
+              : "No category budgets set yet"}
+          </p>
+          <div className="insight-foot">
+            <span>Categories</span>
+            <span
+              className={`insight-pill ${budgetedCategories > 0 ? "good" : "neutral"}`}
+            >
+              {budgetedCategories}/{rows.length} set
+            </span>
           </div>
         </article>
 

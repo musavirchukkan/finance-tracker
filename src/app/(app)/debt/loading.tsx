@@ -1,4 +1,4 @@
-export default function AppLoading() {
+export default function DebtLoading() {
   return (
     <div className="page-stack page-enter" aria-busy="true" aria-label="Loading">
       <div className="skeleton-block title" />

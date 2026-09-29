@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactElement } from "react";
 import {
   Bar,
   BarChart,
@@ -50,6 +51,22 @@ const chartTooltipProps = {
   labelStyle: { color: "#8b8b96" },
 };
 
+function ChartFrame({
+  height,
+  children,
+}: {
+  height: number;
+  children: ReactElement;
+}) {
+  return (
+    <div className="chart-box" style={{ width: "100%", height }}>
+      <ResponsiveContainer width="100%" height="100%">
+        {children}
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 type BudgetRow = {
   category: string;
   budget: number;
@@ -78,7 +95,7 @@ export function ActualDonut({
   }
 
   return (
-    <ResponsiveContainer width="100%" height={height}>
+    <ChartFrame height={height}>
       <PieChart>
         <Pie
           data={data}
@@ -99,7 +116,7 @@ export function ActualDonut({
         />
         {showLegend ? null : null}
       </PieChart>
-    </ResponsiveContainer>
+    </ChartFrame>
   );
 }
 
@@ -125,7 +142,7 @@ export function BudgetVsActualBars({ rows }: { rows: BudgetRow[] }) {
   }
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
+    <ChartFrame height={300}>
       <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
         <XAxis
@@ -200,7 +217,7 @@ export function BudgetVsActualBars({ rows }: { rows: BudgetRow[] }) {
           activeBar={false}
         />
       </BarChart>
-    </ResponsiveContainer>
+    </ChartFrame>
   );
 }
 
@@ -218,7 +235,7 @@ export function DebtReductionChart({ points }: { points: CurvePoint[] }) {
   }));
 
   return (
-    <ResponsiveContainer width="100%" height={260}>
+    <ChartFrame height={260}>
       <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 40 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
         <XAxis
@@ -258,7 +275,7 @@ export function DebtReductionChart({ points }: { points: CurvePoint[] }) {
           dot={{ r: 3, fill: "#ff5c00" }}
         />
       </LineChart>
-    </ResponsiveContainer>
+    </ChartFrame>
   );
 }
 
@@ -282,7 +299,7 @@ export function CashflowBars({
   ];
 
   return (
-    <ResponsiveContainer width="100%" height={240}>
+    <ChartFrame height={240}>
       <BarChart data={data} margin={{ top: 28, right: 8, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
         <XAxis
@@ -318,7 +335,7 @@ export function CashflowBars({
           ) : null}
         </Bar>
       </BarChart>
-    </ResponsiveContainer>
+    </ChartFrame>
   );
 }
 
@@ -334,7 +351,7 @@ export function WeeklyCashflowBars({
   }));
 
   return (
-    <ResponsiveContainer width="100%" height={240}>
+    <ChartFrame height={240}>
       <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
         <XAxis
@@ -371,7 +388,7 @@ export function WeeklyCashflowBars({
           activeBar={false}
         />
       </BarChart>
-    </ResponsiveContainer>
+    </ChartFrame>
   );
 }
 
@@ -457,7 +474,7 @@ export function IncomeDonut({
   }
 
   return (
-    <ResponsiveContainer width="100%" height={height}>
+    <ChartFrame height={height}>
       <PieChart>
         <Pie
           data={data}
@@ -478,6 +495,6 @@ export function IncomeDonut({
         />
         {showLegend ? null : null}
       </PieChart>
-    </ResponsiveContainer>
+    </ChartFrame>
   );
 }

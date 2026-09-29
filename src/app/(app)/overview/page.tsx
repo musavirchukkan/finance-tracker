@@ -233,207 +233,212 @@ export default async function OverviewPage({
         </div>
       </div>
 
-      <div className="masonry-grid">
-        <section className="panel">
-          <div className="panel-head">
-            <h2>Cash flow</h2>
-            <span className="chip">{formatYearMonthLabel(month)}</span>
-          </div>
-          <div className="legend-row">
-            <span className="legend-item">
-              <span className="chip-dot" style={{ background: "#ff5c00" }} />
-              Income
-            </span>
-            <span className="legend-item">
-              <span className="chip-dot" style={{ background: "#a855f7" }} />
-              Expenses
-            </span>
-          </div>
-          <WeeklyCashflowBars weeks={weeks} />
-          <div className="cashflow-footer">
-            <span>
-              <span className="bar" style={{ background: "#ff5c00" }} />
-              Income {formatINR(cashflow.income)}
-            </span>
-            <span>
-              <span className="bar" style={{ background: "#a855f7" }} />
-              Expense {formatINR(cashflow.expense)}
-            </span>
-            <span>
-              Net{" "}
-              <span className={cashflow.remaining >= 0 ? "pos" : "neg"}>
-                {cashflow.remaining >= 0 ? "+" : ""}
-                {formatINR(cashflow.remaining)}
+      <div className="split-board">
+        <div className="split-col">
+          <section className="panel">
+            <div className="panel-head">
+              <h2>Cash flow</h2>
+              <span className="chip">{formatYearMonthLabel(month)}</span>
+            </div>
+            <div className="legend-row">
+              <span className="legend-item">
+                <span className="chip-dot" style={{ background: "#ff5c00" }} />
+                Income
               </span>
-            </span>
-          </div>
-        </section>
-
-        <section className="panel">
-          <div className="panel-head">
-            <h2>Spending by category</h2>
-            <Link className="linkish" href="/budget">
-              →
-            </Link>
-          </div>
-          <div className="category-layout">
-            <div style={{ position: "relative" }}>
-              <ActualDonut
-                rows={rows}
-                showLegend={false}
-                height={200}
-                inner={58}
-                outer={88}
-              />
-              <div
-                className="donut-center-label"
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  display: "grid",
-                  placeContent: "center",
-                  pointerEvents: "none",
-                }}
-              >
-                <strong>{formatINR(spendTotal)}</strong>
-                <span>Total spent</span>
-              </div>
+              <span className="legend-item">
+                <span className="chip-dot" style={{ background: "#a855f7" }} />
+                Expenses
+              </span>
             </div>
-            <ul className="category-legend">
-              {catRows.length === 0 ? (
-                <li className="muted">No spending yet</li>
-              ) : (
-                catRows.map((r, i) => {
-                  const pct =
-                    spendTotal > 0
-                      ? Math.round((r.actual / spendTotal) * 100)
-                      : 0;
-                  return (
-                    <li key={r.categoryId}>
-                      <span className="name">
-                        <span
-                          className="chip-dot"
-                          style={{
-                            background:
-                              CHART_COLORS[i % CHART_COLORS.length],
-                          }}
-                        />
-                        {r.category}
-                      </span>
-                      <span className="num">{formatINR(r.actual)}</span>
-                      <span className="pct">{pct}%</span>
-                    </li>
-                  );
-                })
-              )}
-            </ul>
-          </div>
-        </section>
-
-        <section className="panel">
-          <div className="panel-head">
-            <h2>Recent transactions</h2>
-            <Link className="linkish" href={`/transactions?month=${month}`}>
-              View all
-            </Link>
-          </div>
-          {recent.length === 0 ? (
-            <div className="empty">No transactions this month.</div>
-          ) : (
-            <div className="table-wrap">
-              <table className="data">
-                <thead>
-                  <tr>
-                    <th>Merchant</th>
-                    <th>Category</th>
-                    <th>Date</th>
-                    <th className="num">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recent.map((t) => {
-                    const amt = toNumber(t.amount);
-                    const isIncome = t.type === "income";
-                    return (
-                      <tr key={t.id}>
-                        <td>
-                          <div className="tx-main">{t.description}</div>
-                        </td>
-                        <td>
-                          <span
-                            className={`badge ${isIncome ? "income" : "expense"}`}
-                          >
-                            {t.categoryName}
-                          </span>
-                        </td>
-                        <td className="nowrap muted">{t.date}</td>
-                        <td
-                          className={`num ${isIncome ? "amount-pos" : "amount-neg"}`}
-                        >
-                          {isIncome ? "+" : "−"}
-                          {formatINR(amt)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <WeeklyCashflowBars weeks={weeks} />
+            <div className="cashflow-footer">
+              <span>
+                <span className="bar" style={{ background: "#ff5c00" }} />
+                Income {formatINR(cashflow.income)}
+              </span>
+              <span>
+                <span className="bar" style={{ background: "#a855f7" }} />
+                Expense {formatINR(cashflow.expense)}
+              </span>
+              <span>
+                Net{" "}
+                <span className={cashflow.remaining >= 0 ? "pos" : "neg"}>
+                  {cashflow.remaining >= 0 ? "+" : ""}
+                  {formatINR(cashflow.remaining)}
+                </span>
+              </span>
             </div>
-          )}
-        </section>
+          </section>
 
-        <section className="panel">
-          <div className="panel-head">
-            <h2>Saving goals</h2>
-            <Link className="linkish" href="/goals">
-              →
-            </Link>
-          </div>
-          {!hasDebt && overviewGoals.length === 0 ? (
-            <div className="empty">
-              No goals yet.{" "}
-              <Link className="linkish" href="/goals">
-                Create one
+          <section className="panel">
+            <div className="panel-head">
+              <h2>Recent transactions</h2>
+              <Link className="linkish" href={`/transactions?month=${month}`}>
+                View all
               </Link>
             </div>
-          ) : (
-            <div className="goal-list">
-              {hasDebt ? (
-                <div>
-                  <div className="goal-row-head">
-                    <strong>Debt payoff</strong>
-                    <span className="muted">
-                      {formatINR(debt.totals.paid)} /{" "}
-                      {formatINR(debt.totals.starting)}
-                    </span>
-                  </div>
-                  <SegmentedBar pct={paidPct} />
-                  <p className="goal-meta">
-                    {paidPct}% paid · Remaining{" "}
-                    {formatINR(debt.totals.pending)}
-                  </p>
-                </div>
-              ) : null}
-              {overviewGoals.map((g) => (
-                <div key={g.id}>
-                  <div className="goal-row-head">
-                    <strong>{g.name}</strong>
-                    <span className="muted">
-                      {formatINR(g.currentAmount)} / {formatINR(g.targetAmount)}
-                    </span>
-                  </div>
-                  <SegmentedBar pct={g.pct} />
-                  <p className="goal-meta">
-                    {g.pct}% ·{" "}
-                    {g.remaining > 0
-                      ? `${formatINR(g.remaining)} left`
-                      : "Target reached"}
-                  </p>
-                </div>
-              ))}
+            {recent.length === 0 ? (
+              <div className="empty">No transactions this month.</div>
+            ) : (
+              <div className="table-wrap">
+                <table className="data">
+                  <thead>
+                    <tr>
+                      <th>Merchant</th>
+                      <th>Category</th>
+                      <th>Date</th>
+                      <th className="num">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recent.map((t) => {
+                      const amt = toNumber(t.amount);
+                      const isIncome = t.type === "income";
+                      return (
+                        <tr key={t.id}>
+                          <td>
+                            <div className="tx-main">{t.description}</div>
+                          </td>
+                          <td>
+                            <span
+                              className={`badge ${isIncome ? "income" : "expense"}`}
+                            >
+                              {t.categoryName}
+                            </span>
+                          </td>
+                          <td className="nowrap muted">{t.date}</td>
+                          <td
+                            className={`num ${isIncome ? "amount-pos" : "amount-neg"}`}
+                          >
+                            {isIncome ? "+" : "−"}
+                            {formatINR(amt)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </div>
+
+        <div className="split-col">
+          <section className="panel">
+            <div className="panel-head">
+              <h2>Spending by category</h2>
+              <Link className="linkish" href="/budget">
+                →
+              </Link>
             </div>
-          )}
-        </section>
+            <div className="category-layout">
+              <div style={{ position: "relative" }}>
+                <ActualDonut
+                  rows={rows}
+                  showLegend={false}
+                  height={200}
+                  inner={58}
+                  outer={88}
+                />
+                <div
+                  className="donut-center-label"
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    display: "grid",
+                    placeContent: "center",
+                    pointerEvents: "none",
+                  }}
+                >
+                  <strong>{formatINR(spendTotal)}</strong>
+                  <span>Total spent</span>
+                </div>
+              </div>
+              <ul className="category-legend">
+                {catRows.length === 0 ? (
+                  <li className="muted">No spending yet</li>
+                ) : (
+                  catRows.map((r, i) => {
+                    const pct =
+                      spendTotal > 0
+                        ? Math.round((r.actual / spendTotal) * 100)
+                        : 0;
+                    return (
+                      <li key={r.categoryId}>
+                        <span className="name">
+                          <span
+                            className="chip-dot"
+                            style={{
+                              background:
+                                CHART_COLORS[i % CHART_COLORS.length],
+                            }}
+                          />
+                          {r.category}
+                        </span>
+                        <span className="num">{formatINR(r.actual)}</span>
+                        <span className="pct">{pct}%</span>
+                      </li>
+                    );
+                  })
+                )}
+              </ul>
+            </div>
+          </section>
+
+          <section className="panel">
+            <div className="panel-head">
+              <h2>Saving goals</h2>
+              <Link className="linkish" href="/goals">
+                →
+              </Link>
+            </div>
+            {!hasDebt && overviewGoals.length === 0 ? (
+              <div className="empty">
+                No goals yet.{" "}
+                <Link className="linkish" href="/goals">
+                  Create one
+                </Link>
+              </div>
+            ) : (
+              <div className="goal-list">
+                {hasDebt ? (
+                  <div>
+                    <div className="goal-row-head">
+                      <strong>Debt payoff</strong>
+                      <span className="muted">
+                        {formatINR(debt.totals.paid)} /{" "}
+                        {formatINR(debt.totals.starting)}
+                      </span>
+                    </div>
+                    <SegmentedBar pct={paidPct} />
+                    <p className="goal-meta">
+                      {paidPct}% paid · Remaining{" "}
+                      {formatINR(debt.totals.pending)}
+                    </p>
+                  </div>
+                ) : null}
+                {overviewGoals.map((g) => (
+                  <div key={g.id}>
+                    <div className="goal-row-head">
+                      <strong>{g.name}</strong>
+                      <span className="muted">
+                        {formatINR(g.currentAmount)} /{" "}
+                        {formatINR(g.targetAmount)}
+                      </span>
+                    </div>
+                    <SegmentedBar pct={g.pct} />
+                    <p className="goal-meta">
+                      {g.pct}% ·{" "}
+                      {g.remaining > 0
+                        ? `${formatINR(g.remaining)} left`
+                        : "Target reached"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
       </div>
     </div>
   );
