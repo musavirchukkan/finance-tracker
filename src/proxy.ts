@@ -29,9 +29,12 @@ export const proxy = auth((request) => {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     const appPaths = [
-      "/budget",
-      "/transactions",
+      "/overview",
       "/debt",
+      "/transactions",
+      "/budget",
+      "/analytics",
+      "/goals",
       "/settings",
       "/quick-add",
     ];
@@ -39,16 +42,16 @@ export const proxy = auth((request) => {
       pathname === "/" ||
       appPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`))
         ? pathname === "/"
-          ? "/budget"
+          ? "/overview"
           : pathname
-        : "/budget";
+        : "/overview";
     url.searchParams.set("callbackUrl", safeReturn);
     return NextResponse.redirect(url);
   }
 
   if (isLoggedIn && pathname === "/login") {
     const url = request.nextUrl.clone();
-    url.pathname = "/budget";
+    url.pathname = "/overview";
     return NextResponse.redirect(url);
   }
 

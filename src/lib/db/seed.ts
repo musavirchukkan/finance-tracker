@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { categories, debtSettings, users } from "./schema";
 import { defaultGoalDate } from "../debt-projection";
+import { defaultIconForCategoryName } from "../category-icons";
 import { getMigrationDatabaseUrl } from "./env";
 
 const EXPENSE_CATEGORIES = [
@@ -37,12 +38,14 @@ async function ensureCategories(
       userId,
       name,
       kind: "expense" as const,
+      icon: defaultIconForCategoryName(name),
       sortOrder: index,
     })),
     ...INCOME_CATEGORIES.map((name, index) => ({
       userId,
       name,
       kind: "income" as const,
+      icon: defaultIconForCategoryName(name),
       sortOrder: 100 + index,
     })),
   ].filter((c) => !names.has(c.name));
@@ -51,12 +54,19 @@ async function ensureCategories(
     await db.insert(categories).values(toInsert);
   }
 
-  // Backfill kind for legacy rows without income names
+  // Backfill kind / icon for legacy rows
   for (const row of existing) {
+    const updates: { kind?: string; icon?: string } = {};
     if (INCOME_CATEGORIES.includes(row.name) && row.kind !== "income") {
+      updates.kind = "income";
+    }
+    if (!row.icon) {
+      updates.icon = defaultIconForCategoryName(row.name);
+    }
+    if (Object.keys(updates).length > 0) {
       await db
         .update(categories)
-        .set({ kind: "income" })
+        .set(updates)
         .where(and(eq(categories.id, row.id), eq(categories.userId, userId)));
     }
   }

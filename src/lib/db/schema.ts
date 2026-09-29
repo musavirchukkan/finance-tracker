@@ -30,6 +30,7 @@ export const categories = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     kind: text("kind").notNull().default("expense"), // expense | income
+    icon: text("icon"),
     sortOrder: integer("sort_order").notNull().default(0),
   },
   (t) => [uniqueIndex("categories_user_name").on(t.userId, t.name)],
@@ -124,6 +125,24 @@ export const debtSettings = pgTable("debt_settings", {
   goalPayoffDate: date("goal_payoff_date").notNull(),
 });
 
+export const savingsGoals = pgTable("savings_goals", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  targetAmount: numeric("target_amount", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  currentAmount: numeric("current_amount", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  targetDate: date("target_date"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
 export const usersRelations = relations(users, ({ many, one }) => ({
   categories: many(categories),
   budgets: many(budgets),
@@ -131,6 +150,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   debtAccounts: many(debtAccounts),
   debtPayments: many(debtPayments),
   debtSettings: one(debtSettings),
+  savingsGoals: many(savingsGoals),
 }));
 
 export const categoriesRelations = relations(categories, ({ one, many }) => ({
@@ -157,3 +177,4 @@ export type Budget = typeof budgets.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type DebtAccount = typeof debtAccounts.$inferSelect;
 export type DebtPayment = typeof debtPayments.$inferSelect;
+export type SavingsGoal = typeof savingsGoals.$inferSelect;

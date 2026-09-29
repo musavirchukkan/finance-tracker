@@ -1,13 +1,11 @@
+import { PwaInstallCard } from "@/components/pwa-install-card";
 import { SettingsForms } from "@/components/settings-forms";
-import { listCategories, getDebtDashboard } from "@/lib/actions";
-import { defaultGoalDate } from "@/lib/debt-projection";
+import { listCategories } from "@/lib/actions";
 import { requireUser } from "@/lib/session";
 
 export default async function SettingsPage() {
   const user = await requireUser();
   const cats = await listCategories(user.id);
-  const debt = await getDebtDashboard(user.id);
-  const goal = debt.settings?.goalPayoffDate ?? defaultGoalDate(19);
   const expenses = cats.filter((c) => c.kind !== "income");
   const incomes = cats.filter((c) => c.kind === "income");
 
@@ -17,24 +15,24 @@ export default async function SettingsPage() {
         <div>
           <h2 className="page-title">Settings</h2>
           <p className="muted page-sub">
-            Categories, debt goal, and install tips.
+            Install Ledger, manage categories, and offline data.
           </p>
         </div>
       </div>
 
-      <section className="panel">
-        <h2>Install as app</h2>
-        <p className="muted page-sub" style={{ maxWidth: "42ch", marginTop: 0 }}>
-          On your phone, open Ledger in Safari or Chrome, then use Share / menu
-          → <strong>Add to Home Screen</strong>. On Android Chrome, long-press
-          the icon for a <strong>Quick add</strong> shortcut.
-        </p>
-      </section>
+      <PwaInstallCard />
 
       <SettingsForms
-        goal={goal}
-        expenses={expenses.map((c) => ({ id: c.id, name: c.name }))}
-        incomes={incomes.map((c) => ({ id: c.id, name: c.name }))}
+        expenses={expenses.map((c) => ({
+          id: c.id,
+          name: c.name,
+          icon: c.icon,
+        }))}
+        incomes={incomes.map((c) => ({
+          id: c.id,
+          name: c.name,
+          icon: c.icon,
+        }))}
       />
     </div>
   );

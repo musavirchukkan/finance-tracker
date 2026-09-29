@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache";
 const bodySchema = z.object({
   date: z.string().min(1).optional(),
   occurredAt: z.string().optional(),
-  description: z.string().min(1),
+  description: z.string().optional().default(""),
   categoryId: z.string().uuid(),
   type: z.enum(["expense", "income"]),
   amount: z.union([z.string(), z.number()]),
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     const result = await insertTransactionForUser(session.user.id, {
       date,
       occurredAt,
-      description: parsed.data.description.trim(),
+      description: (parsed.data.description ?? "").trim(),
       categoryId: parsed.data.categoryId,
       type: parsed.data.type,
       amount,
@@ -54,6 +54,9 @@ export async function POST(request: Request) {
     if (!result.duplicate) {
       revalidatePath("/transactions");
       revalidatePath("/budget");
+      revalidatePath("/overview");
+      revalidatePath("/analytics");
+      revalidatePath("/goals");
       revalidatePath("/quick-add");
     }
     return NextResponse.json({

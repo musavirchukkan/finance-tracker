@@ -143,3 +143,18 @@ export async function syncPendingTransactions(): Promise<{
 
   return syncInFlight;
 }
+
+/** Remove all queued offline transactions (does not touch Cache Storage). */
+export async function clearPendingQueue(): Promise<number> {
+  const pending = await listPendingTransactions();
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const store = db.transaction(STORE, "readwrite").objectStore(STORE);
+    const req = store.clear();
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+  db.close();
+  claimedIds.clear();
+  return pending.length;
+}

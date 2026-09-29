@@ -5,18 +5,21 @@ import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 
 const APP_PREFIXES = [
-  "/budget",
-  "/transactions",
+  "/overview",
   "/debt",
+  "/transactions",
+  "/budget",
+  "/analytics",
+  "/goals",
   "/settings",
   "/quick-add",
 ];
 
 function safeCallbackUrl(raw: string | null): string {
   if (!raw || !raw.startsWith("/") || raw.startsWith("//")) {
-    return "/budget";
+    return "/overview";
   }
-  if (raw === "/") return "/budget";
+  if (raw === "/") return "/overview";
   if (
     APP_PREFIXES.some(
       (p) => raw === p || raw.startsWith(`${p}/`) || raw.startsWith(`${p}?`),
@@ -24,7 +27,7 @@ function safeCallbackUrl(raw: string | null): string {
   ) {
     return raw;
   }
-  return "/budget";
+  return "/overview";
 }
 
 export function LoginForm() {

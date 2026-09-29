@@ -9,6 +9,7 @@ import {
   debtAccounts,
   debtPayments,
   debtSettings,
+  savingsGoals,
   transactions,
 } from "@/lib/db/schema";
 import { parseAmount, toNumber } from "@/lib/money";
@@ -25,7 +26,7 @@ export async function createTransaction(formData: FormData) {
     : "expense";
   const amount = parseAmount(String(formData.get("amount") ?? "0"));
 
-  if (!date || !description || !categoryId) {
+  if (!date || !categoryId) {
     throw new Error("Missing required fields");
   }
 
@@ -40,6 +41,9 @@ export async function createTransaction(formData: FormData) {
 
   revalidatePath("/transactions");
   revalidatePath("/budget");
+  revalidatePath("/overview");
+  revalidatePath("/analytics");
+  revalidatePath("/goals");
   revalidatePath("/quick-add");
 }
 
@@ -67,6 +71,9 @@ export async function updateTransaction(formData: FormData) {
 
   revalidatePath("/transactions");
   revalidatePath("/budget");
+  revalidatePath("/overview");
+  revalidatePath("/analytics");
+  revalidatePath("/goals");
 }
 
 export async function deleteTransaction(formData: FormData) {
@@ -79,6 +86,9 @@ export async function deleteTransaction(formData: FormData) {
 
   revalidatePath("/transactions");
   revalidatePath("/budget");
+  revalidatePath("/overview");
+  revalidatePath("/analytics");
+  revalidatePath("/goals");
 }
 
 export async function upsertBudgetAmount(formData: FormData) {
@@ -114,6 +124,8 @@ export async function upsertBudgetAmount(formData: FormData) {
   }
 
   revalidatePath("/budget");
+  revalidatePath("/overview");
+  revalidatePath("/analytics");
 }
 
 export async function createDebtAccount(formData: FormData) {
@@ -136,6 +148,8 @@ export async function createDebtAccount(formData: FormData) {
   });
 
   revalidatePath("/debt");
+  revalidatePath("/goals");
+  revalidatePath("/overview");
 }
 
 export async function updateDebtAccount(formData: FormData) {
@@ -159,6 +173,8 @@ export async function updateDebtAccount(formData: FormData) {
     .where(and(eq(debtAccounts.id, id), eq(debtAccounts.userId, user.id)));
 
   revalidatePath("/debt");
+  revalidatePath("/goals");
+  revalidatePath("/overview");
 }
 
 export async function deleteDebtAccount(formData: FormData) {
@@ -170,6 +186,8 @@ export async function deleteDebtAccount(formData: FormData) {
     .where(and(eq(debtAccounts.id, id), eq(debtAccounts.userId, user.id)));
 
   revalidatePath("/debt");
+  revalidatePath("/goals");
+  revalidatePath("/overview");
 }
 
 export async function createDebtPayment(formData: FormData) {
@@ -192,6 +210,8 @@ export async function createDebtPayment(formData: FormData) {
   });
 
   revalidatePath("/debt");
+  revalidatePath("/goals");
+  revalidatePath("/overview");
 }
 
 export async function toggleDebtPaymentPaid(formData: FormData) {
@@ -205,6 +225,8 @@ export async function toggleDebtPaymentPaid(formData: FormData) {
     .where(and(eq(debtPayments.id, id), eq(debtPayments.userId, user.id)));
 
   revalidatePath("/debt");
+  revalidatePath("/goals");
+  revalidatePath("/overview");
 }
 
 export async function deleteDebtPayment(formData: FormData) {
@@ -216,6 +238,8 @@ export async function deleteDebtPayment(formData: FormData) {
     .where(and(eq(debtPayments.id, id), eq(debtPayments.userId, user.id)));
 
   revalidatePath("/debt");
+  revalidatePath("/goals");
+  revalidatePath("/overview");
 }
 
 export async function updateDebtGoal(formData: FormData) {
@@ -241,6 +265,8 @@ export async function updateDebtGoal(formData: FormData) {
   }
 
   revalidatePath("/debt");
+  revalidatePath("/goals");
+  revalidatePath("/overview");
   revalidatePath("/settings");
 }
 
@@ -250,6 +276,8 @@ export async function createCategory(formData: FormData) {
   const kind = String(formData.get("kind") ?? "expense") === "income"
     ? "income"
     : "expense";
+  const iconRaw = String(formData.get("icon") ?? "").trim();
+  const icon = iconRaw || null;
   if (!name) throw new Error("Name required");
 
   const max = await db
@@ -263,11 +291,39 @@ export async function createCategory(formData: FormData) {
     userId: user.id,
     name,
     kind,
+    icon,
     sortOrder: (max[0]?.sortOrder ?? -1) + 1,
   });
 
   revalidatePath("/settings");
   revalidatePath("/budget");
+  revalidatePath("/overview");
+  revalidatePath("/analytics");
+  revalidatePath("/transactions");
+  revalidatePath("/quick-add");
+}
+
+export async function updateCategory(formData: FormData) {
+  const user = await requireUser();
+  const id = String(formData.get("id") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  const kind = String(formData.get("kind") ?? "expense") === "income"
+    ? "income"
+    : "expense";
+  const iconRaw = String(formData.get("icon") ?? "").trim();
+  const icon = iconRaw || null;
+
+  if (!id || !name) throw new Error("Missing fields");
+
+  await db
+    .update(categories)
+    .set({ name, kind, icon })
+    .where(and(eq(categories.id, id), eq(categories.userId, user.id)));
+
+  revalidatePath("/settings");
+  revalidatePath("/budget");
+  revalidatePath("/overview");
+  revalidatePath("/analytics");
   revalidatePath("/transactions");
   revalidatePath("/quick-add");
 }
@@ -282,7 +338,10 @@ export async function deleteCategory(formData: FormData) {
 
   revalidatePath("/settings");
   revalidatePath("/budget");
+  revalidatePath("/overview");
+  revalidatePath("/analytics");
   revalidatePath("/transactions");
+  revalidatePath("/quick-add");
 }
 
 export async function getBudgetSummary(userId: string, yearMonth: string) {
@@ -403,6 +462,12 @@ export async function getBudgetSummary(userId: string, yearMonth: string) {
 export async function listTransactions(
   userId: string,
   yearMonth?: string,
+  opts?: {
+    type?: "income" | "expense" | "all";
+    categoryId?: string;
+    page?: number;
+    pageSize?: number;
+  },
 ) {
   const conditions = [eq(transactions.userId, userId)];
   if (yearMonth) {
@@ -410,8 +475,29 @@ export async function listTransactions(
     conditions.push(gte(transactions.date, start));
     conditions.push(lte(transactions.date, end));
   }
+  if (opts?.type === "income" || opts?.type === "expense") {
+    conditions.push(eq(transactions.type, opts.type));
+  }
+  if (opts?.categoryId) {
+    conditions.push(eq(transactions.categoryId, opts.categoryId));
+  }
 
-  return db
+  const where = and(...conditions);
+  const paginate = opts?.page != null || opts?.pageSize != null;
+  const pageSize = paginate
+    ? Math.min(100, Math.max(1, opts?.pageSize ?? 20))
+    : undefined;
+  const page = paginate ? Math.max(1, opts?.page ?? 1) : 1;
+  const offset = paginate && pageSize ? (page - 1) * pageSize : 0;
+
+  const [countRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(transactions)
+    .where(where);
+
+  const total = Number(countRow?.count ?? 0);
+
+  const query = db
     .select({
       id: transactions.id,
       date: transactions.date,
@@ -425,8 +511,21 @@ export async function listTransactions(
     })
     .from(transactions)
     .innerJoin(categories, eq(transactions.categoryId, categories.id))
-    .where(and(...conditions))
+    .where(where)
     .orderBy(desc(transactions.occurredAt), desc(transactions.createdAt));
+
+  const rows =
+    pageSize != null
+      ? await query.limit(pageSize).offset(offset)
+      : await query;
+
+  return {
+    rows,
+    total,
+    page,
+    pageSize: pageSize ?? total,
+    totalPages: pageSize ? Math.max(1, Math.ceil(total / pageSize)) : 1,
+  };
 }
 
 export async function listCategories(userId: string, kind?: "expense" | "income") {
@@ -585,4 +684,94 @@ export async function getDebtDashboard(userId: string) {
     totals,
     paymentsByMonth,
   };
+}
+
+function revalidateGoals() {
+  revalidatePath("/goals");
+  revalidatePath("/overview");
+}
+
+export async function listSavingsGoals(userId: string) {
+  const rows = await db
+    .select()
+    .from(savingsGoals)
+    .where(eq(savingsGoals.userId, userId))
+    .orderBy(desc(savingsGoals.createdAt));
+
+  return rows.map((g) => {
+    const target = toNumber(g.targetAmount);
+    const current = toNumber(g.currentAmount);
+    const pct =
+      target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
+    return {
+      id: g.id,
+      name: g.name,
+      targetAmount: target,
+      currentAmount: current,
+      remaining: Math.max(0, target - current),
+      pct,
+      targetDate: g.targetDate,
+      createdAt: g.createdAt,
+    };
+  });
+}
+
+export async function createSavingsGoal(formData: FormData) {
+  const user = await requireUser();
+  const name = String(formData.get("name") ?? "").trim();
+  const targetAmount = parseAmount(String(formData.get("targetAmount") ?? "0"));
+  const currentAmount = parseAmount(
+    String(formData.get("currentAmount") ?? "0"),
+  );
+  const targetDateRaw = String(formData.get("targetDate") ?? "").trim();
+  const targetDate = targetDateRaw || null;
+
+  if (!name) throw new Error("Name is required");
+  if (targetAmount <= 0) throw new Error("Target amount must be greater than 0");
+
+  await db.insert(savingsGoals).values({
+    userId: user.id,
+    name,
+    targetAmount: targetAmount.toFixed(2),
+    currentAmount: Math.max(0, currentAmount).toFixed(2),
+    targetDate,
+  });
+
+  revalidateGoals();
+}
+
+export async function contributeToSavingsGoal(formData: FormData) {
+  const user = await requireUser();
+  const id = String(formData.get("id") ?? "");
+  const amount = parseAmount(String(formData.get("amount") ?? "0"));
+
+  if (!id) throw new Error("Missing goal");
+  if (amount <= 0) throw new Error("Amount must be greater than 0");
+
+  const existing = await db
+    .select()
+    .from(savingsGoals)
+    .where(and(eq(savingsGoals.id, id), eq(savingsGoals.userId, user.id)))
+    .limit(1);
+
+  if (!existing[0]) throw new Error("Goal not found");
+
+  const next = toNumber(existing[0].currentAmount) + amount;
+  await db
+    .update(savingsGoals)
+    .set({ currentAmount: next.toFixed(2) })
+    .where(eq(savingsGoals.id, id));
+
+  revalidateGoals();
+}
+
+export async function deleteSavingsGoal(formData: FormData) {
+  const user = await requireUser();
+  const id = String(formData.get("id") ?? "");
+
+  await db
+    .delete(savingsGoals)
+    .where(and(eq(savingsGoals.id, id), eq(savingsGoals.userId, user.id)));
+
+  revalidateGoals();
 }

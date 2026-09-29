@@ -2,12 +2,12 @@
   "name": "Ledger Finance Tracker",
   "short_name": "Ledger",
   "description": "Budget, income, expenses, and debt — offline-friendly",
-  "start_url": "/budget",
+  "start_url": "/overview",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#eef1ee",
-  "theme_color": "#0a5c45",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
   "icons": [
     {
       "src": "/icons/icon-192.png",

@@ -11,10 +11,12 @@ type Props = {
   successMessage: string;
   errorMessage?: string;
   className?: string;
+  id?: string;
   style?: React.CSSProperties;
   children: React.ReactNode;
   resetOnSuccess?: boolean;
   confirmMessage?: string;
+  onSuccess?: () => void;
 };
 
 export function ActionForm({
@@ -22,10 +24,12 @@ export function ActionForm({
   successMessage,
   errorMessage = "Something went wrong. Try again.",
   className,
+  id,
   style,
   children,
   resetOnSuccess,
   confirmMessage,
+  onSuccess,
 }: Props) {
   const toast = useToast();
   const router = useRouter();
@@ -33,6 +37,7 @@ export function ActionForm({
 
   return (
     <form
+      id={id}
       className={className}
       style={style}
       onSubmit={(e) => {
@@ -45,6 +50,7 @@ export function ActionForm({
             await action(fd);
             toast.success(successMessage);
             if (resetOnSuccess) form.reset();
+            onSuccess?.();
             router.refresh();
           } catch (err) {
             console.error(err);

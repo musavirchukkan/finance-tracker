@@ -10,9 +10,12 @@ const STATIC_PRECACHE = [
 
 /** Routes that contain user-specific data — only serve from cache if logged in. */
 const PROTECTED_PREFIXES = [
-  "/budget",
-  "/transactions",
+  "/overview",
   "/debt",
+  "/transactions",
+  "/budget",
+  "/analytics",
+  "/goals",
   "/settings",
   "/quick-add",
 ];
@@ -159,18 +162,21 @@ async function clearPageCache() {
 self.addEventListener("message", (event) => {
   if (event.data?.type === "CLEAR_CACHES") {
     event.waitUntil(
-      Promise.all([
-        caches.delete(PAGE_CACHE),
-        caches.delete("ledger-shell-v1"),
-        caches.delete("ledger-static-v2"),
-        caches.keys().then((keys) =>
-          Promise.all(
-            keys
-              .filter((k) => k.startsWith("ledger-pages"))
-              .map((k) => caches.delete(k)),
-          ),
+      caches.keys().then((keys) =>
+        Promise.all(
+          keys
+            .filter(
+              (k) =>
+                k === STATIC_CACHE ||
+                k === PAGE_CACHE ||
+                k.startsWith("ledger-") ||
+                k.includes("shell") ||
+                k.includes("static") ||
+                k.includes("pages"),
+            )
+            .map((k) => caches.delete(k)),
         ),
-      ]),
+      ),
     );
   }
   if (event.data?.type === "CLEAR_ALL_CACHES") {

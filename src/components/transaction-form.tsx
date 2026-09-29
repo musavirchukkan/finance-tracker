@@ -8,18 +8,26 @@ import {
   queueTransaction,
   syncPendingTransactions,
 } from "@/lib/offline-queue";
+import { formatINR } from "@/lib/money";
+import { resolveCategoryIcon } from "@/lib/category-icons";
 
 export type CategoryOption = {
   id: string;
   name: string;
   kind: string;
+  icon?: string | null;
 };
 
 type Props = {
   categories: CategoryOption[];
   defaultDate?: string;
+  /** Polished quick-add layout (modal + /quick-add) */
+  variant?: "classic" | "quick";
+  /** @deprecated use variant="quick" */
   compact?: boolean;
   onSaved?: () => void;
+  onCancel?: () => void;
+  title?: string;
 };
 
 function pad(n: number) {
@@ -36,16 +44,39 @@ function nowTimeLocal(): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function formatTimeLabel(date: string, time: string, isToday: boolean) {
+  const [h, m] = time.split(":").map(Number);
+  const d = new Date();
+  d.setHours(h || 0, m || 0, 0, 0);
+  const clock = d.toLocaleTimeString("en-IN", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+  if (isToday && date === todayLocal()) return `Today, ${clock}`;
+  const day = new Date(`${date}T12:00:00`).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+  });
+  return `${day}, ${clock}`;
+}
+
 export function TransactionForm({
   categories,
   defaultDate,
+  variant,
   compact,
   onSaved,
+  onCancel,
+  title = "Quick Add",
 }: Props) {
+  const mode = variant ?? (compact ? "quick" : "classic");
   const router = useRouter();
   const toast = useToast();
   const [type, setType] = useState<"expense" | "income">("expense");
-  const [status, setStatus] = useState<string | null>(null);
+  const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState("");
+  const [categoryId, setCategoryId] = useState("");
   const [pendingCount, setPendingCount] = useState(0);
   const [online, setOnline] = useState(true);
   const [isPending, startTransition] = useTransition();
@@ -57,6 +88,12 @@ export function TransactionForm({
     () => categories.filter((c) => c.kind === type),
     [categories, type],
   );
+
+  useEffect(() => {
+    if (!filtered.some((c) => c.id === categoryId)) {
+      setCategoryId(filtered[0]?.id ?? "");
+    }
+  }, [filtered, categoryId]);
 
   async function refreshPending() {
     try {
@@ -78,7 +115,6 @@ export function TransactionForm({
         await refreshPending();
         if (result.synced > 0) {
           toast.success(`Synced ${result.synced} offline transaction(s)`);
-          setStatus(`Synced ${result.synced} offline transaction(s).`);
           router.refresh();
         }
       })();
@@ -94,45 +130,49 @@ export function TransactionForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function buildOccurredAt(date: string, time: string) {
-    return new Date(`${date}T${time}:00`).toISOString();
+  function resetForm() {
+    setAmount("");
+    setDescription("");
+    setDateValue(todayLocal());
+    setTimeValue(nowTimeLocal());
+    setEditWhen(false);
   }
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setStatus(null);
-    const form = e.currentTarget;
-    const fd = new FormData(form);
+  function bumpAmount(delta: number) {
+    const current = Number(amount) || 0;
+    setAmount(String(Math.max(0, Math.round((current + delta) * 100) / 100)));
+  }
 
-    // If user didn't open "edit when", refresh time to "now" at submit
+  async function save() {
     const date = editWhen ? dateValue : todayLocal();
     const time = editWhen ? timeValue : nowTimeLocal();
-    const occurredAt = buildOccurredAt(date, time);
+    const occurredAt = new Date(`${date}T${time}:00`).toISOString();
     const clientId = crypto.randomUUID();
+    const amountNum = Number(amount);
+
+    if (!categoryId) {
+      toast.error("Pick a category");
+      return;
+    }
+    if (!amountNum || amountNum <= 0) {
+      toast.error("Enter an amount");
+      return;
+    }
 
     const payload = {
       clientId,
       date,
       occurredAt,
-      description: String(fd.get("description") ?? "").trim(),
-      categoryId: String(fd.get("categoryId") ?? ""),
+      description: description.trim(),
+      categoryId,
       type,
-      amount: Number(String(fd.get("amount") ?? "0")),
+      amount: amountNum,
     };
-
-    if (!payload.description || !payload.categoryId) {
-      toast.error("Fill all fields");
-      return;
-    }
 
     if (!navigator.onLine) {
       await queueTransaction(payload);
-      form.reset();
-      setDateValue(todayLocal());
-      setTimeValue(nowTimeLocal());
-      setEditWhen(false);
+      resetForm();
       toast.info("Saved offline — will sync when you're back online");
-      setStatus("Saved offline — will sync when you're back online.");
       await refreshPending();
       onSaved?.();
       return;
@@ -150,12 +190,8 @@ export function TransactionForm({
           toast.info("Network issue — queued offline");
           await refreshPending();
         } else {
-          form.reset();
-          setDateValue(todayLocal());
-          setTimeValue(nowTimeLocal());
-          setEditWhen(false);
+          resetForm();
           toast.success(type === "income" ? "Income added" : "Expense added");
-          setStatus(type === "income" ? "Income added." : "Expense added.");
           router.refresh();
           onSaved?.();
         }
@@ -168,69 +204,168 @@ export function TransactionForm({
     });
   }
 
-  return (
-    <div>
-      {!online ? (
-        <p className="offline-banner">
-          You&apos;re offline. New entries will sync later.
-        </p>
-      ) : null}
-      {pendingCount > 0 ? (
-        <p className="pending-banner">
-          {pendingCount} waiting to sync.
-          <button
-            type="button"
-            className="btn btn-ghost btn-xs"
-            style={{ marginLeft: 8 }}
-            onClick={() =>
-              startTransition(async () => {
-                const r = await syncPendingTransactions();
-                await refreshPending();
-                if (r.synced) {
-                  toast.success(`Synced ${r.synced}`);
-                  router.refresh();
-                }
-              })
-            }
-          >
-            Sync now
-          </button>
-        </p>
-      ) : null}
+  const amountNum = Number(amount) || 0;
+  const selectedCat = filtered.find((c) => c.id === categoryId);
+  const timeLabel = formatTimeLabel(
+    editWhen ? dateValue : todayLocal(),
+    editWhen ? timeValue : nowTimeLocal(),
+    !editWhen,
+  );
 
-      <form
-        onSubmit={handleSubmit}
-        className={compact ? "form-stack" : "form-row"}
-      >
-        <div className="type-toggle" role="group" aria-label="Transaction type">
-          <button
-            type="button"
-            className={type === "expense" ? "active expense" : ""}
-            aria-pressed={type === "expense"}
-            onClick={() => setType("expense")}
-          >
-            Expense
-          </button>
-          <button
-            type="button"
-            className={type === "income" ? "active income" : ""}
-            aria-pressed={type === "income"}
-            onClick={() => setType("income")}
-          >
-            Income
-          </button>
-        </div>
+  if (mode === "quick") {
+    return (
+      <div className="qa">
+        {onCancel ? (
+          <div className="qa-head qa-head-end">
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Close"
+              onClick={onCancel}
+            >
+              ×
+            </button>
+          </div>
+        ) : null}
 
-        <div className="field field-span-2">
-          <div className="when-row">
-            <span className="when-summary muted">
-              {editWhen
-                ? `${dateValue} · ${timeValue}`
-                : "Today · now (auto)"}
-            </span>
+        {!online ? (
+          <p className="offline-banner">You&apos;re offline — entries sync later.</p>
+        ) : null}
+        {pendingCount > 0 ? (
+          <p className="pending-banner">
+            {pendingCount} waiting to sync.{" "}
             <button
               type="button"
               className="linkish"
+              onClick={() =>
+                startTransition(async () => {
+                  const r = await syncPendingTransactions();
+                  await refreshPending();
+                  if (r.synced) {
+                    toast.success(`Synced ${r.synced}`);
+                    router.refresh();
+                  }
+                })
+              }
+            >
+              Sync now
+            </button>
+          </p>
+        ) : null}
+
+        <div className="qa-type" role="group" aria-label="Transaction type">
+          <button
+            type="button"
+            className={type === "expense" ? "qa-type-btn active expense" : "qa-type-btn"}
+            aria-pressed={type === "expense"}
+            onClick={() => setType("expense")}
+          >
+            <span aria-hidden>↓</span> Expense
+          </button>
+          <button
+            type="button"
+            className={type === "income" ? "qa-type-btn active income" : "qa-type-btn"}
+            aria-pressed={type === "income"}
+            onClick={() => setType("income")}
+          >
+            <span aria-hidden>↑</span> Income
+          </button>
+        </div>
+
+        <div className="qa-amount-block">
+          <div className="qa-amount-meta">
+            <span className="qa-label">Amount</span>
+            <span className="qa-currency">INR ₹</span>
+          </div>
+          <div className="qa-amount-input-wrap">
+            <span className="qa-rupee">₹</span>
+            <input
+              className="qa-amount-input"
+              inputMode="decimal"
+              placeholder="0"
+              value={amount}
+              onChange={(e) =>
+                setAmount(e.target.value.replace(/[^\d.]/g, ""))
+              }
+              aria-label="Amount"
+              autoFocus
+            />
+          </div>
+          <div className="qa-amount-chips">
+            {[100, 500, 1000].map((n) => (
+              <button
+                key={n}
+                type="button"
+                className="qa-chip"
+                onClick={() => bumpAmount(n)}
+              >
+                +{n.toLocaleString("en-IN")}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="qa-chip"
+              onClick={() => setAmount("")}
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+
+        <div className="qa-field">
+          <span className="qa-label">Note / merchant</span>
+          <div className="qa-note-wrap">
+            <span className="qa-note-icon" aria-hidden>
+              ≡
+            </span>
+            <input
+              className="qa-note-input"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder={
+                type === "income"
+                  ? "e.g. January salary"
+                  : "e.g. Auto to Bandra Station"
+              }
+              autoComplete="off"
+            />
+          </div>
+        </div>
+
+        <div className="qa-field">
+          <span className="qa-label">Category</span>
+          <div className="qa-select-wrap">
+            <span className="qa-select-icon" aria-hidden>
+              {selectedCat
+                ? resolveCategoryIcon(selectedCat.name, selectedCat.icon)
+                : "📁"}
+            </span>
+            <select
+              className="qa-select"
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+              aria-label="Category"
+              required
+            >
+              {filtered.length === 0 ? (
+                <option value="">No categories yet</option>
+              ) : (
+                filtered.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {resolveCategoryIcon(c.name, c.icon)} {c.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+        </div>
+
+        <div className="qa-meta">
+          <div className="qa-meta-card">
+            <span className="qa-label">Time</span>
+            <button
+              type="button"
+              className="qa-time-btn"
               onClick={() => {
                 if (!editWhen) {
                   setDateValue(todayLocal());
@@ -239,82 +374,115 @@ export function TransactionForm({
                 setEditWhen((v) => !v);
               }}
             >
-              {editWhen ? "Use now" : "Change date / time"}
+              <span aria-hidden>🕒</span>
+              <span>{timeLabel}</span>
             </button>
-          </div>
-          {editWhen ? (
-            <div className="when-fields">
-              <div className="field">
-                <label htmlFor="tx-date">Date</label>
+            {editWhen ? (
+              <div className="when-fields" style={{ marginTop: "0.5rem" }}>
                 <input
-                  id="tx-date"
                   type="date"
                   value={dateValue}
                   onChange={(e) => setDateValue(e.target.value)}
-                  required
+                  aria-label="Date"
                 />
-              </div>
-              <div className="field">
-                <label htmlFor="tx-time">Time</label>
                 <input
-                  id="tx-time"
                   type="time"
                   value={timeValue}
                   onChange={(e) => setTimeValue(e.target.value)}
-                  required
+                  aria-label="Time"
                 />
               </div>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
 
-        <div className="field field-span-2">
-          <label htmlFor="tx-desc">Description</label>
+        <button
+          type="button"
+          className="qa-submit"
+          disabled={isPending}
+          onClick={() => void save()}
+        >
+          <span className="qa-submit-check" aria-hidden>
+            ✓
+          </span>
+          <span className="qa-submit-label">
+            {isPending
+              ? "Saving…"
+              : type === "income"
+                ? "Add Income"
+                : "Add Expense"}
+          </span>
+          <span className="qa-submit-amt">
+            {amountNum > 0 ? formatINR(amountNum) : "₹0"}
+          </span>
+        </button>
+      </div>
+    );
+  }
+
+  // Classic fallback (unused by modal/quick-add now)
+  return (
+    <div>
+      <form
+        className="form-stack"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <div className="type-toggle" role="group" aria-label="Transaction type">
+          <button
+            type="button"
+            className={type === "expense" ? "active expense" : ""}
+            onClick={() => setType("expense")}
+          >
+            Expense
+          </button>
+          <button
+            type="button"
+            className={type === "income" ? "active income" : ""}
+            onClick={() => setType("income")}
+          >
+            Income
+          </button>
+        </div>
+        <div className="field">
+          <label htmlFor="tx-amount">Amount (₹)</label>
           <input
-            id="tx-desc"
-            name="description"
+            id="tx-amount"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            inputMode="decimal"
             required
-            placeholder={type === "income" ? "Salary" : "Groceries"}
-            autoComplete="off"
           />
         </div>
         <div className="field">
           <label htmlFor="tx-cat">Category</label>
           <select
             id="tx-cat"
-            name="categoryId"
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value)}
             required
-            key={type}
-            defaultValue={filtered[0]?.id}
           >
             {filtered.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.name}
+                {resolveCategoryIcon(c.name, c.icon)} {c.name}
               </option>
             ))}
           </select>
         </div>
         <div className="field">
-          <label htmlFor="tx-amount">Amount (₹)</label>
+          <label htmlFor="tx-desc">Description (optional)</label>
           <input
-            id="tx-amount"
-            name="amount"
-            type="number"
-            step="0.01"
-            min="0"
-            inputMode="decimal"
-            required
+            id="tx-desc"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
           />
         </div>
         <button className="btn btn-primary" type="submit" disabled={isPending}>
-          {isPending
-            ? "Saving…"
-            : type === "income"
-              ? "Add income"
-              : "Add expense"}
+          {type === "income" ? "Add income" : "Add expense"}
         </button>
       </form>
-      {status ? <p className="form-status muted">{status}</p> : null}
     </div>
   );
 }

@@ -8,21 +8,14 @@ export default async function QuickAddPage() {
 
   return (
     <div className="page-stack quick-add-page">
-      <div className="page-header">
-        <div>
-          <h2 className="page-title">Quick add</h2>
-          <p className="muted page-sub">
-            Fast entry — works offline. Install the app for a home-screen shortcut.
-          </p>
-        </div>
-      </div>
-      <section className="panel">
+      <section className="panel qa-page-panel">
         <TransactionForm
-          compact
+          variant="quick"
           categories={cats.map((c) => ({
             id: c.id,
             name: c.name,
             kind: c.kind,
+            icon: c.icon,
           }))}
         />
       </section>
