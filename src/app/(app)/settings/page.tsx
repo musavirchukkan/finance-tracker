@@ -1,5 +1,6 @@
 import { PwaInstallCard } from "@/components/pwa-install-card";
 import { SettingsForms } from "@/components/settings-forms";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { listCategories } from "@/lib/actions";
 import { requireUser } from "@/lib/session";
 
@@ -15,10 +16,12 @@ export default async function SettingsPage() {
         <div>
           <h2 className="page-title">Settings</h2>
           <p className="muted page-sub">
-            Install Ledger, manage categories, and offline data.
+            Theme, install Ledger, manage categories, and offline data.
           </p>
         </div>
       </div>
+
+      <ThemeToggle />
 
       <PwaInstallCard />
 

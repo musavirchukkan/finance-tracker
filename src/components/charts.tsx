@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactElement } from "react";
+import { useEffect, useState, type CSSProperties, type ReactElement } from "react";
 import {
   Bar,
   BarChart,
@@ -17,6 +17,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useTheme } from "@/components/theme-provider";
 import { formatINR } from "@/lib/money";
 
 export const CHART_COLORS = [
@@ -30,26 +31,128 @@ export const CHART_COLORS = [
   "#ec4899",
 ];
 
-const GRID = "rgba(255,255,255,0.06)";
-const TICK = "#8b8b96";
-
-const tooltipStyle = {
-  background: "#141418",
-  border: "1px solid rgba(255,255,255,0.1)",
-  borderRadius: 12,
-  color: "#f4f4f5",
-  fontSize: 12,
-  boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
+type ChartTheme = {
+  grid: string;
+  tick: string;
+  ink: string;
+  line: string;
+  surface: string;
+  track: string;
+  success: string;
+  danger: string;
+  budget: string;
+  actual: string;
+  violet: string;
+  blue: string;
+  tooltip: CSSProperties;
+  tooltipProps: {
+    contentStyle: CSSProperties;
+    wrapperStyle: CSSProperties;
+    cursor: false;
+    itemStyle: CSSProperties;
+    labelStyle: CSSProperties;
+  };
 };
 
-/** Shared tooltip — no white hover band behind bars */
-const chartTooltipProps = {
-  contentStyle: tooltipStyle,
-  wrapperStyle: { outline: "none" },
-  cursor: false as const,
-  itemStyle: { color: "#f4f4f5" },
-  labelStyle: { color: "#8b8b96" },
+function readChartTheme(): ChartTheme {
+  const s = getComputedStyle(document.documentElement);
+  const get = (name: string, fallback: string) =>
+    s.getPropertyValue(name).trim() || fallback;
+
+  const grid = get("--chart-grid", "rgba(255,255,255,0.06)");
+  const tick = get("--muted", "#8b8b96");
+  const ink = get("--ink", "#f4f4f5");
+  const line = get("--line", "rgba(255,255,255,0.1)");
+  const surface = get("--surface", "#141418");
+  const track = get("--track-strong", "rgba(255,255,255,0.12)");
+  const success = get("--success", "#34d399");
+  const danger = get("--danger", "#f87171");
+  const budget = get("--budget", "#6366f1");
+  const actual = get("--actual", "#ff5c00");
+  const violet = get("--violet", "#a855f7");
+  const blue = get("--blue", "#3b82f6");
+
+  const tooltip: CSSProperties = {
+    background: surface,
+    border: `1px solid ${line}`,
+    borderRadius: 12,
+    color: ink,
+    fontSize: 12,
+    padding: "0.65rem 0.75rem",
+    boxShadow: get("--shadow-toast", "0 8px 24px rgba(0,0,0,0.45)"),
+  };
+
+  return {
+    grid,
+    tick,
+    ink,
+    line,
+    surface,
+    track,
+    success,
+    danger,
+    budget,
+    actual,
+    violet,
+    blue,
+    tooltip,
+    tooltipProps: {
+      contentStyle: tooltip,
+      wrapperStyle: { outline: "none" },
+      cursor: false,
+      itemStyle: { color: ink },
+      labelStyle: { color: tick },
+    },
+  };
+}
+
+const FALLBACK_THEME: ChartTheme = {
+  grid: "rgba(255,255,255,0.06)",
+  tick: "#8b8b96",
+  ink: "#f4f4f5",
+  line: "rgba(255,255,255,0.1)",
+  surface: "#141418",
+  track: "rgba(255,255,255,0.12)",
+  success: "#34d399",
+  danger: "#f87171",
+  budget: "#6366f1",
+  actual: "#ff5c00",
+  violet: "#a855f7",
+  blue: "#3b82f6",
+  tooltip: {
+    background: "#141418",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 12,
+    color: "#f4f4f5",
+    fontSize: 12,
+    boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
+  },
+  tooltipProps: {
+    contentStyle: {
+      background: "#141418",
+      border: "1px solid rgba(255,255,255,0.1)",
+      borderRadius: 12,
+      color: "#f4f4f5",
+      fontSize: 12,
+      boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
+    },
+    wrapperStyle: { outline: "none" },
+    cursor: false,
+    itemStyle: { color: "#f4f4f5" },
+    labelStyle: { color: "#8b8b96" },
+  },
 };
+
+function useChartTheme(): ChartTheme {
+  const { resolved } = useTheme();
+  const [theme, setTheme] = useState<ChartTheme>(FALLBACK_THEME);
+
+  useEffect(() => {
+    setTheme(readChartTheme());
+  }, [resolved]);
+
+  return theme;
+}
 
 function ChartFrame({
   height,
@@ -86,6 +189,7 @@ export function ActualDonut({
   inner?: number;
   outer?: number;
 }) {
+  const chart = useChartTheme();
   const data = rows
     .filter((r) => r.actual > 0)
     .map((r) => ({ name: r.category, value: r.actual }));
@@ -111,7 +215,7 @@ export function ActualDonut({
           ))}
         </Pie>
         <Tooltip
-          {...chartTooltipProps}
+          {...chart.tooltipProps}
           formatter={(v) => formatINR(Number(v ?? 0))}
         />
         {showLegend ? null : null}
@@ -128,6 +232,7 @@ function shortINR(v: number) {
 }
 
 export function BudgetVsActualBars({ rows }: { rows: BudgetRow[] }) {
+  const chart = useChartTheme();
   const data = rows
     .filter((r) => r.budget > 0 || r.actual > 0)
     .map((r) => ({
@@ -144,10 +249,14 @@ export function BudgetVsActualBars({ rows }: { rows: BudgetRow[] }) {
   return (
     <ChartFrame height={300}>
       <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
+        <CartesianGrid
+          strokeDasharray="3 3"
+          stroke={chart.grid}
+          vertical={false}
+        />
         <XAxis
           dataKey="category"
-          tick={{ fontSize: 11, fill: TICK }}
+          tick={{ fontSize: 11, fill: chart.tick }}
           interval={0}
           angle={-20}
           textAnchor="end"
@@ -160,12 +269,12 @@ export function BudgetVsActualBars({ rows }: { rows: BudgetRow[] }) {
             v >= 1000 ? `${Math.round(v / 1000)}K` : `₹${v}`
           }
           width={48}
-          tick={{ fontSize: 11, fill: TICK }}
+          tick={{ fontSize: 11, fill: chart.tick }}
           axisLine={false}
           tickLine={false}
         />
         <Tooltip
-          {...chartTooltipProps}
+          {...chart.tooltipProps}
           content={({ active, payload, label }) => {
             if (!active || !payload?.length) return null;
             const budget = Number(
@@ -177,19 +286,25 @@ export function BudgetVsActualBars({ rows }: { rows: BudgetRow[] }) {
             const left = budget - actual;
             const pct = budget > 0 ? Math.round((actual / budget) * 100) : null;
             return (
-              <div style={tooltipStyle}>
+              <div style={chart.tooltip}>
                 <div style={{ marginBottom: 6, fontWeight: 700 }}>{label}</div>
-                <div style={{ color: "#6366f1" }}>Budget {formatINR(budget)}</div>
-                <div style={{ color: "#ff5c00" }}>Actual {formatINR(actual)}</div>
+                <div style={{ color: chart.budget }}>
+                  Budget {formatINR(budget)}
+                </div>
+                <div style={{ color: chart.actual }}>
+                  Actual {formatINR(actual)}
+                </div>
                 {pct != null ? (
-                  <div style={{ color: TICK, marginTop: 2 }}>{pct}% used</div>
+                  <div style={{ color: chart.tick, marginTop: 2 }}>
+                    {pct}% used
+                  </div>
                 ) : null}
                 <div
                   style={{
                     marginTop: 6,
                     paddingTop: 6,
-                    borderTop: "1px solid rgba(255,255,255,0.1)",
-                    color: left >= 0 ? "#34d399" : "#f87171",
+                    borderTop: `1px solid ${chart.line}`,
+                    color: left >= 0 ? chart.success : chart.danger,
                     fontWeight: 700,
                   }}
                 >
@@ -201,18 +316,18 @@ export function BudgetVsActualBars({ rows }: { rows: BudgetRow[] }) {
           }}
         />
         <Legend
-          wrapperStyle={{ fontSize: 12, color: TICK, paddingTop: 4 }}
+          wrapperStyle={{ fontSize: 12, color: chart.tick, paddingTop: 4 }}
           iconType="circle"
         />
         <Bar
           dataKey="Budget"
-          fill="#6366f1"
+          fill={chart.budget}
           radius={[6, 6, 0, 0]}
           activeBar={false}
         />
         <Bar
           dataKey="Actual"
-          fill="#ff5c00"
+          fill={chart.actual}
           radius={[6, 6, 0, 0]}
           activeBar={false}
         />
@@ -228,6 +343,7 @@ type CurvePoint = {
 };
 
 export function DebtReductionChart({ points }: { points: CurvePoint[] }) {
+  const chart = useChartTheme();
   const data = points.map((p) => ({
     label: p.label,
     Projected: p.projected,
@@ -237,10 +353,10 @@ export function DebtReductionChart({ points }: { points: CurvePoint[] }) {
   return (
     <ChartFrame height={260}>
       <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 40 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
+        <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
         <XAxis
           dataKey="label"
-          tick={{ fontSize: 10, fill: TICK }}
+          tick={{ fontSize: 10, fill: chart.tick }}
           interval="preserveStartEnd"
           angle={-25}
           textAnchor="end"
@@ -251,28 +367,28 @@ export function DebtReductionChart({ points }: { points: CurvePoint[] }) {
         <YAxis
           tickFormatter={(v) => `₹${v}`}
           width={64}
-          tick={{ fontSize: 11, fill: TICK }}
+          tick={{ fontSize: 11, fill: chart.tick }}
           axisLine={false}
           tickLine={false}
         />
         <Tooltip
-          {...chartTooltipProps}
+          {...chart.tooltipProps}
           formatter={(v) => (v == null ? "—" : formatINR(Number(v)))}
         />
         <Line
           type="monotone"
           dataKey="Projected"
-          stroke="#a855f7"
+          stroke={chart.violet}
           strokeWidth={2}
           dot={false}
         />
         <Line
           type="monotone"
           dataKey="Actual"
-          stroke="#ff5c00"
+          stroke={chart.actual}
           strokeWidth={2}
           connectNulls={false}
-          dot={{ r: 3, fill: "#ff5c00" }}
+          dot={{ r: 3, fill: chart.actual }}
         />
       </LineChart>
     </ChartFrame>
@@ -288,23 +404,28 @@ export function CashflowBars({
   expense: number;
   showLabels?: boolean;
 }) {
+  const chart = useChartTheme();
   const data = [
-    { name: "Income", amount: income, fill: "#ff5c00" },
-    { name: "Spent", amount: expense, fill: "#a855f7" },
+    { name: "Income", amount: income, fill: chart.actual },
+    { name: "Spent", amount: expense, fill: chart.violet },
     {
       name: "Left",
       amount: Math.max(0, income - expense),
-      fill: "#3b82f6",
+      fill: chart.blue,
     },
   ];
 
   return (
     <ChartFrame height={240}>
       <BarChart data={data} margin={{ top: 28, right: 8, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
+        <CartesianGrid
+          strokeDasharray="3 3"
+          stroke={chart.grid}
+          vertical={false}
+        />
         <XAxis
           dataKey="name"
-          tick={{ fontSize: 12, fill: TICK }}
+          tick={{ fontSize: 12, fill: chart.tick }}
           axisLine={false}
           tickLine={false}
         />
@@ -313,12 +434,12 @@ export function CashflowBars({
             v >= 1000 ? `${Math.round(v / 1000)}K` : `₹${v}`
           }
           width={48}
-          tick={{ fontSize: 11, fill: TICK }}
+          tick={{ fontSize: 11, fill: chart.tick }}
           axisLine={false}
           tickLine={false}
         />
         <Tooltip
-          {...chartTooltipProps}
+          {...chart.tooltipProps}
           formatter={(v) => formatINR(Number(v ?? 0))}
         />
         <Bar dataKey="amount" radius={[8, 8, 0, 0]} activeBar={false}>
@@ -330,7 +451,7 @@ export function CashflowBars({
               dataKey="amount"
               position="top"
               formatter={(v) => shortINR(Number(v ?? 0))}
-              style={{ fill: TICK, fontSize: 10, fontWeight: 600 }}
+              style={{ fill: chart.tick, fontSize: 10, fontWeight: 600 }}
             />
           ) : null}
         </Bar>
@@ -344,6 +465,7 @@ export function WeeklyCashflowBars({
 }: {
   weeks: { label: string; income: number; expense: number }[];
 }) {
+  const chart = useChartTheme();
   const data = weeks.map((w) => ({
     name: w.label,
     Income: w.income,
@@ -353,10 +475,14 @@ export function WeeklyCashflowBars({
   return (
     <ChartFrame height={240}>
       <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
+        <CartesianGrid
+          strokeDasharray="3 3"
+          stroke={chart.grid}
+          vertical={false}
+        />
         <XAxis
           dataKey="name"
-          tick={{ fontSize: 11, fill: TICK }}
+          tick={{ fontSize: 11, fill: chart.tick }}
           axisLine={false}
           tickLine={false}
         />
@@ -365,24 +491,24 @@ export function WeeklyCashflowBars({
             v >= 1000 ? `${Math.round(v / 1000)}K` : `₹${v}`
           }
           width={48}
-          tick={{ fontSize: 11, fill: TICK }}
+          tick={{ fontSize: 11, fill: chart.tick }}
           axisLine={false}
           tickLine={false}
         />
         <Tooltip
-          {...chartTooltipProps}
+          {...chart.tooltipProps}
           formatter={(v) => formatINR(Number(v ?? 0))}
         />
         <Bar
           dataKey="Income"
-          fill="#ff5c00"
+          fill={chart.actual}
           radius={[8, 8, 0, 0]}
           maxBarSize={28}
           activeBar={false}
         />
         <Bar
           dataKey="Expenses"
-          fill="#a855f7"
+          fill={chart.violet}
           radius={[8, 8, 0, 0]}
           maxBarSize={28}
           activeBar={false}
@@ -406,7 +532,13 @@ export function Sparkline({
     <ResponsiveContainer width="100%" height="100%">
       <LineChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
         <defs>
-          <linearGradient id={`spark-${color.replace("#", "")}`} x1="0" y1="0" x2="1" y2="0">
+          <linearGradient
+            id={`spark-${color.replace("#", "")}`}
+            x1="0"
+            y1="0"
+            x2="1"
+            y2="0"
+          >
             <stop offset="0%" stopColor={color} stopOpacity={0.2} />
             <stop offset="100%" stopColor={color} stopOpacity={1} />
           </linearGradient>
@@ -425,6 +557,7 @@ export function Sparkline({
 }
 
 export function MiniBars({ values }: { values: number[] }) {
+  const chart = useChartTheme();
   const max = Math.max(...values, 1);
   return (
     <div
@@ -446,8 +579,8 @@ export function MiniBars({ values }: { values: number[] }) {
             borderRadius: 3,
             background:
               i === values.length - 1
-                ? "linear-gradient(180deg, #ff8a3d, #ff5c00)"
-                : "rgba(255,255,255,0.12)",
+                ? `linear-gradient(180deg, ${chart.actual}, ${chart.actual})`
+                : chart.track,
           }}
         />
       ))}
@@ -468,6 +601,7 @@ export function IncomeDonut({
   inner?: number;
   outer?: number;
 }) {
+  const chart = useChartTheme();
   const data = rows.filter((r) => r.value > 0);
   if (data.length === 0) {
     return <div className="empty">No income this month yet.</div>;
@@ -490,7 +624,7 @@ export function IncomeDonut({
           ))}
         </Pie>
         <Tooltip
-          {...chartTooltipProps}
+          {...chart.tooltipProps}
           formatter={(v) => formatINR(Number(v ?? 0))}
         />
         {showLegend ? null : null}
