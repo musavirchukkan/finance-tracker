@@ -68,7 +68,6 @@ export function TransactionForm({
   compact,
   onSaved,
   onCancel,
-  title = "Quick Add",
 }: Props) {
   const mode = variant ?? (compact ? "quick" : "classic");
   const router = useRouter();
@@ -76,9 +75,13 @@ export function TransactionForm({
   const [type, setType] = useState<"expense" | "income">("expense");
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
-  const [categoryId, setCategoryId] = useState("");
+  const [categoryId, setCategoryId] = useState(
+    () => categories.find((c) => c.kind === "expense")?.id ?? "",
+  );
   const [pendingCount, setPendingCount] = useState(0);
-  const [online, setOnline] = useState(true);
+  const [online, setOnline] = useState(() =>
+    typeof window !== "undefined" ? navigator.onLine : true,
+  );
   const [isPending, startTransition] = useTransition();
   const [editWhen, setEditWhen] = useState(false);
   const [dateValue, setDateValue] = useState(defaultDate ?? todayLocal());
@@ -89,11 +92,15 @@ export function TransactionForm({
     [categories, type],
   );
 
-  useEffect(() => {
-    if (!filtered.some((c) => c.id === categoryId)) {
-      setCategoryId(filtered[0]?.id ?? "");
-    }
-  }, [filtered, categoryId]);
+  const selectedCategoryId = filtered.some((c) => c.id === categoryId)
+    ? categoryId
+    : (filtered[0]?.id ?? "");
+
+  function changeType(next: "expense" | "income") {
+    setType(next);
+    const nextFiltered = categories.filter((c) => c.kind === next);
+    setCategoryId(nextFiltered[0]?.id ?? "");
+  }
 
   async function refreshPending() {
     try {
@@ -105,8 +112,10 @@ export function TransactionForm({
   }
 
   useEffect(() => {
-    setOnline(navigator.onLine);
-    void refreshPending();
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) void refreshPending();
+    });
 
     const onOnline = () => {
       setOnline(true);
@@ -124,6 +133,7 @@ export function TransactionForm({
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
     return () => {
+      cancelled = true;
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
     };
@@ -150,7 +160,7 @@ export function TransactionForm({
     const clientId = crypto.randomUUID();
     const amountNum = Number(amount);
 
-    if (!categoryId) {
+    if (!selectedCategoryId) {
       toast.error("Pick a category");
       return;
     }
@@ -164,7 +174,7 @@ export function TransactionForm({
       date,
       occurredAt,
       description: description.trim(),
-      categoryId,
+      categoryId: selectedCategoryId,
       type,
       amount: amountNum,
     };
@@ -205,7 +215,7 @@ export function TransactionForm({
   }
 
   const amountNum = Number(amount) || 0;
-  const selectedCat = filtered.find((c) => c.id === categoryId);
+  const selectedCat = filtered.find((c) => c.id === selectedCategoryId);
   const timeLabel = formatTimeLabel(
     editWhen ? dateValue : todayLocal(),
     editWhen ? timeValue : nowTimeLocal(),
@@ -258,7 +268,7 @@ export function TransactionForm({
             type="button"
             className={type === "expense" ? "qa-type-btn active expense" : "qa-type-btn"}
             aria-pressed={type === "expense"}
-            onClick={() => setType("expense")}
+            onClick={() => changeType("expense")}
           >
             <span aria-hidden>↓</span> Expense
           </button>
@@ -266,7 +276,7 @@ export function TransactionForm({
             type="button"
             className={type === "income" ? "qa-type-btn active income" : "qa-type-btn"}
             aria-pressed={type === "income"}
-            onClick={() => setType("income")}
+            onClick={() => changeType("income")}
           >
             <span aria-hidden>↑</span> Income
           </button>
@@ -342,7 +352,7 @@ export function TransactionForm({
             </span>
             <select
               className="qa-select"
-              value={categoryId}
+              value={selectedCategoryId}
               onChange={(e) => setCategoryId(e.target.value)}
               aria-label="Category"
               required
@@ -434,14 +444,14 @@ export function TransactionForm({
           <button
             type="button"
             className={type === "expense" ? "active expense" : ""}
-            onClick={() => setType("expense")}
+            onClick={() => changeType("expense")}
           >
             Expense
           </button>
           <button
             type="button"
             className={type === "income" ? "active income" : ""}
-            onClick={() => setType("income")}
+            onClick={() => changeType("income")}
           >
             Income
           </button>
@@ -460,7 +470,7 @@ export function TransactionForm({
           <label htmlFor="tx-cat">Category</label>
           <select
             id="tx-cat"
-            value={categoryId}
+            value={selectedCategoryId}
             onChange={(e) => setCategoryId(e.target.value)}
             required
           >

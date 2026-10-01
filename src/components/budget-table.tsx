@@ -67,10 +67,6 @@ function BudgetRow({
     row.difference < 0 ? "neg" : row.difference > 0 ? "pos" : "zero";
 
   useEffect(() => {
-    if (!editing) setDraft(row.budget.toFixed(2));
-  }, [row.budget, editing]);
-
-  useEffect(() => {
     if (editing) inputRef.current?.focus();
   }, [editing]);
 

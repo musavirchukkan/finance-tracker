@@ -34,6 +34,19 @@ function resolveTheme(preference: ThemePreference): ResolvedTheme {
   return preference === "system" ? getSystemTheme() : preference;
 }
 
+function readStoredPreference(): ThemePreference {
+  if (typeof window === "undefined") return "dark";
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw === "light" || raw === "dark" || raw === "system") {
+      return raw;
+    }
+  } catch {
+    /* ignore */
+  }
+  return "dark";
+}
+
 function applyTheme(resolved: ResolvedTheme) {
   const root = document.documentElement;
   root.setAttribute("data-theme", resolved);
@@ -51,19 +64,18 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [resolved, setResolved] = useState<ResolvedTheme>("dark");
 
   useEffect(() => {
-    let stored: ThemePreference = "dark";
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw === "light" || raw === "dark" || raw === "system") {
-        stored = raw;
-      }
-    } catch {
-      /* ignore */
-    }
-    const next = resolveTheme(stored);
-    setPreferenceState(stored);
-    setResolved(next);
-    applyTheme(next);
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      const stored = readStoredPreference();
+      const next = resolveTheme(stored);
+      setPreferenceState(stored);
+      setResolved(next);
+      applyTheme(next);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {

@@ -96,9 +96,15 @@ function IconInstall() {
 export function PwaInstallCard() {
   const toast = useToast();
   const [pendingCount, setPendingCount] = useState(0);
-  const [online, setOnline] = useState(true);
-  const [installed, setInstalled] = useState(false);
-  const [ios, setIos] = useState(false);
+  const [online, setOnline] = useState(() =>
+    typeof window !== "undefined" ? navigator.onLine : true,
+  );
+  const [installed, setInstalled] = useState(() =>
+    typeof window !== "undefined" ? isStandalone() : false,
+  );
+  const [ios] = useState(() =>
+    typeof window !== "undefined" ? isIos() : false,
+  );
   const [installEvent, setInstallEvent] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [pending, startTransition] = useTransition();
@@ -113,10 +119,10 @@ export function PwaInstallCard() {
   }
 
   useEffect(() => {
-    setInstalled(isStandalone());
-    setIos(isIos());
-    setOnline(navigator.onLine);
-    void refreshPending();
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) void refreshPending();
+    });
 
     const onOnline = () => {
       setOnline(true);
@@ -139,6 +145,7 @@ export function PwaInstallCard() {
     window.addEventListener("offline", onOffline);
     window.addEventListener("beforeinstallprompt", onBip);
     return () => {
+      cancelled = true;
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
       window.removeEventListener("beforeinstallprompt", onBip);

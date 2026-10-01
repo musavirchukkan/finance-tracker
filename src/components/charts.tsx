@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties, type ReactElement } from "react";
+import { useMemo, type CSSProperties, type ReactElement } from "react";
 import {
   Bar,
   BarChart,
@@ -145,13 +145,11 @@ const FALLBACK_THEME: ChartTheme = {
 
 function useChartTheme(): ChartTheme {
   const { resolved } = useTheme();
-  const [theme, setTheme] = useState<ChartTheme>(FALLBACK_THEME);
-
-  useEffect(() => {
-    setTheme(readChartTheme());
+  return useMemo(() => {
+    void resolved;
+    if (typeof document === "undefined") return FALLBACK_THEME;
+    return readChartTheme();
   }, [resolved]);
-
-  return theme;
 }
 
 function ChartFrame({

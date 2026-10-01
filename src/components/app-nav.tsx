@@ -54,11 +54,13 @@ export function AppNav({ name }: { name?: string | null }) {
   const pathname = usePathname();
   const router = useRouter();
   const [pendingHref, setPendingHref] = useState<string | null>(null);
+  const [navPath, setNavPath] = useState(pathname);
   const [isPending, startTransition] = useTransition();
 
-  useEffect(() => {
+  if (navPath !== pathname) {
+    setNavPath(pathname);
     setPendingHref(null);
-  }, [pathname]);
+  }
 
   useEffect(() => {
     for (const link of [
