@@ -6,6 +6,16 @@ export function computePaidTillNow(emi: number, monthsPaid: number): number {
   return Math.round(e * m * 100) / 100;
 }
 
+/** Equal installment: starting ÷ total months (2 decimal places). */
+export function computeMonthlyEmi(
+  startingBalance: number,
+  totalMonths: number,
+): number {
+  const months = Math.floor(totalMonths);
+  if (startingBalance <= 0 || months <= 0) return 0;
+  return Math.round((startingBalance / months) * 100) / 100;
+}
+
 export function remainingMonths(totalMonths: number, monthsPaid: number): number {
   return Math.max(0, Math.floor(totalMonths) - Math.max(0, Math.floor(monthsPaid)));
 }

@@ -101,27 +101,40 @@ export const debtAccounts = pgTable("debt_accounts", {
   totalMonths: integer("total_months").notNull().default(0),
   monthsPaid: integer("months_paid").notNull().default(0),
   status: text("status").notNull().default("Active Paydown"),
+  /** Income tx logged when borrowed money was received. */
+  receivedTransactionId: uuid("received_transaction_id").references(
+    () => transactions.id,
+    { onDelete: "set null" },
+  ),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
 });
 
-export const debtPayments = pgTable("debt_payments", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  accountId: uuid("account_id")
-    .notNull()
-    .references(() => debtAccounts.id, { onDelete: "cascade" }),
-  dueDate: date("due_date").notNull(),
-  paymentType: text("payment_type").notNull().default("EMI"),
-  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
-  isPaid: boolean("is_paid").notNull().default(false),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-});
+export const debtPayments = pgTable(
+  "debt_payments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => debtAccounts.id, { onDelete: "cascade" }),
+    dueDate: date("due_date").notNull(),
+    paymentType: text("payment_type").notNull().default("EMI"),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    isPaid: boolean("is_paid").notNull().default(false),
+    /** Linked expense transaction when this payment hits monthly cashflow. */
+    transactionId: uuid("transaction_id").references(() => transactions.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [uniqueIndex("debt_payments_transaction").on(t.transactionId)],
+);
 
 export const debtSettings = pgTable("debt_settings", {
   userId: uuid("user_id")
@@ -167,12 +180,20 @@ export const categoriesRelations = relations(categories, ({ one, many }) => ({
 export const debtAccountsRelations = relations(debtAccounts, ({ one, many }) => ({
   user: one(users, { fields: [debtAccounts.userId], references: [users.id] }),
   payments: many(debtPayments),
+  receivedTransaction: one(transactions, {
+    fields: [debtAccounts.receivedTransactionId],
+    references: [transactions.id],
+  }),
 }));
 
 export const debtPaymentsRelations = relations(debtPayments, ({ one }) => ({
   account: one(debtAccounts, {
     fields: [debtPayments.accountId],
     references: [debtAccounts.id],
+  }),
+  transaction: one(transactions, {
+    fields: [debtPayments.transactionId],
+    references: [transactions.id],
   }),
 }));
 

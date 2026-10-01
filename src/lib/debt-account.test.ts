@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  computeMonthlyEmi,
   computePaidTillNow,
   remainingBalance,
   remainingMonths,
@@ -13,6 +14,20 @@ describe("computePaidTillNow", () => {
 
   it("rounds to two decimals", () => {
     expect(computePaidTillNow(3333.33, 3)).toBe(9999.99);
+  });
+});
+
+describe("computeMonthlyEmi", () => {
+  it("divides starting by total months", () => {
+    expect(computeMonthlyEmi(120000, 12)).toBe(10000);
+  });
+
+  it("rounds to two decimals", () => {
+    expect(computeMonthlyEmi(100000, 3)).toBe(33333.33);
+  });
+
+  it("returns 0 when months missing", () => {
+    expect(computeMonthlyEmi(100000, 0)).toBe(0);
   });
 });
 

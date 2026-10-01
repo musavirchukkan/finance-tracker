@@ -22,6 +22,7 @@ export const CATEGORY_ICON_CHOICES = [
   "📈",
   "🎁",
   "🏦",
+  "🤝",
   "📁",
   "✨",
 ] as const;
@@ -39,6 +40,8 @@ const DEFAULT_BY_NAME: Record<string, string> = {
   salary: "💼",
   freelance: "💻",
   "other income": "💰",
+  "debt / emi": "🏦",
+  borrowed: "🤝",
 };
 
 /** Prefer stored icon; otherwise guess from name. */

@@ -17,10 +17,11 @@ const EXPENSE_CATEGORIES = [
   "Personal Items",
   "Travel",
   "Utilities",
+  "Debt / EMI",
   "Other",
 ];
 
-const INCOME_CATEGORIES = ["Salary", "Freelance", "Other Income"];
+const INCOME_CATEGORIES = ["Salary", "Freelance", "Borrowed", "Other Income"];
 
 async function ensureCategories(
   db: ReturnType<typeof drizzle>,

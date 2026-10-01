@@ -21,6 +21,12 @@ import {
   PAID_TO_DATE_TYPE,
   validateDebtTenure,
 } from "@/lib/debt-account";
+import {
+  createBorrowedIncomeTransaction,
+  deleteLinkedDebtPaymentTransaction,
+  deleteReceivedIncomeTransaction,
+  syncDebtPaymentTransaction,
+} from "@/lib/debt-cashflow";
 
 export async function createTransaction(formData: FormData) {
   const user = await requireUser();
@@ -134,6 +140,15 @@ export async function upsertBudgetAmount(formData: FormData) {
   revalidatePath("/analytics");
 }
 
+function revalidateDebtCashflow() {
+  revalidatePath("/debt");
+  revalidatePath("/goals");
+  revalidatePath("/overview");
+  revalidatePath("/transactions");
+  revalidatePath("/budget");
+  revalidatePath("/quick-add");
+}
+
 export async function createDebtAccount(formData: FormData) {
   const user = await requireUser();
   const name = String(formData.get("name") ?? "").trim();
@@ -152,6 +167,9 @@ export async function createDebtAccount(formData: FormData) {
   );
   const paidTillNow = parseAmount(String(formData.get("paidTillNow") ?? "0"));
   const status = String(formData.get("status") ?? "Active Paydown").trim();
+  const logAsIncome =
+    formData.get("logAsIncome") === "on" ||
+    formData.get("logAsIncome") === "true";
 
   if (!name || !type) throw new Error("Name and type are required");
 
@@ -162,6 +180,17 @@ export async function createDebtAccount(formData: FormData) {
     monthsPaid,
     paidTillNow,
   });
+
+  let receivedTransactionId: string | null = null;
+  const today = new Date().toISOString().slice(0, 10);
+  if (logAsIncome && startingBalance > 0) {
+    receivedTransactionId = await createBorrowedIncomeTransaction({
+      userId: user.id,
+      accountName: name,
+      amount: startingBalance.toFixed(2),
+      date: today,
+    });
+  }
 
   const [account] = await db
     .insert(debtAccounts)
@@ -174,6 +203,7 @@ export async function createDebtAccount(formData: FormData) {
       totalMonths,
       monthsPaid,
       status,
+      receivedTransactionId,
     })
     .returning();
 
@@ -181,16 +211,14 @@ export async function createDebtAccount(formData: FormData) {
     await db.insert(debtPayments).values({
       userId: user.id,
       accountId: account.id,
-      dueDate: new Date().toISOString().slice(0, 10),
+      dueDate: today,
       paymentType: PAID_TO_DATE_TYPE,
       amount: paidTillNow.toFixed(2),
       isPaid: true,
     });
   }
 
-  revalidatePath("/debt");
-  revalidatePath("/goals");
-  revalidatePath("/overview");
+  revalidateDebtCashflow();
 }
 
 async function upsertPaidToDatePayment(args: {
@@ -213,6 +241,7 @@ async function upsertPaidToDatePayment(args: {
 
   if (paidTillNow <= 0) {
     if (existing) {
+      await deleteLinkedDebtPaymentTransaction(existing.id, userId);
       await db
         .delete(debtPayments)
         .where(
@@ -232,17 +261,22 @@ async function upsertPaidToDatePayment(args: {
       .where(
         and(eq(debtPayments.id, existing.id), eq(debtPayments.userId, userId)),
       );
+    await syncDebtPaymentTransaction(existing.id, userId);
     return;
   }
 
-  await db.insert(debtPayments).values({
-    userId,
-    accountId,
-    dueDate: new Date().toISOString().slice(0, 10),
-    paymentType: PAID_TO_DATE_TYPE,
-    amount: paidTillNow.toFixed(2),
-    isPaid: true,
-  });
+  const [row] = await db
+    .insert(debtPayments)
+    .values({
+      userId,
+      accountId,
+      dueDate: new Date().toISOString().slice(0, 10),
+      paymentType: PAID_TO_DATE_TYPE,
+      amount: paidTillNow.toFixed(2),
+      isPaid: true,
+    })
+    .returning();
+  if (row) await syncDebtPaymentTransaction(row.id, userId);
 }
 
 export async function updateDebtAccount(formData: FormData) {
@@ -294,22 +328,47 @@ export async function updateDebtAccount(formData: FormData) {
     paidTillNow,
   });
 
-  revalidatePath("/debt");
-  revalidatePath("/goals");
-  revalidatePath("/overview");
+  revalidateDebtCashflow();
 }
 
 export async function deleteDebtAccount(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get("id") ?? "");
 
+  const [account] = await db
+    .select({
+      id: debtAccounts.id,
+      receivedTransactionId: debtAccounts.receivedTransactionId,
+    })
+    .from(debtAccounts)
+    .where(and(eq(debtAccounts.id, id), eq(debtAccounts.userId, user.id)))
+    .limit(1);
+
+  if (!account) return;
+
+  const linkedPayments = await db
+    .select({ id: debtPayments.id, transactionId: debtPayments.transactionId })
+    .from(debtPayments)
+    .where(
+      and(eq(debtPayments.accountId, id), eq(debtPayments.userId, user.id)),
+    );
+
+  for (const p of linkedPayments) {
+    await deleteLinkedDebtPaymentTransaction(p.id, user.id);
+  }
+
+  await db
+    .update(debtAccounts)
+    .set({ receivedTransactionId: null })
+    .where(and(eq(debtAccounts.id, id), eq(debtAccounts.userId, user.id)));
+
+  await deleteReceivedIncomeTransaction(user.id, account.receivedTransactionId);
+
   await db
     .delete(debtAccounts)
     .where(and(eq(debtAccounts.id, id), eq(debtAccounts.userId, user.id)));
 
-  revalidatePath("/debt");
-  revalidatePath("/goals");
-  revalidatePath("/overview");
+  revalidateDebtCashflow();
 }
 
 export async function createDebtPayment(formData: FormData) {
@@ -318,22 +377,28 @@ export async function createDebtPayment(formData: FormData) {
   const dueDate = String(formData.get("dueDate") ?? "");
   const paymentType = String(formData.get("paymentType") ?? "EMI").trim();
   const amount = parseAmount(String(formData.get("amount") ?? "0"));
-  const isPaid = formData.get("isPaid") === "on" || formData.get("isPaid") === "true";
+  const isPaid =
+    formData.get("isPaid") === "on" || formData.get("isPaid") === "true";
 
   if (!accountId || !dueDate) throw new Error("Missing fields");
 
-  await db.insert(debtPayments).values({
-    userId: user.id,
-    accountId,
-    dueDate,
-    paymentType,
-    amount: amount.toFixed(2),
-    isPaid,
-  });
+  const [payment] = await db
+    .insert(debtPayments)
+    .values({
+      userId: user.id,
+      accountId,
+      dueDate,
+      paymentType,
+      amount: amount.toFixed(2),
+      isPaid,
+    })
+    .returning();
 
-  revalidatePath("/debt");
-  revalidatePath("/goals");
-  revalidatePath("/overview");
+  if (payment) {
+    await syncDebtPaymentTransaction(payment.id, user.id);
+  }
+
+  revalidateDebtCashflow();
 }
 
 export async function toggleDebtPaymentPaid(formData: FormData) {
@@ -346,22 +411,22 @@ export async function toggleDebtPaymentPaid(formData: FormData) {
     .set({ isPaid: !isPaid })
     .where(and(eq(debtPayments.id, id), eq(debtPayments.userId, user.id)));
 
-  revalidatePath("/debt");
-  revalidatePath("/goals");
-  revalidatePath("/overview");
+  await syncDebtPaymentTransaction(id, user.id);
+
+  revalidateDebtCashflow();
 }
 
 export async function deleteDebtPayment(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get("id") ?? "");
 
+  await deleteLinkedDebtPaymentTransaction(id, user.id);
+
   await db
     .delete(debtPayments)
     .where(and(eq(debtPayments.id, id), eq(debtPayments.userId, user.id)));
 
-  revalidatePath("/debt");
-  revalidatePath("/goals");
-  revalidatePath("/overview");
+  revalidateDebtCashflow();
 }
 
 export async function updateDebtGoal(formData: FormData) {

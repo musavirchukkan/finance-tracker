@@ -1005,10 +1005,23 @@ button:disabled {
   gap: var(--space-2);
 }
 
-.debt-paid-row {
+.debt-check-label {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  align-items: flex-start;
+  gap: 0.55rem;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.debt-check-label input {
+  margin-top: 0.15rem;
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--accent);
 }
 
 .debt-paid-row input {

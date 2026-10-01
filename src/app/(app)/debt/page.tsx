@@ -106,7 +106,8 @@ export default async function DebtPage() {
         <div>
           <h2 className="page-title">Debt</h2>
           <p className="muted page-sub">
-            Track balances, log payments, and stay on the path to zero.
+            Track loans and borrows. Paid EMIs count toward monthly expenses;
+            borrowed money can log as income when you receive it.
           </p>
         </div>
         <div className="dash-actions">
@@ -278,6 +279,10 @@ export default async function DebtPage() {
               <h2>Payment log</h2>
               <AddDebtPaymentButton accounts={accountOptions} />
             </div>
+            <p className="muted page-sub" style={{ marginTop: 0 }}>
+              Marking a payment paid also records it as a Debt / EMI expense for
+              that month.
+            </p>
 
             {data.payments.length === 0 ? (
               <div className="empty">No payments logged yet.</div>
