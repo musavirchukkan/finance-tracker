@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/toast";
 import {
@@ -59,6 +66,101 @@ function formatTimeLabel(date: string, time: string, isToday: boolean) {
     month: "short",
   });
   return `${day}, ${clock}`;
+}
+
+function QuickCategoryPicker({
+  options,
+  value,
+  onChange,
+}: {
+  options: CategoryOption[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const listId = useId();
+  const selected = options.find((c) => c.id === value) ?? null;
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointer);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onPointer);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="qa-select-wrap qa-category-picker" ref={rootRef}>
+      <button
+        type="button"
+        className="qa-category-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listId}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="qa-select-icon" aria-hidden>
+          {selected
+            ? resolveCategoryIcon(selected.name, selected.icon)
+            : "📁"}
+        </span>
+        <span className="qa-category-label">
+          {selected?.name ?? "Pick a category"}
+        </span>
+        <span className="qa-category-chevron" aria-hidden>
+          ▾
+        </span>
+      </button>
+      {open ? (
+        <ul
+          id={listId}
+          className="qa-category-menu"
+          role="listbox"
+          aria-label="Category"
+        >
+          {options.length === 0 ? (
+            <li className="qa-category-empty muted">No categories yet</li>
+          ) : (
+            options.map((c) => {
+              const active = c.id === value;
+              return (
+                <li key={c.id} role="presentation">
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={active}
+                    className={
+                      active
+                        ? "qa-category-option active"
+                        : "qa-category-option"
+                    }
+                    onClick={() => {
+                      onChange(c.id);
+                      setOpen(false);
+                    }}
+                  >
+                    <span className="qa-select-icon" aria-hidden>
+                      {resolveCategoryIcon(c.name, c.icon)}
+                    </span>
+                    <span>{c.name}</span>
+                  </button>
+                </li>
+              );
+            })
+          )}
+        </ul>
+      ) : null}
+    </div>
+  );
 }
 
 export function TransactionForm({
@@ -215,7 +317,6 @@ export function TransactionForm({
   }
 
   const amountNum = Number(amount) || 0;
-  const selectedCat = filtered.find((c) => c.id === selectedCategoryId);
   const timeLabel = formatTimeLabel(
     editWhen ? dateValue : todayLocal(),
     editWhen ? timeValue : nowTimeLocal(),
@@ -344,30 +445,11 @@ export function TransactionForm({
 
         <div className="qa-field">
           <span className="qa-label">Category</span>
-          <div className="qa-select-wrap">
-            <span className="qa-select-icon" aria-hidden>
-              {selectedCat
-                ? resolveCategoryIcon(selectedCat.name, selectedCat.icon)
-                : "📁"}
-            </span>
-            <select
-              className="qa-select"
-              value={selectedCategoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
-              aria-label="Category"
-              required
-            >
-              {filtered.length === 0 ? (
-                <option value="">No categories yet</option>
-              ) : (
-                filtered.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {resolveCategoryIcon(c.name, c.icon)} {c.name}
-                  </option>
-                ))
-              )}
-            </select>
-          </div>
+          <QuickCategoryPicker
+            options={filtered}
+            value={selectedCategoryId}
+            onChange={setCategoryId}
+          />
         </div>
 
         <div className="qa-meta">

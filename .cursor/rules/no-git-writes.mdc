@@ -1,0 +1,14 @@
+---
+description: Git write operations are forbidden — guide only
+alwaysApply: true
+---
+
+# Git policy
+
+Do not run git write operations in this repo. That includes commit, push, pull, merge, rebase, branch create/delete, add, stash, restore --staged, reset, and amending history.
+
+Allowed: read-only git inspection (`status`, `diff`, `log`, `branch -a`, `show`) when needed to understand the codebase.
+
+When the user wants git changes done (commit, push, delete a remote branch, etc.), give clear step-by-step commands they can run themselves. Do not execute those commands.
+
+Code edits and implementation are fine.
