@@ -1,14 +1,20 @@
 ---
-description: Git write operations are forbidden — guide only
+description: Git write operations require explicit user permission
 alwaysApply: true
 ---
 
 # Git policy
 
-Do not run git write operations in this repo. That includes commit, push, pull, merge, rebase, branch create/delete, add, stash, restore --staged, reset, and amending history.
+Do not run git write operations by default. That includes commit, push, pull, merge, rebase, branch create/delete, add, stash, restore --staged, reset, and amending history.
 
-Allowed: read-only git inspection (`status`, `diff`, `log`, `branch -a`, `show`) when needed to understand the codebase.
+Allowed always: read-only git inspection (`status`, `diff`, `log`, `branch -a`, `show`) when needed to understand the codebase.
 
-When the user wants git changes done (commit, push, delete a remote branch, etc.), give clear step-by-step commands they can run themselves. Do not execute those commands.
+When the user explicitly asks to commit and/or push (or other git writes):
+1. Inspect status/diff/log as usual and draft the exact commands.
+2. Show those commands in the reply.
+3. Ask for permission to run them.
+4. Only execute after the user confirms (e.g. "yes", "go ahead", "run it").
+
+Do not commit, push, or otherwise mutate git state without that confirmation in the same turn or a clear follow-up.
 
 Code edits and implementation are fine.

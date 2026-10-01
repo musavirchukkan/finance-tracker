@@ -5,6 +5,7 @@ import { DebtReductionChart } from "@/components/charts";
 import {
   AddDebtAccountButton,
   AddDebtPaymentButton,
+  EditDebtAccountButton,
 } from "@/components/debt-forms";
 import {
   deleteDebtAccount,
@@ -201,6 +202,7 @@ export default async function DebtPage() {
                       <th className="num">Starting</th>
                       <th className="num">Paid</th>
                       <th className="num">Pending</th>
+                      <th>Tenure</th>
                       <th>Status</th>
                       <th>
                         <span className="sr-only">Actions</span>
@@ -217,22 +219,42 @@ export default async function DebtPage() {
                         </td>
                         <td className="num">{formatINR(a.totalPaid)}</td>
                         <td className="num">{formatINR(a.pending)}</td>
+                        <td className="nowrap">
+                          {a.totalMonths > 0
+                            ? `${a.monthsPaid} / ${a.totalMonths} mo`
+                            : "—"}
+                        </td>
                         <td>{a.status}</td>
                         <td>
-                          <ActionForm
-                            action={deleteDebtAccount}
-                            successMessage="Account deleted"
-                            errorMessage="Could not delete account"
-                            confirmMessage={`Delete “${a.name}”?`}
-                          >
-                            <input type="hidden" name="id" value={a.id} />
-                            <button
-                              className="btn btn-danger btn-xs"
-                              type="submit"
+                          <div className="row-actions">
+                            <EditDebtAccountButton
+                              account={{
+                                id: a.id,
+                                name: a.name,
+                                type: a.type,
+                                startingBalance: a.startingBalance,
+                                monthlyEmi: a.monthlyEmi,
+                                totalMonths: a.totalMonths,
+                                monthsPaid: a.monthsPaid,
+                                paidTillNow: a.paidTillNow,
+                                status: a.status,
+                              }}
+                            />
+                            <ActionForm
+                              action={deleteDebtAccount}
+                              successMessage="Account deleted"
+                              errorMessage="Could not delete account"
+                              confirmMessage={`Delete “${a.name}”?`}
                             >
-                              Del
-                            </button>
-                          </ActionForm>
+                              <input type="hidden" name="id" value={a.id} />
+                              <button
+                                className="btn btn-danger btn-xs"
+                                type="submit"
+                              >
+                                Del
+                              </button>
+                            </ActionForm>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -243,7 +265,7 @@ export default async function DebtPage() {
                       <td className="num">{formatINR(data.totals.starting)}</td>
                       <td className="num">{formatINR(data.totals.paid)}</td>
                       <td className="num">{formatINR(data.totals.pending)}</td>
-                      <td colSpan={2}></td>
+                      <td colSpan={3}></td>
                     </tr>
                   </tfoot>
                 </table>

@@ -17,6 +17,10 @@ import {
 import { parseAmount, toNumber } from "@/lib/money";
 import { requireUser } from "@/lib/session";
 import { monthDateBounds, yearMonthFromDate } from "@/lib/months";
+import {
+  PAID_TO_DATE_TYPE,
+  validateDebtTenure,
+} from "@/lib/debt-account";
 
 export async function createTransaction(formData: FormData) {
   const user = await requireUser();
@@ -137,21 +141,108 @@ export async function createDebtAccount(formData: FormData) {
   const startingBalance = parseAmount(
     String(formData.get("startingBalance") ?? "0"),
   );
+  const monthlyEmi = parseAmount(String(formData.get("monthlyEmi") ?? "0"));
+  const totalMonths = Math.max(
+    0,
+    Math.floor(Number(formData.get("totalMonths") ?? 0) || 0),
+  );
+  const monthsPaid = Math.max(
+    0,
+    Math.floor(Number(formData.get("monthsPaid") ?? 0) || 0),
+  );
+  const paidTillNow = parseAmount(String(formData.get("paidTillNow") ?? "0"));
   const status = String(formData.get("status") ?? "Active Paydown").trim();
 
   if (!name || !type) throw new Error("Name and type are required");
 
-  await db.insert(debtAccounts).values({
-    userId: user.id,
-    name,
-    type,
-    startingBalance: startingBalance.toFixed(2),
-    status,
+  validateDebtTenure({
+    startingBalance,
+    monthlyEmi,
+    totalMonths,
+    monthsPaid,
+    paidTillNow,
   });
+
+  const [account] = await db
+    .insert(debtAccounts)
+    .values({
+      userId: user.id,
+      name,
+      type,
+      startingBalance: startingBalance.toFixed(2),
+      monthlyEmi: monthlyEmi.toFixed(2),
+      totalMonths,
+      monthsPaid,
+      status,
+    })
+    .returning();
+
+  if (account && paidTillNow > 0) {
+    await db.insert(debtPayments).values({
+      userId: user.id,
+      accountId: account.id,
+      dueDate: new Date().toISOString().slice(0, 10),
+      paymentType: PAID_TO_DATE_TYPE,
+      amount: paidTillNow.toFixed(2),
+      isPaid: true,
+    });
+  }
 
   revalidatePath("/debt");
   revalidatePath("/goals");
   revalidatePath("/overview");
+}
+
+async function upsertPaidToDatePayment(args: {
+  userId: string;
+  accountId: string;
+  paidTillNow: number;
+}) {
+  const { userId, accountId, paidTillNow } = args;
+  const [existing] = await db
+    .select({ id: debtPayments.id })
+    .from(debtPayments)
+    .where(
+      and(
+        eq(debtPayments.userId, userId),
+        eq(debtPayments.accountId, accountId),
+        eq(debtPayments.paymentType, PAID_TO_DATE_TYPE),
+      ),
+    )
+    .limit(1);
+
+  if (paidTillNow <= 0) {
+    if (existing) {
+      await db
+        .delete(debtPayments)
+        .where(
+          and(eq(debtPayments.id, existing.id), eq(debtPayments.userId, userId)),
+        );
+    }
+    return;
+  }
+
+  if (existing) {
+    await db
+      .update(debtPayments)
+      .set({
+        amount: paidTillNow.toFixed(2),
+        isPaid: true,
+      })
+      .where(
+        and(eq(debtPayments.id, existing.id), eq(debtPayments.userId, userId)),
+      );
+    return;
+  }
+
+  await db.insert(debtPayments).values({
+    userId,
+    accountId,
+    dueDate: new Date().toISOString().slice(0, 10),
+    paymentType: PAID_TO_DATE_TYPE,
+    amount: paidTillNow.toFixed(2),
+    isPaid: true,
+  });
 }
 
 export async function updateDebtAccount(formData: FormData) {
@@ -162,7 +253,27 @@ export async function updateDebtAccount(formData: FormData) {
   const startingBalance = parseAmount(
     String(formData.get("startingBalance") ?? "0"),
   );
+  const monthlyEmi = parseAmount(String(formData.get("monthlyEmi") ?? "0"));
+  const totalMonths = Math.max(
+    0,
+    Math.floor(Number(formData.get("totalMonths") ?? 0) || 0),
+  );
+  const monthsPaid = Math.max(
+    0,
+    Math.floor(Number(formData.get("monthsPaid") ?? 0) || 0),
+  );
+  const paidTillNow = parseAmount(String(formData.get("paidTillNow") ?? "0"));
   const status = String(formData.get("status") ?? "Active Paydown").trim();
+
+  if (!id || !name || !type) throw new Error("Missing fields");
+
+  validateDebtTenure({
+    startingBalance,
+    monthlyEmi,
+    totalMonths,
+    monthsPaid,
+    paidTillNow,
+  });
 
   await db
     .update(debtAccounts)
@@ -170,9 +281,18 @@ export async function updateDebtAccount(formData: FormData) {
       name,
       type,
       startingBalance: startingBalance.toFixed(2),
+      monthlyEmi: monthlyEmi.toFixed(2),
+      totalMonths,
+      monthsPaid,
       status,
     })
     .where(and(eq(debtAccounts.id, id), eq(debtAccounts.userId, user.id)));
+
+  await upsertPaidToDatePayment({
+    userId: user.id,
+    accountId: id,
+    paidTillNow,
+  });
 
   revalidatePath("/debt");
   revalidatePath("/goals");
@@ -644,12 +764,19 @@ export async function getDebtDashboard(userId: string) {
     .limit(1);
 
   const paidByAccount = new Map<string, number>();
+  const paidToDateByAccount = new Map<string, number>();
   for (const p of payments) {
     if (!p.isPaid) continue;
     paidByAccount.set(
       p.accountId,
       (paidByAccount.get(p.accountId) ?? 0) + toNumber(p.amount),
     );
+    if (p.paymentType === PAID_TO_DATE_TYPE) {
+      paidToDateByAccount.set(
+        p.accountId,
+        (paidToDateByAccount.get(p.accountId) ?? 0) + toNumber(p.amount),
+      );
+    }
   }
 
   const accountRows = accounts.map((a) => {
@@ -658,7 +785,9 @@ export async function getDebtDashboard(userId: string) {
     return {
       ...a,
       startingBalanceNum: starting,
+      monthlyEmiNum: toNumber(a.monthlyEmi),
       totalPaid: paid,
+      paidTillNow: paidToDateByAccount.get(a.id) ?? 0,
       pending: Math.max(0, starting - paid),
     };
   });

@@ -95,6 +95,11 @@ export const debtAccounts = pgTable("debt_accounts", {
   startingBalance: numeric("starting_balance", { precision: 14, scale: 2 })
     .notNull()
     .default("0"),
+  monthlyEmi: numeric("monthly_emi", { precision: 12, scale: 2 })
+    .notNull()
+    .default("0"),
+  totalMonths: integer("total_months").notNull().default(0),
+  monthsPaid: integer("months_paid").notNull().default(0),
   status: text("status").notNull().default("Active Paydown"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()

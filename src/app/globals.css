@@ -1005,13 +1005,47 @@ button:disabled {
   gap: var(--space-2);
 }
 
-.account-meta {
+.debt-paid-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.debt-paid-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.debt-live-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  padding: 0.75rem 0.85rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.debt-live-stats > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.debt-live-stats .muted {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.row-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
+  gap: 0.35rem;
+  justify-content: flex-end;
 }
+
 
 .account-password-form {
   max-width: 24rem;
