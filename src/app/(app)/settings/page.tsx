@@ -1,3 +1,4 @@
+import { AccountSettings } from "@/components/account-settings";
 import { PwaInstallCard } from "@/components/pwa-install-card";
 import { SettingsForms } from "@/components/settings-forms";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -16,10 +17,15 @@ export default async function SettingsPage() {
         <div>
           <h2 className="page-title">Settings</h2>
           <p className="muted page-sub">
-            Theme, install Ledger, manage categories, and offline data.
+            Account, theme, install Ledger, categories, and offline data.
           </p>
         </div>
       </div>
+
+      <AccountSettings
+        email={user.email ?? ""}
+        name={user.name ?? "there"}
+      />
 
       <ThemeToggle />
 

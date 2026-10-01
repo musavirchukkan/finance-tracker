@@ -1,6 +1,9 @@
-import { NextResponse } from "next/server";
+import { healthResponse } from "@/lib/health";
 
-/** Lightweight probe endpoint (Docker / uptime checkers). */
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+/** Cron / uptime probe — wakes app + checks DB. */
 export async function GET() {
-  return NextResponse.json({ ok: true });
+  return healthResponse();
 }

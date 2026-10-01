@@ -5,6 +5,7 @@ const APP_PREFIXES = [
   "/budget",
   "/analytics",
   "/goals",
+  "/more",
   "/settings",
   "/quick-add",
 ];

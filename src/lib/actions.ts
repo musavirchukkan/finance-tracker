@@ -1,5 +1,6 @@
 "use server";
 
+import { compare, hash } from "bcryptjs";
 import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
@@ -11,6 +12,7 @@ import {
   debtSettings,
   savingsGoals,
   transactions,
+  users,
 } from "@/lib/db/schema";
 import { parseAmount, toNumber } from "@/lib/money";
 import { requireUser } from "@/lib/session";
@@ -774,4 +776,47 @@ export async function deleteSavingsGoal(formData: FormData) {
     .where(and(eq(savingsGoals.id, id), eq(savingsGoals.userId, user.id)));
 
   revalidateGoals();
+}
+
+export async function changePassword(formData: FormData) {
+  const sessionUser = await requireUser();
+  const currentPassword = String(formData.get("currentPassword") ?? "");
+  const newPassword = String(formData.get("newPassword") ?? "");
+  const confirmPassword = String(formData.get("confirmPassword") ?? "");
+
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    throw new Error("All password fields are required");
+  }
+  if (newPassword.length < 6) {
+    throw new Error("New password must be at least 6 characters");
+  }
+  if (newPassword !== confirmPassword) {
+    throw new Error("New passwords do not match");
+  }
+  if (newPassword === currentPassword) {
+    throw new Error("New password must be different from the current one");
+  }
+
+  const [row] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, sessionUser.id))
+    .limit(1);
+
+  if (!row) {
+    throw new Error("Account not found. Sign out and sign in again.");
+  }
+
+  const valid = await compare(currentPassword, row.passwordHash);
+  if (!valid) {
+    throw new Error("Current password is incorrect");
+  }
+
+  const passwordHash = await hash(newPassword, 12);
+  await db
+    .update(users)
+    .set({ passwordHash })
+    .where(eq(users.id, row.id));
+
+  revalidatePath("/settings");
 }

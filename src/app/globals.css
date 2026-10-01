@@ -699,6 +699,67 @@ table.data tfoot td {
   opacity: 0.85;
 }
 
+.more-hub {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.more-hub-link {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  width: 100%;
+  padding: 0.85rem 0.75rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  min-height: var(--tap);
+  transition: background 0.12s ease;
+}
+
+.more-hub-link:hover,
+.more-hub-link.active {
+  background: var(--surface-hover);
+}
+
+.more-hub-icon {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-soft);
+  flex-shrink: 0;
+}
+
+.more-hub-copy {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.more-hub-copy strong {
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.more-hub-copy .muted {
+  font-size: var(--text-xs);
+}
+
+.more-hub-chevron {
+  color: var(--muted);
+  font-size: 1.25rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 /* ——— Modal ——— */
 .modal {
   border: 0;
@@ -941,6 +1002,24 @@ button:disabled {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  gap: var(--space-2);
+}
+
+.account-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.account-password-form {
+  max-width: 24rem;
+}
+
+.account-password-actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
 }
 

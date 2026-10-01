@@ -54,7 +54,11 @@ export function ActionForm({
             router.refresh();
           } catch (err) {
             console.error(err);
-            toast.error(errorMessage);
+            const message =
+              err instanceof Error && err.message.trim()
+                ? err.message
+                : errorMessage;
+            toast.error(message);
           }
         });
       }}

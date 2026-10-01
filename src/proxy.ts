@@ -35,6 +35,7 @@ export const proxy = auth((request) => {
       "/budget",
       "/analytics",
       "/goals",
+      "/more",
       "/settings",
       "/quick-add",
     ];
