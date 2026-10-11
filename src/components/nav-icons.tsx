@@ -29,6 +29,16 @@ export function NavIcon({ name }: { name: string }) {
       </svg>
     );
   }
+  if (name === "cards") {
+    return (
+      <svg {...common}>
+        <rect x="2" y="5" width="20" height="14" rx="2" />
+        <path d="M2 10h20" />
+        <path d="M7 15h3" />
+        <path d="M14 15h3" />
+      </svg>
+    );
+  }
   if (name === "list") {
     return (
       <svg {...common}>

@@ -25,8 +25,14 @@ export type CategoryOption = {
   icon?: string | null;
 };
 
+export type CreditCardOption = {
+  id: string;
+  name: string;
+};
+
 type Props = {
   categories: CategoryOption[];
+  creditCards?: CreditCardOption[];
   defaultDate?: string;
   /** Polished quick-add layout (modal + /quick-add) */
   variant?: "classic" | "quick";
@@ -165,6 +171,7 @@ function QuickCategoryPicker({
 
 export function TransactionForm({
   categories,
+  creditCards = [],
   defaultDate,
   variant,
   compact,
@@ -177,6 +184,7 @@ export function TransactionForm({
   const [type, setType] = useState<"expense" | "income">("expense");
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
+  const [creditCardId, setCreditCardId] = useState("");
   const [categoryId, setCategoryId] = useState(
     () => categories.find((c) => c.kind === "expense")?.id ?? "",
   );
@@ -202,6 +210,7 @@ export function TransactionForm({
     setType(next);
     const nextFiltered = categories.filter((c) => c.kind === next);
     setCategoryId(nextFiltered[0]?.id ?? "");
+    if (next !== "expense") setCreditCardId("");
   }
 
   async function refreshPending() {
@@ -245,6 +254,7 @@ export function TransactionForm({
   function resetForm() {
     setAmount("");
     setDescription("");
+    setCreditCardId("");
     setDateValue(todayLocal());
     setTimeValue(nowTimeLocal());
     setEditWhen(false);
@@ -279,6 +289,8 @@ export function TransactionForm({
       categoryId: selectedCategoryId,
       type,
       amount: amountNum,
+      creditCardId:
+        type === "expense" && creditCardId ? creditCardId : null,
     };
 
     if (!navigator.onLine) {
@@ -451,6 +463,25 @@ export function TransactionForm({
             onChange={setCategoryId}
           />
         </div>
+
+        {type === "expense" && creditCards.length > 0 ? (
+          <div className="qa-field">
+            <span className="qa-label">Paid with</span>
+            <select
+              className="qa-select"
+              value={creditCardId}
+              onChange={(e) => setCreditCardId(e.target.value)}
+              aria-label="Paid with card"
+            >
+              <option value="">Cash / UPI / other</option>
+              {creditCards.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
 
         <div className="qa-meta">
           <div className="qa-meta-card">

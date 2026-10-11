@@ -46,26 +46,31 @@ export async function createTransaction(formData: FormData) {
     ? "income"
     : "expense";
   const amount = parseAmount(String(formData.get("amount") ?? "0"));
+  const creditCardId = String(formData.get("creditCardId") ?? "").trim() || null;
 
   if (!date || !categoryId) {
     throw new Error("Missing required fields");
   }
 
-  await db.insert(transactions).values({
-    userId: user.id,
+  const result = await insertTransactionForUser(user.id, {
     date,
     description,
     categoryId,
     type,
-    amount: amount.toFixed(2),
+    amount,
+    creditCardId: type === "expense" ? creditCardId : null,
   });
 
-  revalidatePath("/transactions");
-  revalidatePath("/budget");
-  revalidatePath("/overview");
-  revalidatePath("/analytics");
-  revalidatePath("/goals");
-  revalidatePath("/quick-add");
+  if (!result.duplicate) {
+    revalidatePath("/transactions");
+    revalidatePath("/budget");
+    revalidatePath("/overview");
+    revalidatePath("/analytics");
+    revalidatePath("/goals");
+    revalidatePath("/quick-add");
+    revalidatePath("/cards");
+    if (creditCardId) revalidatePath(`/cards/${creditCardId}`);
+  }
 }
 
 export async function updateTransaction(formData: FormData) {
@@ -78,6 +83,12 @@ export async function updateTransaction(formData: FormData) {
     ? "income"
     : "expense";
   const amount = parseAmount(String(formData.get("amount") ?? "0"));
+  const creditCardId = String(formData.get("creditCardId") ?? "").trim() || null;
+
+  const { reverseActivitiesForTransaction, recordSpendOnCard } =
+    await import("@/lib/credit-card-cashflow");
+
+  await reverseActivitiesForTransaction(user.id, id);
 
   await db
     .update(transactions)
@@ -87,19 +98,38 @@ export async function updateTransaction(formData: FormData) {
       categoryId,
       type,
       amount: amount.toFixed(2),
+      creditCardId: type === "expense" ? creditCardId : null,
     })
     .where(and(eq(transactions.id, id), eq(transactions.userId, user.id)));
+
+  if (type === "expense" && creditCardId && amount > 0) {
+    await recordSpendOnCard({
+      userId: user.id,
+      cardId: creditCardId,
+      date,
+      amount,
+      description,
+      transactionId: id,
+    });
+  }
 
   revalidatePath("/transactions");
   revalidatePath("/budget");
   revalidatePath("/overview");
   revalidatePath("/analytics");
   revalidatePath("/goals");
+  revalidatePath("/cards");
+  if (creditCardId) revalidatePath(`/cards/${creditCardId}`);
 }
 
 export async function deleteTransaction(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get("id") ?? "");
+
+  const { reverseActivitiesForTransaction } = await import(
+    "@/lib/credit-card-cashflow"
+  );
+  await reverseActivitiesForTransaction(user.id, id);
 
   await db
     .delete(transactions)
@@ -110,6 +140,7 @@ export async function deleteTransaction(formData: FormData) {
   revalidatePath("/overview");
   revalidatePath("/analytics");
   revalidatePath("/goals");
+  revalidatePath("/cards");
 }
 
 export async function upsertBudgetAmount(formData: FormData) {
@@ -780,6 +811,7 @@ export async function insertTransactionForUser(
     amount: number;
     occurredAt?: string;
     clientId?: string;
+    creditCardId?: string | null;
   },
 ): Promise<{ id: string; duplicate: boolean }> {
   // Idempotent offline sync: same clientId → return existing, don't insert again
@@ -808,6 +840,11 @@ export async function insertTransactionForUser(
       ? new Date().toISOString().slice(0, 10)
       : occurredAt.toISOString().slice(0, 10));
 
+  const creditCardId =
+    input.type === "expense" && input.creditCardId
+      ? input.creditCardId
+      : null;
+
   try {
     const [row] = await db
       .insert(transactions)
@@ -819,9 +856,22 @@ export async function insertTransactionForUser(
         categoryId: input.categoryId,
         type: input.type,
         amount: input.amount.toFixed(2),
+        creditCardId,
         clientId: input.clientId ?? null,
       })
       .returning();
+
+    if (creditCardId && input.amount > 0) {
+      const { recordSpendOnCard } = await import("@/lib/credit-card-cashflow");
+      await recordSpendOnCard({
+        userId,
+        cardId: creditCardId,
+        date: dateOnly,
+        amount: input.amount,
+        description: input.description,
+        transactionId: row.id,
+      });
+    }
 
     return { id: row.id, duplicate: false };
   } catch (err) {
@@ -844,6 +894,9 @@ export async function insertTransactionForUser(
 }
 
 export async function getDebtDashboard(userId: string) {
+  const { migrateRollingCreditCards } = await import("@/lib/card-actions");
+  await migrateRollingCreditCards(userId);
+
   const accounts = await db
     .select()
     .from(debtAccounts)

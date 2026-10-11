@@ -21,6 +21,8 @@ const EXPENSE_CATEGORIES = [
   "Lent",
   "Kuri",
   "Credit Card",
+  "Card fees",
+  "Bank charges",
   "Other",
 ];
 

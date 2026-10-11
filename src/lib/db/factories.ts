@@ -172,13 +172,6 @@ export function buildDebtAccounts(userId: string) {
       startingBalance: "120000.00",
       status: "Active Paydown",
     },
-    {
-      userId,
-      name: "SBI Credit Card",
-      type: "Credit Card",
-      startingBalance: "45000.00",
-      status: "Active Paydown",
-    },
   ];
 }
 
@@ -190,7 +183,6 @@ export function buildDebtPayments(
   const amounts: Record<string, number> = {
     "AXIS MY Zone": 2000,
     "HDFC Personal Loan": 8500,
-    "SBI Credit Card": 5000,
   };
 
   const rows: {

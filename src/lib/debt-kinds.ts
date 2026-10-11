@@ -6,7 +6,6 @@ export const DEBT_TYPE_PRESETS = [
   "Borrowed",
   "Lent",
   "Kuri",
-  "Credit Card",
   "Credit Line",
 ] as const;
 
@@ -23,7 +22,6 @@ export const DEBT_TYPE_OPTIONS: {
   { value: "Borrowed", label: "Borrowed (I owe)" },
   { value: "Lent", label: "Lent (they owe me)" },
   { value: "Kuri", label: "Kuri" },
-  { value: "Credit Card", label: "Credit Card" },
   { value: "Credit Line", label: "Credit Line" },
 ];
 

@@ -111,7 +111,10 @@ export default async function DebtPage() {
         <div>
           <h2 className="page-title">Debt</h2>
           <p className="muted page-sub">
-            Track loans, borrows, lends, kuri, and credit cards.
+            Track loans, borrows, lends, and kuri.{" "}
+            <Link className="linkish" href="/cards">
+              Credit cards →
+            </Link>
           </p>
         </div>
         <div className="dash-actions">

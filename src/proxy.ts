@@ -31,6 +31,7 @@ export const proxy = auth((request) => {
     const appPaths = [
       "/overview",
       "/debt",
+      "/cards",
       "/transactions",
       "/budget",
       "/analytics",

@@ -26,6 +26,7 @@ function BrandMark({ size = 28 }: { size?: number }) {
 const menuLinks = [
   { href: "/overview", label: "Overview", short: "Home", icon: "overview" },
   { href: "/debt", label: "Debt", short: "Debt", icon: "debt" },
+  { href: "/cards", label: "Cards", short: "Cards", icon: "cards" },
   {
     href: "/transactions",
     label: "Transactions",
@@ -48,7 +49,7 @@ const mobileMore = {
 } as const;
 
 const mobileLeft = [menuLinks[0], menuLinks[1]] as const;
-const mobileRight = [menuLinks[4], mobileMore] as const;
+const mobileRight = [menuLinks[5], mobileMore] as const;
 
 export function AppNav({ name }: { name?: string | null }) {
   const pathname = usePathname();

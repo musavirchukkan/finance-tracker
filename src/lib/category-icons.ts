@@ -52,6 +52,8 @@ const DEFAULT_BY_NAME: Record<string, string> = {
   kuri: "🔁",
   "kuri payout": "🎉",
   "credit card": "💳",
+  "card fees": "💳",
+  "bank charges": "🏦",
   "wallet cashout": "📲",
 };
 

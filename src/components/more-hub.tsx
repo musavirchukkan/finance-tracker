@@ -6,6 +6,12 @@ import { NavIcon } from "@/components/nav-icons";
 
 const moreLinks = [
   {
+    href: "/cards",
+    label: "Cards",
+    description: "Credit card outstanding, bills, wallet rolls",
+    icon: "cards",
+  },
+  {
     href: "/transactions",
     label: "Transactions",
     description: "Browse and edit spending history",

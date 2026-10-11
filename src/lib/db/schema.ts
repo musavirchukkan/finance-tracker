@@ -58,6 +58,30 @@ export const budgets = pgTable(
   ],
 );
 
+/** Rolling credit cards (not EMI loans). */
+export const creditCards = pgTable("credit_cards", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  currentOutstanding: numeric("current_outstanding", {
+    precision: 14,
+    scale: 2,
+  })
+    .notNull()
+    .default("0"),
+  creditLimit: numeric("credit_limit", { precision: 14, scale: 2 }),
+  /** Day of month statement closes (1–28). */
+  billingDay: integer("billing_day"),
+  /** Day of month payment is due (1–28). */
+  paymentDueDay: integer("payment_due_day"),
+  status: text("status").notNull().default("Active"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
 export const transactions = pgTable(
   "transactions",
   {
@@ -76,6 +100,10 @@ export const transactions = pgTable(
       .references(() => categories.id, { onDelete: "restrict" }),
     type: text("type").notNull().default("expense"), // expense | income
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    /** When set on an expense, this spend was paid with the card. */
+    creditCardId: uuid("credit_card_id").references(() => creditCards.id, {
+      onDelete: "set null",
+    }),
     /** Client-generated id for offline sync idempotency. */
     clientId: text("client_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -84,6 +112,47 @@ export const transactions = pgTable(
   },
   (t) => [uniqueIndex("transactions_user_client").on(t.userId, t.clientId)],
 );
+
+/**
+ * Card ledger events: spends, wallet recharge/cashout, fees, bill payments.
+ * outstanding_delta is applied to credit_cards.current_outstanding.
+ */
+export const cardActivities = pgTable("card_activities", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  cardId: uuid("card_id")
+    .notNull()
+    .references(() => creditCards.id, { onDelete: "cascade" }),
+  date: date("date").notNull(),
+  /** spend | wallet_recharge | wallet_cashout | fee | bill_payment */
+  activityType: text("activity_type").notNull(),
+  /** Primary display amount (wallet credit, cashout, fee, bill, spend). */
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  /** Signed change to card outstanding (+ charge, − payment). */
+  outstandingDelta: numeric("outstanding_delta", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  /** Wallet recharge: amount credited to wallet. */
+  walletCredit: numeric("wallet_credit", { precision: 12, scale: 2 }),
+  /** Wallet recharge: full amount charged on the card. */
+  cardCharged: numeric("card_charged", { precision: 12, scale: 2 }),
+  /** Wallet cashout: bank fee portion. */
+  bankFee: numeric("bank_fee", { precision: 12, scale: 2 }),
+  description: text("description").notNull().default(""),
+  transactionId: uuid("transaction_id").references(() => transactions.id, {
+    onDelete: "set null",
+  }),
+  /** Secondary linked tx (e.g. bank fee expense on cashout). */
+  relatedTransactionId: uuid("related_transaction_id").references(
+    () => transactions.id,
+    { onDelete: "set null" },
+  ),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
 
 export const debtAccounts = pgTable("debt_accounts", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -169,6 +238,8 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   categories: many(categories),
   budgets: many(budgets),
   transactions: many(transactions),
+  creditCards: many(creditCards),
+  cardActivities: many(cardActivities),
   debtAccounts: many(debtAccounts),
   debtPayments: many(debtPayments),
   debtSettings: one(debtSettings),
@@ -179,6 +250,36 @@ export const categoriesRelations = relations(categories, ({ one, many }) => ({
   user: one(users, { fields: [categories.userId], references: [users.id] }),
   budgets: many(budgets),
   transactions: many(transactions),
+}));
+
+export const creditCardsRelations = relations(creditCards, ({ one, many }) => ({
+  user: one(users, { fields: [creditCards.userId], references: [users.id] }),
+  activities: many(cardActivities),
+  transactions: many(transactions),
+}));
+
+export const transactionsRelations = relations(transactions, ({ one }) => ({
+  user: one(users, { fields: [transactions.userId], references: [users.id] }),
+  category: one(categories, {
+    fields: [transactions.categoryId],
+    references: [categories.id],
+  }),
+  creditCard: one(creditCards, {
+    fields: [transactions.creditCardId],
+    references: [creditCards.id],
+  }),
+}));
+
+export const cardActivitiesRelations = relations(cardActivities, ({ one }) => ({
+  user: one(users, { fields: [cardActivities.userId], references: [users.id] }),
+  card: one(creditCards, {
+    fields: [cardActivities.cardId],
+    references: [creditCards.id],
+  }),
+  transaction: one(transactions, {
+    fields: [cardActivities.transactionId],
+    references: [transactions.id],
+  }),
 }));
 
 export const debtAccountsRelations = relations(debtAccounts, ({ one, many }) => ({
@@ -204,6 +305,8 @@ export const debtPaymentsRelations = relations(debtPayments, ({ one }) => ({
 export type User = typeof users.$inferSelect;
 export type Category = typeof categories.$inferSelect;
 export type Budget = typeof budgets.$inferSelect;
+export type CreditCard = typeof creditCards.$inferSelect;
+export type CardActivity = typeof cardActivities.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type DebtAccount = typeof debtAccounts.$inferSelect;
 export type DebtPayment = typeof debtPayments.$inferSelect;

@@ -7,6 +7,7 @@ import { Modal } from "@/components/modal";
 import {
   TransactionForm,
   type CategoryOption,
+  type CreditCardOption,
 } from "@/components/transaction-form";
 import { createCategory, updateDebtGoal } from "@/lib/actions";
 
@@ -73,9 +74,11 @@ export function AddCategoryButton({
 
 export function AddTransactionButton({
   categories,
+  creditCards = [],
   defaultDate,
 }: {
   categories: CategoryOption[];
+  creditCards?: CreditCardOption[];
   defaultDate?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -99,6 +102,7 @@ export function AddTransactionButton({
         <TransactionForm
           variant="quick"
           categories={categories}
+          creditCards={creditCards}
           defaultDate={defaultDate}
           onSaved={() => setOpen(false)}
           onCancel={() => setOpen(false)}
