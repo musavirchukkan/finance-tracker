@@ -30,9 +30,15 @@ export type CreditCardOption = {
   name: string;
 };
 
+export type BankAccountOption = {
+  id: string;
+  name: string;
+};
+
 type Props = {
   categories: CategoryOption[];
   creditCards?: CreditCardOption[];
+  bankAccounts?: BankAccountOption[];
   defaultDate?: string;
   /** Polished quick-add layout (modal + /quick-add) */
   variant?: "classic" | "quick";
@@ -169,9 +175,33 @@ function QuickCategoryPicker({
   );
 }
 
+/** Encoded as `bank:uuid` | `card:uuid` | "". */
+function encodePaymentSource(
+  bankAccountId: string,
+  creditCardId: string,
+): string {
+  if (creditCardId) return `card:${creditCardId}`;
+  if (bankAccountId) return `bank:${bankAccountId}`;
+  return "";
+}
+
+function parsePaymentSource(value: string): {
+  bankAccountId: string;
+  creditCardId: string;
+} {
+  if (value.startsWith("card:")) {
+    return { bankAccountId: "", creditCardId: value.slice(5) };
+  }
+  if (value.startsWith("bank:")) {
+    return { bankAccountId: value.slice(5), creditCardId: "" };
+  }
+  return { bankAccountId: "", creditCardId: "" };
+}
+
 export function TransactionForm({
   categories,
   creditCards = [],
+  bankAccounts = [],
   defaultDate,
   variant,
   compact,
@@ -184,7 +214,7 @@ export function TransactionForm({
   const [type, setType] = useState<"expense" | "income">("expense");
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
-  const [creditCardId, setCreditCardId] = useState("");
+  const [paymentSource, setPaymentSource] = useState("");
   const [categoryId, setCategoryId] = useState(
     () => categories.find((c) => c.kind === "expense")?.id ?? "",
   );
@@ -210,7 +240,10 @@ export function TransactionForm({
     setType(next);
     const nextFiltered = categories.filter((c) => c.kind === next);
     setCategoryId(nextFiltered[0]?.id ?? "");
-    if (next !== "expense") setCreditCardId("");
+    // Drop card selection when switching to income (cards only for expenses).
+    if (next === "income" && paymentSource.startsWith("card:")) {
+      setPaymentSource("");
+    }
   }
 
   async function refreshPending() {
@@ -254,7 +287,7 @@ export function TransactionForm({
   function resetForm() {
     setAmount("");
     setDescription("");
-    setCreditCardId("");
+    setPaymentSource("");
     setDateValue(todayLocal());
     setTimeValue(nowTimeLocal());
     setEditWhen(false);
@@ -281,6 +314,7 @@ export function TransactionForm({
       return;
     }
 
+    const { bankAccountId, creditCardId } = parsePaymentSource(paymentSource);
     const payload = {
       clientId,
       date,
@@ -291,6 +325,7 @@ export function TransactionForm({
       amount: amountNum,
       creditCardId:
         type === "expense" && creditCardId ? creditCardId : null,
+      bankAccountId: bankAccountId || null,
     };
 
     if (!navigator.onLine) {
@@ -464,21 +499,35 @@ export function TransactionForm({
           />
         </div>
 
-        {type === "expense" && creditCards.length > 0 ? (
+        {bankAccounts.length > 0 ||
+        (type === "expense" && creditCards.length > 0) ? (
           <div className="qa-field">
-            <span className="qa-label">Paid with</span>
+            <span className="qa-label">
+              {type === "income" ? "Into account" : "Paid from"}
+            </span>
             <select
               className="qa-select"
-              value={creditCardId}
-              onChange={(e) => setCreditCardId(e.target.value)}
-              aria-label="Paid with card"
+              value={
+                type === "income" && paymentSource.startsWith("card:")
+                  ? ""
+                  : paymentSource
+              }
+              onChange={(e) => setPaymentSource(e.target.value)}
+              aria-label={type === "income" ? "Into account" : "Paid from"}
             >
               <option value="">Cash / UPI / other</option>
-              {creditCards.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
+              {bankAccounts.map((a) => (
+                <option key={a.id} value={encodePaymentSource(a.id, "")}>
+                  Bank · {a.name}
                 </option>
               ))}
+              {type === "expense"
+                ? creditCards.map((c) => (
+                    <option key={c.id} value={encodePaymentSource("", c.id)}>
+                      Card · {c.name}
+                    </option>
+                  ))
+                : null}
             </select>
           </div>
         ) : null}

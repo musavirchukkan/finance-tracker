@@ -90,13 +90,13 @@ function CardFields({
         />
       </div>
       <div className="field">
-        <label htmlFor="card-billing">Billing day (1–28)</label>
+        <label htmlFor="card-billing">Billing day (1–31)</label>
         <input
           id="card-billing"
           name="billingDay"
           type="number"
           min="1"
-          max="28"
+          max="31"
           inputMode="numeric"
           placeholder="1"
           value={values.billingDay}
@@ -104,13 +104,13 @@ function CardFields({
         />
       </div>
       <div className="field">
-        <label htmlFor="card-due">Payment due day (1–28)</label>
+        <label htmlFor="card-due">Payment due day (1–31)</label>
         <input
           id="card-due"
           name="paymentDueDay"
           type="number"
           min="1"
-          max="28"
+          max="31"
           inputMode="numeric"
           placeholder="15"
           value={values.paymentDueDay}
@@ -373,7 +373,13 @@ export function WalletRechargeButton({ cardId }: { cardId: string }) {
   );
 }
 
-export function WalletCashoutButton({ cardId }: { cardId: string }) {
+export function WalletCashoutButton({
+  cardId,
+  bankAccounts = [],
+}: {
+  cardId: string;
+  bankAccounts?: { id: string; name: string }[];
+}) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -418,6 +424,19 @@ export function WalletCashoutButton({ cardId }: { cardId: string }) {
             defaultValue="0"
           />
         </div>
+        {bankAccounts.length > 0 ? (
+          <div className="field">
+            <label htmlFor="cashout-bank">Credit to account</label>
+            <select id="cashout-bank" name="bankAccountId" defaultValue="">
+              <option value="">Don’t update balance</option>
+              {bankAccounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <div className="field">
           <label htmlFor="cashout-note">Note</label>
           <input id="cashout-note" name="description" placeholder="Note" />
@@ -480,7 +499,13 @@ export function CardFeeButton({ cardId }: { cardId: string }) {
   );
 }
 
-export function PayBillButton({ cardId }: { cardId: string }) {
+export function PayBillButton({
+  cardId,
+  bankAccounts = [],
+}: {
+  cardId: string;
+  bankAccounts?: { id: string; name: string }[];
+}) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -512,6 +537,19 @@ export function PayBillButton({ cardId }: { cardId: string }) {
             placeholder="0"
           />
         </div>
+        {bankAccounts.length > 0 ? (
+          <div className="field">
+            <label htmlFor="bill-bank">Pay from account</label>
+            <select id="bill-bank" name="bankAccountId" defaultValue="">
+              <option value="">Don’t update balance</option>
+              {bankAccounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <div className="field">
           <label htmlFor="bill-note">Note</label>
           <input id="bill-note" name="description" placeholder="Note" />

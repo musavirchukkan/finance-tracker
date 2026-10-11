@@ -17,7 +17,7 @@ import {
 } from "@/lib/credit-card-cashflow";
 import {
   clampBillingDay,
-  nextCycleDate,
+  summarizeCardStatement,
 } from "@/lib/credit-cards";
 import {
   computeOutstanding,
@@ -114,6 +114,35 @@ export async function migrateRollingCreditCards(userId: string) {
   return { migrated };
 }
 
+function statementFromActivities(
+  card: {
+    billingDay: number | null;
+    paymentDueDay: number | null;
+    currentOutstanding: string;
+  },
+  activities: { date: string; activityType: string; outstandingDelta: string }[],
+) {
+  const summary = summarizeCardStatement({
+    billingDay: card.billingDay,
+    paymentDueDay: card.paymentDueDay,
+    activities: activities.map((a) => ({
+      date: a.date,
+      activityType: a.activityType,
+      outstandingDelta: toNumber(a.outstandingDelta),
+    })),
+  });
+
+  // No billing day → treat full outstanding as due.
+  if (card.billingDay == null) {
+    return {
+      ...summary,
+      amountDue: toNumber(card.currentOutstanding),
+      nextBillPending: 0,
+    };
+  }
+  return summary;
+}
+
 export async function listCreditCards(userId: string) {
   await migrateRollingCreditCards(userId);
   const rows = await db
@@ -122,13 +151,36 @@ export async function listCreditCards(userId: string) {
     .where(eq(creditCards.userId, userId))
     .orderBy(asc(creditCards.name));
 
-  return rows.map((c) => ({
-    ...c,
-    outstandingNum: toNumber(c.currentOutstanding),
-    creditLimitNum: c.creditLimit != null ? toNumber(c.creditLimit) : null,
-    nextBillDate: nextCycleDate(c.billingDay),
-    nextDueDate: nextCycleDate(c.paymentDueDay),
-  }));
+  const allActivities = await db
+    .select({
+      cardId: cardActivities.cardId,
+      date: cardActivities.date,
+      activityType: cardActivities.activityType,
+      outstandingDelta: cardActivities.outstandingDelta,
+    })
+    .from(cardActivities)
+    .where(eq(cardActivities.userId, userId));
+
+  const byCard = new Map<string, typeof allActivities>();
+  for (const a of allActivities) {
+    const list = byCard.get(a.cardId) ?? [];
+    list.push(a);
+    byCard.set(a.cardId, list);
+  }
+
+  return rows.map((c) => {
+    const summary = statementFromActivities(c, byCard.get(c.id) ?? []);
+    return {
+      ...c,
+      outstandingNum: toNumber(c.currentOutstanding),
+      creditLimitNum: c.creditLimit != null ? toNumber(c.creditLimit) : null,
+      nextBillDate: summary.nextBillDate,
+      nextDueDate: summary.nextDueDate,
+      lastBillDate: summary.lastBillDate,
+      amountDue: summary.amountDue,
+      nextBillPending: summary.nextBillPending,
+    };
+  });
 }
 
 export async function getCreditCardDetail(userId: string, cardId: string) {
@@ -148,14 +200,19 @@ export async function getCreditCardDetail(userId: string, cardId: string) {
     )
     .orderBy(desc(cardActivities.date), desc(cardActivities.createdAt));
 
+  const summary = statementFromActivities(card, activities);
+
   return {
     card: {
       ...card,
       outstandingNum: toNumber(card.currentOutstanding),
       creditLimitNum:
         card.creditLimit != null ? toNumber(card.creditLimit) : null,
-      nextBillDate: nextCycleDate(card.billingDay),
-      nextDueDate: nextCycleDate(card.paymentDueDay),
+      nextBillDate: summary.nextBillDate,
+      nextDueDate: summary.nextDueDate,
+      lastBillDate: summary.lastBillDate,
+      amountDue: summary.amountDue,
+      nextBillPending: summary.nextBillPending,
     },
     activities: activities.map((a) => ({
       ...a,
@@ -308,6 +365,8 @@ export async function logWalletCashout(formData: FormData) {
   const date = String(formData.get("date") ?? "");
   const amount = parseAmount(String(formData.get("amount") ?? "0"));
   const bankFee = parseAmount(String(formData.get("bankFee") ?? "0"));
+  const bankAccountId =
+    String(formData.get("bankAccountId") ?? "").trim() || null;
   const note = String(formData.get("description") ?? "").trim();
 
   if (!cardId || !date) throw new Error("Missing fields");
@@ -333,8 +392,21 @@ export async function logWalletCashout(formData: FormData) {
       categoryId: cats.walletCashoutCategoryId,
       type: "income",
       amount: net.toFixed(2),
+      bankAccountId,
     })
     .returning();
+
+  if (bankAccountId && net > 0) {
+    const { applyBankBalanceForTransaction } = await import(
+      "@/lib/bank-account-cashflow"
+    );
+    await applyBankBalanceForTransaction({
+      userId: user.id,
+      bankAccountId,
+      type: "income",
+      amount: net,
+    });
+  }
 
   let feeTxId: string | null = null;
   if (bankFee > 0) {
@@ -367,6 +439,10 @@ export async function logWalletCashout(formData: FormData) {
   });
 
   revalidateCards(cardId);
+  if (bankAccountId) {
+    revalidatePath("/accounts");
+    revalidatePath(`/accounts/${bankAccountId}`);
+  }
 }
 
 export async function logCardFee(formData: FormData) {
@@ -426,6 +502,8 @@ export async function logCardBillPayment(formData: FormData) {
   const cardId = String(formData.get("cardId") ?? "");
   const date = String(formData.get("date") ?? "");
   const amount = parseAmount(String(formData.get("amount") ?? "0"));
+  const bankAccountId =
+    String(formData.get("bankAccountId") ?? "").trim() || null;
   const note = String(formData.get("description") ?? "").trim();
 
   if (!cardId || !date) throw new Error("Missing fields");
@@ -451,8 +529,21 @@ export async function logCardBillPayment(formData: FormData) {
       amount: amount.toFixed(2),
       // Bill payment is from bank — do not treat as card spend.
       creditCardId: null,
+      bankAccountId,
     })
     .returning();
+
+  if (bankAccountId && amount > 0) {
+    const { applyBankBalanceForTransaction } = await import(
+      "@/lib/bank-account-cashflow"
+    );
+    await applyBankBalanceForTransaction({
+      userId: user.id,
+      bankAccountId,
+      type: "expense",
+      amount,
+    });
+  }
 
   await db.insert(cardActivities).values({
     userId: user.id,
@@ -466,6 +557,10 @@ export async function logCardBillPayment(formData: FormData) {
   });
   await adjustCardOutstanding(user.id, cardId, -amount);
   revalidateCards(cardId);
+  if (bankAccountId) {
+    revalidatePath("/accounts");
+    revalidatePath(`/accounts/${bankAccountId}`);
+  }
 }
 
 export async function deleteCardActivity(formData: FormData) {

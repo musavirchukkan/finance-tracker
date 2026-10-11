@@ -58,6 +58,24 @@ export const budgets = pgTable(
   ],
 );
 
+/** Cash / savings bank accounts. */
+export const bankAccounts = pgTable("bank_accounts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  currentBalance: numeric("current_balance", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  /** e.g. Savings, Current, Wallet */
+  accountType: text("account_type").notNull().default("Savings"),
+  status: text("status").notNull().default("Active"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
 /** Rolling credit cards (not EMI loans). */
 export const creditCards = pgTable("credit_cards", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -102,6 +120,10 @@ export const transactions = pgTable(
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     /** When set on an expense, this spend was paid with the card. */
     creditCardId: uuid("credit_card_id").references(() => creditCards.id, {
+      onDelete: "set null",
+    }),
+    /** Bank account used: expense decreases balance, income increases it. */
+    bankAccountId: uuid("bank_account_id").references(() => bankAccounts.id, {
       onDelete: "set null",
     }),
     /** Client-generated id for offline sync idempotency. */
@@ -238,6 +260,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   categories: many(categories),
   budgets: many(budgets),
   transactions: many(transactions),
+  bankAccounts: many(bankAccounts),
   creditCards: many(creditCards),
   cardActivities: many(cardActivities),
   debtAccounts: many(debtAccounts),
@@ -249,6 +272,11 @@ export const usersRelations = relations(users, ({ many, one }) => ({
 export const categoriesRelations = relations(categories, ({ one, many }) => ({
   user: one(users, { fields: [categories.userId], references: [users.id] }),
   budgets: many(budgets),
+  transactions: many(transactions),
+}));
+
+export const bankAccountsRelations = relations(bankAccounts, ({ one, many }) => ({
+  user: one(users, { fields: [bankAccounts.userId], references: [users.id] }),
   transactions: many(transactions),
 }));
 
@@ -267,6 +295,10 @@ export const transactionsRelations = relations(transactions, ({ one }) => ({
   creditCard: one(creditCards, {
     fields: [transactions.creditCardId],
     references: [creditCards.id],
+  }),
+  bankAccount: one(bankAccounts, {
+    fields: [transactions.bankAccountId],
+    references: [bankAccounts.id],
   }),
 }));
 
@@ -305,6 +337,7 @@ export const debtPaymentsRelations = relations(debtPayments, ({ one }) => ({
 export type User = typeof users.$inferSelect;
 export type Category = typeof categories.$inferSelect;
 export type Budget = typeof budgets.$inferSelect;
+export type BankAccount = typeof bankAccounts.$inferSelect;
 export type CreditCard = typeof creditCards.$inferSelect;
 export type CardActivity = typeof cardActivities.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;

@@ -12,6 +12,8 @@ export default async function CardsPage() {
   const user = await requireUser();
   const cards = await listCreditCards(user.id);
   const totalOutstanding = cards.reduce((s, c) => s + c.outstandingNum, 0);
+  const totalDue = cards.reduce((s, c) => s + c.amountDue, 0);
+  const totalNextBill = cards.reduce((s, c) => s + c.nextBillPending, 0);
 
   return (
     <div className="page-stack">
@@ -28,21 +30,17 @@ export default async function CardsPage() {
       </div>
 
       <div className="stat-grid cols-3">
-        <div className="stat-card tall">
-          <span>Cards</span>
-          <strong>{cards.length}</strong>
-        </div>
         <div className="stat-card tall left">
+          <span>Due this cycle</span>
+          <strong>{formatINR(totalDue)}</strong>
+        </div>
+        <div className="stat-card tall">
+          <span>Next bill (open)</span>
+          <strong>{formatINR(totalNextBill)}</strong>
+        </div>
+        <div className="stat-card tall">
           <span>Total outstanding</span>
           <strong>{formatINR(totalOutstanding)}</strong>
-        </div>
-        <div className="stat-card tall">
-          <span>Loans & EMI</span>
-          <strong>
-            <Link className="linkish" href="/debt">
-              Debt →
-            </Link>
-          </strong>
         </div>
       </div>
 
@@ -59,30 +57,30 @@ export default async function CardsPage() {
         ) : (
           <div className="table-wrap">
             <table className="data">
-              <thead>
-                <tr>
-                  <th>Card</th>
-                  <th className="num">Outstanding</th>
-                  <th>Bill</th>
-                  <th>Due</th>
-                  <th>Status</th>
-                  <th>
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {cards.map((c) => (
-                  <tr key={c.id}>
-                    <td className="tx-main">
-                      <Link className="linkish" href={`/cards/${c.id}`}>
-                        {c.name}
-                      </Link>
-                    </td>
-                    <td className="num">{formatINR(c.outstandingNum)}</td>
-                    <td className="nowrap">{c.nextBillDate ?? "—"}</td>
-                    <td className="nowrap">{c.nextDueDate ?? "—"}</td>
-                    <td>{c.status}</td>
+                  <thead>
+                    <tr>
+                      <th>Card</th>
+                      <th className="num">Due to pay</th>
+                      <th className="num">Next bill</th>
+                      <th>Due date</th>
+                      <th>Status</th>
+                      <th>
+                        <span className="sr-only">Actions</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cards.map((c) => (
+                      <tr key={c.id}>
+                        <td className="tx-main">
+                          <Link className="linkish" href={`/cards/${c.id}`}>
+                            {c.name}
+                          </Link>
+                        </td>
+                        <td className="num">{formatINR(c.amountDue)}</td>
+                        <td className="num">{formatINR(c.nextBillPending)}</td>
+                        <td className="nowrap">{c.nextDueDate ?? "—"}</td>
+                        <td>{c.status}</td>
                     <td>
                       <div className="row-actions">
                         <Link
@@ -114,8 +112,9 @@ export default async function CardsPage() {
               <tfoot>
                 <tr>
                   <td>Total</td>
-                  <td className="num">{formatINR(totalOutstanding)}</td>
-                  <td colSpan={4}></td>
+                  <td className="num">{formatINR(totalDue)}</td>
+                  <td className="num">{formatINR(totalNextBill)}</td>
+                  <td colSpan={3}></td>
                 </tr>
               </tfoot>
             </table>

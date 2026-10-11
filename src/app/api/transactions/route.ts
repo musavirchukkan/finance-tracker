@@ -14,6 +14,7 @@ const bodySchema = z.object({
   amount: z.union([z.string(), z.number()]),
   clientId: z.string().min(1).optional(),
   creditCardId: z.string().uuid().nullable().optional(),
+  bankAccountId: z.string().uuid().nullable().optional(),
 });
 
 export async function POST(request: Request) {
@@ -52,6 +53,7 @@ export async function POST(request: Request) {
       amount,
       clientId: parsed.data.clientId,
       creditCardId: parsed.data.creditCardId ?? null,
+      bankAccountId: parsed.data.bankAccountId ?? null,
     });
     if (!result.duplicate) {
       revalidatePath("/transactions");
@@ -61,8 +63,12 @@ export async function POST(request: Request) {
       revalidatePath("/goals");
       revalidatePath("/quick-add");
       revalidatePath("/cards");
+      revalidatePath("/accounts");
       if (parsed.data.creditCardId) {
         revalidatePath(`/cards/${parsed.data.creditCardId}`);
+      }
+      if (parsed.data.bankAccountId) {
+        revalidatePath(`/accounts/${parsed.data.bankAccountId}`);
       }
     }
     return NextResponse.json({

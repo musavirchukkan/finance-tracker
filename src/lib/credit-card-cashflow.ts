@@ -153,6 +153,10 @@ export async function deleteLinkedCashflowTx(
   transactionId: string | null | undefined,
 ) {
   if (!transactionId) return;
+  const { reverseBankBalanceForTransaction } = await import(
+    "@/lib/bank-account-cashflow"
+  );
+  await reverseBankBalanceForTransaction(userId, transactionId);
   await db
     .delete(transactions)
     .where(

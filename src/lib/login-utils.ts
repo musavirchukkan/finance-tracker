@@ -2,6 +2,7 @@ const APP_PREFIXES = [
   "/overview",
   "/debt",
   "/cards",
+  "/accounts",
   "/transactions",
   "/budget",
   "/analytics",

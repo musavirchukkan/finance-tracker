@@ -14,6 +14,7 @@ import {
   getDebtDashboard,
   toggleDebtPaymentPaid,
 } from "@/lib/actions";
+import { listCreditCards } from "@/lib/card-actions";
 import {
   buildPayoffCurve,
   defaultGoalDate,
@@ -80,6 +81,8 @@ function IconHourglass() {
 export default async function DebtPage() {
   const user = await requireUser();
   const data = await getDebtDashboard(user.id);
+  const cards = await listCreditCards(user.id);
+  const cardsDue = cards.reduce((s, c) => s + c.amountDue, 0);
   const goal = data.settings?.goalPayoffDate ?? defaultGoalDate(19);
   const baselineMonth = currentYearMonth();
 
@@ -183,6 +186,24 @@ export default async function DebtPage() {
               {monthsLeft === 0
                 ? "Goal month"
                 : `${monthsLeft} month${monthsLeft === 1 ? "" : "s"} to go`}
+            </strong>
+          </div>
+        </article>
+
+        <article className="insight-card">
+          <div className="insight-card-top">
+            <p className="insight-label">Cards due this cycle</p>
+            <span className="insight-icon blue">
+              <IconBank />
+            </span>
+          </div>
+          <p className="insight-value">{formatINR(cardsDue)}</p>
+          <div className="insight-foot">
+            <span>Closed statement to pay</span>
+            <strong>
+              <Link className="linkish" href="/cards">
+                {cards.length} {cards.length === 1 ? "card" : "cards"} →
+              </Link>
             </strong>
           </div>
         </article>

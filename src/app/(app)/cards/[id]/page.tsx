@@ -9,6 +9,7 @@ import {
   WalletCashoutButton,
   WalletRechargeButton,
 } from "@/components/card-forms";
+import { listBankAccounts } from "@/lib/bank-actions";
 import { deleteCreditCard, getCreditCardDetail } from "@/lib/card-actions";
 import { activityLabel } from "@/lib/credit-cards";
 import { formatINR } from "@/lib/money";
@@ -24,6 +25,8 @@ export default async function CardDetailPage({
   const data = await getCreditCardDetail(user.id, id);
   if (!data) notFound();
 
+  const banks = await listBankAccounts(user.id);
+  const bankOptions = banks.map((a) => ({ id: a.id, name: a.name }));
   const { card, activities } = data;
 
   return (
@@ -57,28 +60,22 @@ export default async function CardDetailPage({
 
       <div className="stat-grid cols-3">
         <div className="stat-card tall left">
-          <span>Outstanding</span>
+          <span>Due to pay</span>
+          <strong>{formatINR(card.amountDue)}</strong>
+        </div>
+        <div className="stat-card tall">
+          <span>Next bill (open)</span>
+          <strong>{formatINR(card.nextBillPending)}</strong>
+        </div>
+        <div className="stat-card tall">
+          <span>Total outstanding</span>
           <strong>{formatINR(card.outstandingNum)}</strong>
-        </div>
-        <div className="stat-card tall">
-          <span>Credit limit</span>
-          <strong>
-            {card.creditLimitNum != null
-              ? formatINR(card.creditLimitNum)
-              : "—"}
-          </strong>
-        </div>
-        <div className="stat-card tall">
-          <span>Next due</span>
-          <strong style={{ fontSize: "1.1rem" }}>
-            {card.nextDueDate ?? "—"}
-          </strong>
         </div>
       </div>
 
       <section className="panel">
         <div className="panel-head">
-          <h2>Details</h2>
+          <h2>Bill cycle</h2>
         </div>
         <dl className="debt-detail-grid">
           <div>
@@ -90,14 +87,30 @@ export default async function CardDetailPage({
             <dd>{card.paymentDueDay ?? "—"}</dd>
           </div>
           <div>
-            <dt>Next bill</dt>
+            <dt>Last statement</dt>
+            <dd>{card.lastBillDate ?? "—"}</dd>
+          </div>
+          <div>
+            <dt>Payment due</dt>
+            <dd>{card.nextDueDate ?? "—"}</dd>
+          </div>
+          <div>
+            <dt>Next statement</dt>
             <dd>{card.nextBillDate ?? "—"}</dd>
           </div>
           <div>
-            <dt>Next due</dt>
-            <dd>{card.nextDueDate ?? "—"}</dd>
+            <dt>Credit limit</dt>
+            <dd>
+              {card.creditLimitNum != null
+                ? formatINR(card.creditLimitNum)
+                : "—"}
+            </dd>
           </div>
         </dl>
+        <p className="muted page-sub" style={{ marginTop: "0.75rem" }}>
+          Spends after the bill date go on the next statement. Days 29–31 use
+          the last day of shorter months.
+        </p>
       </section>
 
       <section className="panel">
@@ -105,9 +118,12 @@ export default async function CardDetailPage({
           <h2>Actions</h2>
           <div className="dash-actions">
             <WalletRechargeButton cardId={card.id} />
-            <WalletCashoutButton cardId={card.id} />
+            <WalletCashoutButton
+              cardId={card.id}
+              bankAccounts={bankOptions}
+            />
             <CardFeeButton cardId={card.id} />
-            <PayBillButton cardId={card.id} />
+            <PayBillButton cardId={card.id} bankAccounts={bankOptions} />
           </div>
         </div>
       </section>

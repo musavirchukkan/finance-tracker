@@ -6,6 +6,7 @@ import { CategoryIconPicker } from "@/components/category-icon-picker";
 import { Modal } from "@/components/modal";
 import {
   TransactionForm,
+  type BankAccountOption,
   type CategoryOption,
   type CreditCardOption,
 } from "@/components/transaction-form";
@@ -75,10 +76,12 @@ export function AddCategoryButton({
 export function AddTransactionButton({
   categories,
   creditCards = [],
+  bankAccounts = [],
   defaultDate,
 }: {
   categories: CategoryOption[];
   creditCards?: CreditCardOption[];
+  bankAccounts?: BankAccountOption[];
   defaultDate?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -103,6 +106,7 @@ export function AddTransactionButton({
           variant="quick"
           categories={categories}
           creditCards={creditCards}
+          bankAccounts={bankAccounts}
           defaultDate={defaultDate}
           onSaved={() => setOpen(false)}
           onCancel={() => setOpen(false)}

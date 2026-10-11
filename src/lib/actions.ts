@@ -37,6 +37,18 @@ import {
   paymentBalanceEffect,
 } from "@/lib/debt-kinds";
 
+function parsePaymentSource(formData: FormData, type: "expense" | "income") {
+  const creditCardId =
+    type === "expense"
+      ? String(formData.get("creditCardId") ?? "").trim() || null
+      : null;
+  let bankAccountId =
+    String(formData.get("bankAccountId") ?? "").trim() || null;
+  // Card spend and bank debit are mutually exclusive.
+  if (creditCardId) bankAccountId = null;
+  return { creditCardId, bankAccountId };
+}
+
 export async function createTransaction(formData: FormData) {
   const user = await requireUser();
   const date = String(formData.get("date") ?? "");
@@ -46,7 +58,7 @@ export async function createTransaction(formData: FormData) {
     ? "income"
     : "expense";
   const amount = parseAmount(String(formData.get("amount") ?? "0"));
-  const creditCardId = String(formData.get("creditCardId") ?? "").trim() || null;
+  const { creditCardId, bankAccountId } = parsePaymentSource(formData, type);
 
   if (!date || !categoryId) {
     throw new Error("Missing required fields");
@@ -58,7 +70,8 @@ export async function createTransaction(formData: FormData) {
     categoryId,
     type,
     amount,
-    creditCardId: type === "expense" ? creditCardId : null,
+    creditCardId,
+    bankAccountId,
   });
 
   if (!result.duplicate) {
@@ -69,7 +82,9 @@ export async function createTransaction(formData: FormData) {
     revalidatePath("/goals");
     revalidatePath("/quick-add");
     revalidatePath("/cards");
+    revalidatePath("/accounts");
     if (creditCardId) revalidatePath(`/cards/${creditCardId}`);
+    if (bankAccountId) revalidatePath(`/accounts/${bankAccountId}`);
   }
 }
 
@@ -83,11 +98,16 @@ export async function updateTransaction(formData: FormData) {
     ? "income"
     : "expense";
   const amount = parseAmount(String(formData.get("amount") ?? "0"));
-  const creditCardId = String(formData.get("creditCardId") ?? "").trim() || null;
+  const { creditCardId, bankAccountId } = parsePaymentSource(formData, type);
 
   const { reverseActivitiesForTransaction, recordSpendOnCard } =
     await import("@/lib/credit-card-cashflow");
+  const {
+    reverseBankBalanceForTransaction,
+    applyBankBalanceForTransaction,
+  } = await import("@/lib/bank-account-cashflow");
 
+  await reverseBankBalanceForTransaction(user.id, id);
   await reverseActivitiesForTransaction(user.id, id);
 
   await db
@@ -98,7 +118,8 @@ export async function updateTransaction(formData: FormData) {
       categoryId,
       type,
       amount: amount.toFixed(2),
-      creditCardId: type === "expense" ? creditCardId : null,
+      creditCardId,
+      bankAccountId,
     })
     .where(and(eq(transactions.id, id), eq(transactions.userId, user.id)));
 
@@ -113,13 +134,22 @@ export async function updateTransaction(formData: FormData) {
     });
   }
 
+  await applyBankBalanceForTransaction({
+    userId: user.id,
+    bankAccountId,
+    type,
+    amount,
+  });
+
   revalidatePath("/transactions");
   revalidatePath("/budget");
   revalidatePath("/overview");
   revalidatePath("/analytics");
   revalidatePath("/goals");
   revalidatePath("/cards");
+  revalidatePath("/accounts");
   if (creditCardId) revalidatePath(`/cards/${creditCardId}`);
+  if (bankAccountId) revalidatePath(`/accounts/${bankAccountId}`);
 }
 
 export async function deleteTransaction(formData: FormData) {
@@ -129,6 +159,10 @@ export async function deleteTransaction(formData: FormData) {
   const { reverseActivitiesForTransaction } = await import(
     "@/lib/credit-card-cashflow"
   );
+  const { reverseBankBalanceForTransaction } = await import(
+    "@/lib/bank-account-cashflow"
+  );
+  await reverseBankBalanceForTransaction(user.id, id);
   await reverseActivitiesForTransaction(user.id, id);
 
   await db
@@ -141,6 +175,7 @@ export async function deleteTransaction(formData: FormData) {
   revalidatePath("/analytics");
   revalidatePath("/goals");
   revalidatePath("/cards");
+  revalidatePath("/accounts");
 }
 
 export async function upsertBudgetAmount(formData: FormData) {
@@ -812,6 +847,7 @@ export async function insertTransactionForUser(
     occurredAt?: string;
     clientId?: string;
     creditCardId?: string | null;
+    bankAccountId?: string | null;
   },
 ): Promise<{ id: string; duplicate: boolean }> {
   // Idempotent offline sync: same clientId → return existing, don't insert again
@@ -844,6 +880,8 @@ export async function insertTransactionForUser(
     input.type === "expense" && input.creditCardId
       ? input.creditCardId
       : null;
+  const bankAccountId =
+    creditCardId || !input.bankAccountId ? null : input.bankAccountId;
 
   try {
     const [row] = await db
@@ -857,6 +895,7 @@ export async function insertTransactionForUser(
         type: input.type,
         amount: input.amount.toFixed(2),
         creditCardId,
+        bankAccountId,
         clientId: input.clientId ?? null,
       })
       .returning();
@@ -870,6 +909,18 @@ export async function insertTransactionForUser(
         amount: input.amount,
         description: input.description,
         transactionId: row.id,
+      });
+    }
+
+    if (bankAccountId && input.amount > 0) {
+      const { applyBankBalanceForTransaction } = await import(
+        "@/lib/bank-account-cashflow"
+      );
+      await applyBankBalanceForTransaction({
+        userId,
+        bankAccountId,
+        type: input.type,
+        amount: input.amount,
       });
     }
 

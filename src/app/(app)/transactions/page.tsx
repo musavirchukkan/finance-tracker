@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
 import { AddTransactionButton } from "@/components/add-modals";
 import { deleteTransaction, listCategories, listTransactions } from "@/lib/actions";
+import { listBankAccounts } from "@/lib/bank-actions";
 import { listCreditCards } from "@/lib/card-actions";
 import { formatINR } from "@/lib/money";
 import {
@@ -53,6 +54,7 @@ export default async function TransactionsPage({
 
   const cats = await listCategories(user.id);
   const cards = await listCreditCards(user.id);
+  const banks = await listBankAccounts(user.id);
   const { rows, total, totalPages } = await listTransactions(user.id, month, {
     type: typeFilter,
     categoryId,
@@ -69,6 +71,7 @@ export default async function TransactionsPage({
     icon: c.icon,
   }));
   const creditCards = cards.map((c) => ({ id: c.id, name: c.name }));
+  const bankAccounts = banks.map((a) => ({ id: a.id, name: a.name }));
   const categoryOptions =
     typeFilter === "all"
       ? cats
@@ -116,6 +119,7 @@ export default async function TransactionsPage({
           <AddTransactionButton
             categories={categories}
             creditCards={creditCards}
+            bankAccounts={bankAccounts}
             defaultDate={`${month}-01`}
           />
         </div>

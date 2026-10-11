@@ -27,6 +27,7 @@ const menuLinks = [
   { href: "/overview", label: "Overview", short: "Home", icon: "overview" },
   { href: "/debt", label: "Debt", short: "Debt", icon: "debt" },
   { href: "/cards", label: "Cards", short: "Cards", icon: "cards" },
+  { href: "/accounts", label: "Accounts", short: "Banks", icon: "bank" },
   {
     href: "/transactions",
     label: "Transactions",
@@ -49,7 +50,8 @@ const mobileMore = {
 } as const;
 
 const mobileLeft = [menuLinks[0], menuLinks[1]] as const;
-const mobileRight = [menuLinks[5], mobileMore] as const;
+const goalsLink = menuLinks.find((l) => l.href === "/goals")!;
+const mobileRight = [goalsLink, mobileMore] as const;
 
 export function AppNav({ name }: { name?: string | null }) {
   const pathname = usePathname();

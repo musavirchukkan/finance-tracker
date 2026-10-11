@@ -39,6 +39,19 @@ export function NavIcon({ name }: { name: string }) {
       </svg>
     );
   }
+  if (name === "bank") {
+    return (
+      <svg {...common}>
+        <path d="M3 10h18" />
+        <path d="M5 10v10" />
+        <path d="M9 10v10" />
+        <path d="M15 10v10" />
+        <path d="M19 10v10" />
+        <path d="M2 20h20" />
+        <path d="M12 3 3 9h18L12 3z" />
+      </svg>
+    );
+  }
   if (name === "list") {
     return (
       <svg {...common}>

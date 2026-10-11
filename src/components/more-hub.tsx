@@ -12,6 +12,12 @@ const moreLinks = [
     icon: "cards",
   },
   {
+    href: "/accounts",
+    label: "Accounts",
+    description: "Bank balances linked to transactions",
+    icon: "bank",
+  },
+  {
     href: "/transactions",
     label: "Transactions",
     description: "Browse and edit spending history",
