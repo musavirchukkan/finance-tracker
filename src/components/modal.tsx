@@ -46,11 +46,12 @@ export function Modal({
       aria-labelledby={bare || !title ? undefined : titleId}
       aria-label={bare ? title : undefined}
       onClose={onClose}
-      onClick={(e) => {
-        if (e.target === dialogRef.current) onClose();
+      onCancel={(e) => {
+        // Keep open on outside / accidental dismiss; Escape still closes via key handler.
+        e.preventDefault();
       }}
     >
-      <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-panel">
         {!bare && title ? (
           <div className="modal-head">
             <h2 id={titleId} className="modal-title">

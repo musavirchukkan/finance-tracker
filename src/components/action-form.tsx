@@ -17,6 +17,8 @@ type Props = {
   resetOnSuccess?: boolean;
   confirmMessage?: string;
   onSuccess?: () => void;
+  /** Navigate here after a successful submit (e.g. after delete). */
+  onSuccessHref?: string;
 };
 
 export function ActionForm({
@@ -30,6 +32,7 @@ export function ActionForm({
   resetOnSuccess,
   confirmMessage,
   onSuccess,
+  onSuccessHref,
 }: Props) {
   const toast = useToast();
   const router = useRouter();
@@ -51,6 +54,10 @@ export function ActionForm({
             toast.success(successMessage);
             if (resetOnSuccess) form.reset();
             onSuccess?.();
+            if (onSuccessHref) {
+              router.push(onSuccessHref);
+              return;
+            }
             router.refresh();
           } catch (err) {
             console.error(err);

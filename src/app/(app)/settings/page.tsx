@@ -1,4 +1,5 @@
 import { AccountSettings } from "@/components/account-settings";
+import { ExportDataCard } from "@/components/export-data";
 import { PwaInstallCard } from "@/components/pwa-install-card";
 import { SettingsForms } from "@/components/settings-forms";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -30,6 +31,8 @@ export default async function SettingsPage() {
       <ThemeToggle />
 
       <PwaInstallCard />
+
+      <ExportDataCard />
 
       <SettingsForms
         expenses={expenses.map((c) => ({

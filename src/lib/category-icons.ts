@@ -23,6 +23,11 @@ export const CATEGORY_ICON_CHOICES = [
   "🎁",
   "🏦",
   "🤝",
+  "💸",
+  "💵",
+  "💳",
+  "🔁",
+  "📲",
   "📁",
   "✨",
 ] as const;
@@ -42,6 +47,12 @@ const DEFAULT_BY_NAME: Record<string, string> = {
   "other income": "💰",
   "debt / emi": "🏦",
   borrowed: "🤝",
+  lent: "💸",
+  "lent repaid": "💵",
+  kuri: "🔁",
+  "kuri payout": "🎉",
+  "credit card": "💳",
+  "wallet cashout": "📲",
 };
 
 /** Prefer stored icon; otherwise guess from name. */

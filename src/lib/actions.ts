@@ -19,14 +19,23 @@ import { requireUser } from "@/lib/session";
 import { monthDateBounds, yearMonthFromDate } from "@/lib/months";
 import {
   PAID_TO_DATE_TYPE,
+  computeMonthlyInterest,
+  computeTotalInterest,
   validateDebtTenure,
 } from "@/lib/debt-account";
 import {
   createBorrowedIncomeTransaction,
+  createLentExpenseTransaction,
   deleteLinkedDebtPaymentTransaction,
   deleteReceivedIncomeTransaction,
+  isBorrowedType,
+  isLentType,
   syncDebtPaymentTransaction,
 } from "@/lib/debt-cashflow";
+import {
+  computeOutstanding,
+  paymentBalanceEffect,
+} from "@/lib/debt-kinds";
 
 export async function createTransaction(formData: FormData) {
   const user = await requireUser();
@@ -140,8 +149,9 @@ export async function upsertBudgetAmount(formData: FormData) {
   revalidatePath("/analytics");
 }
 
-function revalidateDebtCashflow() {
+function revalidateDebtCashflow(accountId?: string) {
   revalidatePath("/debt");
+  if (accountId) revalidatePath(`/debt/${accountId}`);
   revalidatePath("/goals");
   revalidatePath("/overview");
   revalidatePath("/transactions");
@@ -157,6 +167,10 @@ export async function createDebtAccount(formData: FormData) {
     String(formData.get("startingBalance") ?? "0"),
   );
   const monthlyEmi = parseAmount(String(formData.get("monthlyEmi") ?? "0"));
+  const interestPercent = Math.max(
+    0,
+    parseAmount(String(formData.get("interestPercent") ?? "0")),
+  );
   const totalMonths = Math.max(
     0,
     Math.floor(Number(formData.get("totalMonths") ?? 0) || 0),
@@ -167,9 +181,11 @@ export async function createDebtAccount(formData: FormData) {
   );
   const paidTillNow = parseAmount(String(formData.get("paidTillNow") ?? "0"));
   const status = String(formData.get("status") ?? "Active Paydown").trim();
-  const logAsIncome =
+  const logOpeningCashflow =
     formData.get("logAsIncome") === "on" ||
-    formData.get("logAsIncome") === "true";
+    formData.get("logAsIncome") === "true" ||
+    formData.get("logOpeningCashflow") === "on" ||
+    formData.get("logOpeningCashflow") === "true";
 
   if (!name || !type) throw new Error("Name and type are required");
 
@@ -183,13 +199,22 @@ export async function createDebtAccount(formData: FormData) {
 
   let receivedTransactionId: string | null = null;
   const today = new Date().toISOString().slice(0, 10);
-  if (logAsIncome && startingBalance > 0) {
-    receivedTransactionId = await createBorrowedIncomeTransaction({
-      userId: user.id,
-      accountName: name,
-      amount: startingBalance.toFixed(2),
-      date: today,
-    });
+  if (logOpeningCashflow && startingBalance > 0) {
+    if (isLentType(type)) {
+      receivedTransactionId = await createLentExpenseTransaction({
+        userId: user.id,
+        accountName: name,
+        amount: startingBalance.toFixed(2),
+        date: today,
+      });
+    } else if (isBorrowedType(type)) {
+      receivedTransactionId = await createBorrowedIncomeTransaction({
+        userId: user.id,
+        accountName: name,
+        amount: startingBalance.toFixed(2),
+        date: today,
+      });
+    }
   }
 
   const [account] = await db
@@ -200,6 +225,7 @@ export async function createDebtAccount(formData: FormData) {
       type,
       startingBalance: startingBalance.toFixed(2),
       monthlyEmi: monthlyEmi.toFixed(2),
+      interestPercent: interestPercent.toFixed(2),
       totalMonths,
       monthsPaid,
       status,
@@ -218,7 +244,7 @@ export async function createDebtAccount(formData: FormData) {
     });
   }
 
-  revalidateDebtCashflow();
+  revalidateDebtCashflow(account?.id);
 }
 
 async function upsertPaidToDatePayment(args: {
@@ -288,6 +314,10 @@ export async function updateDebtAccount(formData: FormData) {
     String(formData.get("startingBalance") ?? "0"),
   );
   const monthlyEmi = parseAmount(String(formData.get("monthlyEmi") ?? "0"));
+  const interestPercent = Math.max(
+    0,
+    parseAmount(String(formData.get("interestPercent") ?? "0")),
+  );
   const totalMonths = Math.max(
     0,
     Math.floor(Number(formData.get("totalMonths") ?? 0) || 0),
@@ -316,6 +346,7 @@ export async function updateDebtAccount(formData: FormData) {
       type,
       startingBalance: startingBalance.toFixed(2),
       monthlyEmi: monthlyEmi.toFixed(2),
+      interestPercent: interestPercent.toFixed(2),
       totalMonths,
       monthsPaid,
       status,
@@ -328,7 +359,7 @@ export async function updateDebtAccount(formData: FormData) {
     paidTillNow,
   });
 
-  revalidateDebtCashflow();
+  revalidateDebtCashflow(id);
 }
 
 export async function deleteDebtAccount(formData: FormData) {
@@ -368,7 +399,7 @@ export async function deleteDebtAccount(formData: FormData) {
     .delete(debtAccounts)
     .where(and(eq(debtAccounts.id, id), eq(debtAccounts.userId, user.id)));
 
-  revalidateDebtCashflow();
+  revalidateDebtCashflow(id);
 }
 
 export async function createDebtPayment(formData: FormData) {
@@ -398,13 +429,19 @@ export async function createDebtPayment(formData: FormData) {
     await syncDebtPaymentTransaction(payment.id, user.id);
   }
 
-  revalidateDebtCashflow();
+  revalidateDebtCashflow(accountId);
 }
 
 export async function toggleDebtPaymentPaid(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get("id") ?? "");
   const isPaid = formData.get("isPaid") === "true";
+
+  const [existing] = await db
+    .select({ accountId: debtPayments.accountId })
+    .from(debtPayments)
+    .where(and(eq(debtPayments.id, id), eq(debtPayments.userId, user.id)))
+    .limit(1);
 
   await db
     .update(debtPayments)
@@ -413,12 +450,18 @@ export async function toggleDebtPaymentPaid(formData: FormData) {
 
   await syncDebtPaymentTransaction(id, user.id);
 
-  revalidateDebtCashflow();
+  revalidateDebtCashflow(existing?.accountId);
 }
 
 export async function deleteDebtPayment(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get("id") ?? "");
+
+  const [existing] = await db
+    .select({ accountId: debtPayments.accountId })
+    .from(debtPayments)
+    .where(and(eq(debtPayments.id, id), eq(debtPayments.userId, user.id)))
+    .limit(1);
 
   await deleteLinkedDebtPaymentTransaction(id, user.id);
 
@@ -426,7 +469,7 @@ export async function deleteDebtPayment(formData: FormData) {
     .delete(debtPayments)
     .where(and(eq(debtPayments.id, id), eq(debtPayments.userId, user.id)));
 
-  revalidateDebtCashflow();
+  revalidateDebtCashflow(existing?.accountId);
 }
 
 export async function updateDebtGoal(formData: FormData) {
@@ -828,32 +871,61 @@ export async function getDebtDashboard(userId: string) {
     .where(eq(debtSettings.userId, userId))
     .limit(1);
 
-  const paidByAccount = new Map<string, number>();
+  const paydownByAccount = new Map<string, number>();
+  const chargeByAccount = new Map<string, number>();
   const paidToDateByAccount = new Map<string, number>();
+  const paymentsByAccount = new Map<
+    string,
+    { amount: number; isPaid: boolean; paymentType: string }[]
+  >();
+
   for (const p of payments) {
+    const amount = toNumber(p.amount);
+    const list = paymentsByAccount.get(p.accountId) ?? [];
+    list.push({
+      amount,
+      isPaid: p.isPaid,
+      paymentType: p.paymentType,
+    });
+    paymentsByAccount.set(p.accountId, list);
+
     if (!p.isPaid) continue;
-    paidByAccount.set(
-      p.accountId,
-      (paidByAccount.get(p.accountId) ?? 0) + toNumber(p.amount),
-    );
+    const effect = paymentBalanceEffect(p.paymentType);
+    if (effect === "paydown") {
+      paydownByAccount.set(
+        p.accountId,
+        (paydownByAccount.get(p.accountId) ?? 0) + amount,
+      );
+    } else if (effect === "charge") {
+      chargeByAccount.set(
+        p.accountId,
+        (chargeByAccount.get(p.accountId) ?? 0) + amount,
+      );
+    }
     if (p.paymentType === PAID_TO_DATE_TYPE) {
       paidToDateByAccount.set(
         p.accountId,
-        (paidToDateByAccount.get(p.accountId) ?? 0) + toNumber(p.amount),
+        (paidToDateByAccount.get(p.accountId) ?? 0) + amount,
       );
     }
   }
 
   const accountRows = accounts.map((a) => {
     const starting = toNumber(a.startingBalance);
-    const paid = paidByAccount.get(a.id) ?? 0;
+    const paid = paydownByAccount.get(a.id) ?? 0;
+    const charges = chargeByAccount.get(a.id) ?? 0;
+    const pending = computeOutstanding({
+      startingBalance: starting,
+      payments: paymentsByAccount.get(a.id) ?? [],
+    });
     return {
       ...a,
       startingBalanceNum: starting,
       monthlyEmiNum: toNumber(a.monthlyEmi),
       totalPaid: paid,
+      totalCharges: charges,
       paidTillNow: paidToDateByAccount.get(a.id) ?? 0,
-      pending: Math.max(0, starting - paid),
+      pending,
     };
   });
 
@@ -869,6 +941,8 @@ export async function getDebtDashboard(userId: string) {
   const paymentsByMonth: Record<string, number> = {};
   for (const p of payments) {
     if (!p.isPaid) continue;
+    const effect = paymentBalanceEffect(p.paymentType);
+    if (effect !== "paydown") continue;
     const ym = yearMonthFromDate(p.dueDate);
     paymentsByMonth[ym] = (paymentsByMonth[ym] ?? 0) + toNumber(p.amount);
   }
@@ -879,6 +953,37 @@ export async function getDebtDashboard(userId: string) {
     settings,
     totals,
     paymentsByMonth,
+  };
+}
+
+export async function getDebtAccountDetail(userId: string, accountId: string) {
+  const data = await getDebtDashboard(userId);
+  const account = data.accounts.find((a) => a.id === accountId);
+  if (!account) return null;
+
+  const payments = data.payments.filter((p) => p.accountId === accountId);
+  const monthsLeft = Math.max(0, account.totalMonths - account.monthsPaid);
+  const interestPercentNum = toNumber(account.interestPercent);
+  const monthlyInterest = computeMonthlyInterest({
+    startingBalance: account.startingBalanceNum,
+    totalMonths: account.totalMonths,
+    monthlyEmi: account.monthlyEmiNum,
+  });
+  const totalInterest = computeTotalInterest({
+    startingBalance: account.startingBalanceNum,
+    totalMonths: account.totalMonths,
+    monthlyEmi: account.monthlyEmiNum,
+  });
+
+  return {
+    account: {
+      ...account,
+      interestPercentNum,
+      monthsLeft,
+      monthlyInterest,
+      totalInterest,
+    },
+    payments,
   };
 }
 

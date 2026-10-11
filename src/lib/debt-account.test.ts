@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  computeFlatAnnualInterestPercent,
   computeMonthlyEmi,
+  computeMonthlyEmiFromInterestPercent,
+  computeMonthlyInterest,
   computePaidTillNow,
+  computeTotalInterest,
   remainingBalance,
   remainingMonths,
   validateDebtTenure,
@@ -28,6 +32,45 @@ describe("computeMonthlyEmi", () => {
 
   it("returns 0 when months missing", () => {
     expect(computeMonthlyEmi(100000, 0)).toBe(0);
+  });
+});
+
+describe("interest helpers", () => {
+  it("treats EMI above principal installment as interest", () => {
+    expect(
+      computeTotalInterest({
+        startingBalance: 120000,
+        totalMonths: 12,
+        monthlyEmi: 11000,
+      }),
+    ).toBe(12000);
+    expect(
+      computeMonthlyInterest({
+        startingBalance: 120000,
+        totalMonths: 12,
+        monthlyEmi: 11000,
+      }),
+    ).toBe(1000);
+  });
+
+  it("derives flat annual percent from EMI", () => {
+    expect(
+      computeFlatAnnualInterestPercent({
+        startingBalance: 120000,
+        totalMonths: 12,
+        monthlyEmi: 11000,
+      }),
+    ).toBe(10);
+  });
+
+  it("builds EMI from flat annual percent", () => {
+    expect(
+      computeMonthlyEmiFromInterestPercent({
+        startingBalance: 120000,
+        totalMonths: 12,
+        interestPercent: 10,
+      }),
+    ).toBe(11000);
   });
 });
 

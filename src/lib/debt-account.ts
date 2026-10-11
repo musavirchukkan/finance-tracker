@@ -6,7 +6,7 @@ export function computePaidTillNow(emi: number, monthsPaid: number): number {
   return Math.round(e * m * 100) / 100;
 }
 
-/** Equal installment: starting ÷ total months (2 decimal places). */
+/** Principal-only installment: starting ÷ total months. */
 export function computeMonthlyEmi(
   startingBalance: number,
   totalMonths: number,
@@ -14,6 +14,63 @@ export function computeMonthlyEmi(
   const months = Math.floor(totalMonths);
   if (startingBalance <= 0 || months <= 0) return 0;
   return Math.round((startingBalance / months) * 100) / 100;
+}
+
+/** Extra paid over principal across the full tenure. */
+export function computeTotalInterest(args: {
+  startingBalance: number;
+  totalMonths: number;
+  monthlyEmi: number;
+}): number {
+  const months = Math.floor(args.totalMonths);
+  if (months <= 0) return 0;
+  const totalPaid = Math.max(0, args.monthlyEmi) * months;
+  return Math.max(0, Math.round((totalPaid - args.startingBalance) * 100) / 100);
+}
+
+export function computeMonthlyInterest(args: {
+  startingBalance: number;
+  totalMonths: number;
+  monthlyEmi: number;
+}): number {
+  const principalEmi = computeMonthlyEmi(args.startingBalance, args.totalMonths);
+  return Math.max(
+    0,
+    Math.round((Math.max(0, args.monthlyEmi) - principalEmi) * 100) / 100,
+  );
+}
+
+/**
+ * Flat annual interest rate implied by monthly EMI.
+ * totalInterest = P * (rate/100) * (N/12)
+ */
+export function computeFlatAnnualInterestPercent(args: {
+  startingBalance: number;
+  totalMonths: number;
+  monthlyEmi: number;
+}): number {
+  const months = Math.floor(args.totalMonths);
+  const principal = args.startingBalance;
+  if (principal <= 0 || months <= 0) return 0;
+  const totalInterest = computeTotalInterest(args);
+  if (totalInterest <= 0) return 0;
+  const years = months / 12;
+  return Math.round((totalInterest / principal / years) * 10000) / 100;
+}
+
+/** Monthly EMI from principal + flat annual interest %. */
+export function computeMonthlyEmiFromInterestPercent(args: {
+  startingBalance: number;
+  totalMonths: number;
+  interestPercent: number;
+}): number {
+  const months = Math.floor(args.totalMonths);
+  const principal = Math.max(0, args.startingBalance);
+  const rate = Math.max(0, args.interestPercent);
+  if (principal <= 0 || months <= 0) return 0;
+  const totalInterest =
+    Math.round(principal * (rate / 100) * (months / 12) * 100) / 100;
+  return Math.round(((principal + totalInterest) / months) * 100) / 100;
 }
 
 export function remainingMonths(totalMonths: number, monthsPaid: number): number {

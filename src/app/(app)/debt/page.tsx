@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
 import { EditDebtGoalButton } from "@/components/add-modals";
 import { DebtReductionChart } from "@/components/charts";
@@ -89,7 +90,11 @@ export default async function DebtPage() {
     paymentsByMonth: data.paymentsByMonth,
   });
 
-  const accountOptions = data.accounts.map((a) => ({ id: a.id, name: a.name }));
+  const accountOptions = data.accounts.map((a) => ({
+    id: a.id,
+    name: a.name,
+    type: a.type,
+  }));
   const activeAccounts = data.accounts.filter((a) => a.pending > 0);
   const paidPct =
     data.totals.starting > 0
@@ -106,8 +111,7 @@ export default async function DebtPage() {
         <div>
           <h2 className="page-title">Debt</h2>
           <p className="muted page-sub">
-            Track loans and borrows. Paid EMIs count toward monthly expenses;
-            borrowed money can log as income when you receive it.
+            Track loans, borrows, lends, kuri, and credit cards.
           </p>
         </div>
         <div className="dash-actions">
@@ -200,8 +204,7 @@ export default async function DebtPage() {
                     <tr>
                       <th>Account</th>
                       <th>Type</th>
-                      <th className="num">Starting</th>
-                      <th className="num">Paid</th>
+                      <th className="num">Monthly EMI</th>
                       <th className="num">Pending</th>
                       <th>Tenure</th>
                       <th>Status</th>
@@ -213,12 +216,17 @@ export default async function DebtPage() {
                   <tbody>
                     {data.accounts.map((a) => (
                       <tr key={a.id}>
-                        <td className="tx-main">{a.name}</td>
+                        <td className="tx-main">
+                          <Link className="linkish" href={`/debt/${a.id}`}>
+                            {a.name}
+                          </Link>
+                        </td>
                         <td>{a.type}</td>
                         <td className="num">
-                          {formatINR(a.startingBalanceNum)}
+                          {a.monthlyEmiNum > 0
+                            ? formatINR(a.monthlyEmiNum)
+                            : "—"}
                         </td>
-                        <td className="num">{formatINR(a.totalPaid)}</td>
                         <td className="num">{formatINR(a.pending)}</td>
                         <td className="nowrap">
                           {a.totalMonths > 0
@@ -228,6 +236,12 @@ export default async function DebtPage() {
                         <td>{a.status}</td>
                         <td>
                           <div className="row-actions">
+                            <Link
+                              className="btn btn-ghost btn-xs"
+                              href={`/debt/${a.id}`}
+                            >
+                              View
+                            </Link>
                             <EditDebtAccountButton
                               account={{
                                 id: a.id,
@@ -235,6 +249,7 @@ export default async function DebtPage() {
                                 type: a.type,
                                 startingBalance: a.startingBalance,
                                 monthlyEmi: a.monthlyEmi,
+                                interestPercent: a.interestPercent,
                                 totalMonths: a.totalMonths,
                                 monthsPaid: a.monthsPaid,
                                 paidTillNow: a.paidTillNow,
@@ -263,8 +278,11 @@ export default async function DebtPage() {
                   <tfoot>
                     <tr>
                       <td colSpan={2}>Total</td>
-                      <td className="num">{formatINR(data.totals.starting)}</td>
-                      <td className="num">{formatINR(data.totals.paid)}</td>
+                      <td className="num">
+                        {formatINR(
+                          data.accounts.reduce((s, a) => s + a.monthlyEmiNum, 0),
+                        )}
+                      </td>
                       <td className="num">{formatINR(data.totals.pending)}</td>
                       <td colSpan={3}></td>
                     </tr>
@@ -279,11 +297,6 @@ export default async function DebtPage() {
               <h2>Payment log</h2>
               <AddDebtPaymentButton accounts={accountOptions} />
             </div>
-            <p className="muted page-sub" style={{ marginTop: 0 }}>
-              Marking a payment paid also records it as a Debt / EMI expense for
-              that month.
-            </p>
-
             {data.payments.length === 0 ? (
               <div className="empty">No payments logged yet.</div>
             ) : (

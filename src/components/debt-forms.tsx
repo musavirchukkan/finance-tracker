@@ -9,12 +9,25 @@ import {
   updateDebtAccount,
 } from "@/lib/actions";
 import {
+  computeFlatAnnualInterestPercent,
   computeMonthlyEmi,
+  computeMonthlyEmiFromInterestPercent,
+  computeMonthlyInterest,
   computePaidTillNow,
-  remainingBalance,
+  computeTotalInterest,
   remainingMonths,
 } from "@/lib/debt-account";
-import { formatINR } from "@/lib/money";
+import {
+  DEBT_TYPE_OPTIONS,
+  DEBT_TYPE_PRESETS,
+  defaultPaymentTypeForAccount,
+  isBorrowedType,
+  isKuriType,
+  isLentType,
+  isNoInterestType,
+  isRevolvingCreditType,
+  paymentOptionsForAccountType,
+} from "@/lib/debt-kinds";
 
 type DebtAccountFormValues = {
   id?: string;
@@ -22,6 +35,7 @@ type DebtAccountFormValues = {
   type: string;
   startingBalance: string;
   monthlyEmi: string;
+  interestPercent: string;
   totalMonths: string;
   monthsPaid: string;
   paidTillNow: string;
@@ -29,18 +43,12 @@ type DebtAccountFormValues = {
   logAsIncome: boolean;
 };
 
-const TYPE_PRESETS = [
-  "Credit Card EMI",
-  "Personal Loan",
-  "Borrowed",
-  "Credit Card",
-] as const;
-
 const emptyValues: DebtAccountFormValues = {
   name: "",
   type: "",
   startingBalance: "0",
   monthlyEmi: "0",
+  interestPercent: "0",
   totalMonths: "0",
   monthsPaid: "0",
   paidTillNow: "0",
@@ -63,11 +71,27 @@ function DebtAccountFields({
   const paidMonths = Math.max(0, Math.floor(Number(values.monthsPaid) || 0));
   const paidTillNow = Number(values.paidTillNow) || 0;
 
-  const computedPaid = computePaidTillNow(emi, paidMonths);
-  const suggestedEmi = computeMonthlyEmi(starting, total);
+  const principalEmi = computeMonthlyEmi(starting, total);
+  const monthlyInterest = computeMonthlyInterest({
+    startingBalance: starting,
+    totalMonths: total,
+    monthlyEmi: emi,
+  });
+  const totalInterest = computeTotalInterest({
+    startingBalance: starting,
+    totalMonths: total,
+    monthlyEmi: emi,
+  });
+  // Paid toward principal uses principal installment, not interest-inclusive EMI.
+  const computedPaid = computePaidTillNow(principalEmi, paidMonths);
   const monthsLeft = remainingMonths(total, paidMonths);
-  const balanceLeft = remainingBalance(starting, paidTillNow);
-  const isBorrowed = values.type.trim().toLowerCase() === "borrowed";
+  const isBorrowed = isBorrowedType(values.type);
+  const isLent = isLentType(values.type);
+  const isKuri = isKuriType(values.type);
+  const isRevolving = isRevolvingCreditType(values.type);
+  const isNoInterest = isNoInterestType(values.type);
+  const hideInterest = isNoInterest || isKuri || isRevolving;
+  const showOpeningCashflow = mode === "create" && (isBorrowed || isLent);
 
   function setField<K extends keyof DebtAccountFormValues>(
     key: K,
@@ -77,62 +101,110 @@ function DebtAccountFields({
   }
 
   function setType(nextType: string) {
-    const borrowed = nextType.trim().toLowerCase() === "borrowed";
-    onChange({
+    const borrowed = isBorrowedType(nextType);
+    const lent = isLentType(nextType);
+    const noInterest =
+      isNoInterestType(nextType) ||
+      isKuriType(nextType) ||
+      isRevolvingCreditType(nextType);
+    const next: DebtAccountFormValues = {
       ...values,
       type: nextType,
-      logAsIncome: mode === "create" ? borrowed : values.logAsIncome,
-    });
+      logAsIncome: mode === "create" ? borrowed || lent : values.logAsIncome,
+      interestPercent: noInterest ? "0" : values.interestPercent,
+      status: isKuriType(nextType)
+        ? "Active Kuri"
+        : isRevolvingCreditType(nextType)
+          ? "Revolving"
+          : values.status || "Active Paydown",
+    };
+    if (noInterest) {
+      applyTenure(next);
+      return;
+    }
+    onChange(next);
   }
 
-  /** When starting or tenure changes, refill EMI and paid-till-now. */
-  function setStartingOrTenure(
-    key: "startingBalance" | "totalMonths",
-    value: string,
-  ) {
-    const next = { ...values, [key]: value };
-    const nextStarting =
-      key === "startingBalance"
-        ? Number(value) || 0
-        : Number(next.startingBalance) || 0;
-    const nextTotal =
-      key === "totalMonths"
-        ? Math.max(0, Math.floor(Number(value) || 0))
-        : Math.max(0, Math.floor(Number(next.totalMonths) || 0));
-    const nextEmi = computeMonthlyEmi(nextStarting, nextTotal);
+  function applyTenure(next: DebtAccountFormValues) {
+    const nextStarting = Number(next.startingBalance) || 0;
+    const nextTotal = Math.max(0, Math.floor(Number(next.totalMonths) || 0));
     const nextPaidMonths = Math.max(
       0,
       Math.floor(Number(next.monthsPaid) || 0),
     );
+    const nextPrincipal = computeMonthlyEmi(nextStarting, nextTotal);
+    const forcePrincipalOnly =
+      isNoInterestType(next.type) ||
+      isKuriType(next.type) ||
+      isRevolvingCreditType(next.type);
+    const rate = forcePrincipalOnly
+      ? 0
+      : Math.max(0, Number(next.interestPercent) || 0);
+    const nextEmi =
+      rate > 0
+        ? computeMonthlyEmiFromInterestPercent({
+            startingBalance: nextStarting,
+            totalMonths: nextTotal,
+            interestPercent: rate,
+          })
+        : nextPrincipal;
+    next.interestPercent = String(rate);
     next.monthlyEmi = String(nextEmi);
-    next.paidTillNow = String(computePaidTillNow(nextEmi, nextPaidMonths));
+    next.paidTillNow = String(computePaidTillNow(nextPrincipal, nextPaidMonths));
     onChange(next);
   }
 
-  function setEmiOrMonths(
-    key: "monthlyEmi" | "monthsPaid",
+  function setStartingOrTenure(
+    key: "startingBalance" | "totalMonths",
     value: string,
   ) {
-    const next = { ...values, [key]: value };
-    const nextEmi =
-      key === "monthlyEmi" ? Number(value) || 0 : Number(next.monthlyEmi) || 0;
-    const nextPaidMonths =
-      key === "monthsPaid"
-        ? Math.max(0, Math.floor(Number(value) || 0))
-        : Math.max(0, Math.floor(Number(next.monthsPaid) || 0));
-    next.paidTillNow = String(computePaidTillNow(nextEmi, nextPaidMonths));
+    applyTenure({ ...values, [key]: value });
+  }
+
+  function setInterestPercent(value: string) {
+    applyTenure({ ...values, interestPercent: value });
+  }
+
+  function setMonthlyEmi(value: string) {
+    const next = { ...values, monthlyEmi: value };
+    const nextEmi = Number(value) || 0;
+    const nextStarting = Number(next.startingBalance) || 0;
+    const nextTotal = Math.max(0, Math.floor(Number(next.totalMonths) || 0));
+    const nextPaidMonths = Math.max(
+      0,
+      Math.floor(Number(next.monthsPaid) || 0),
+    );
+    const nextPrincipal = computeMonthlyEmi(nextStarting, nextTotal);
+    next.interestPercent = String(
+      computeFlatAnnualInterestPercent({
+        startingBalance: nextStarting,
+        totalMonths: nextTotal,
+        monthlyEmi: nextEmi,
+      }),
+    );
+    next.paidTillNow = String(computePaidTillNow(nextPrincipal, nextPaidMonths));
+    onChange(next);
+  }
+
+  function setMonthsPaid(value: string) {
+    const next = { ...values, monthsPaid: value };
+    const nextPaidMonths = Math.max(0, Math.floor(Number(value) || 0));
+    const nextStarting = Number(next.startingBalance) || 0;
+    const nextTotal = Math.max(0, Math.floor(Number(next.totalMonths) || 0));
+    const nextPrincipal = computeMonthlyEmi(nextStarting, nextTotal);
+    next.paidTillNow = String(computePaidTillNow(nextPrincipal, nextPaidMonths));
     onChange(next);
   }
 
   return (
     <>
       <div className="field">
-        <label htmlFor="debt-name">Account / lender</label>
+        <label htmlFor="debt-name">Name</label>
         <input
           id="debt-name"
           name="name"
           required
-          placeholder={isBorrowed ? "Friend / family name" : "AXIS MY Zone"}
+          placeholder="Name"
           autoComplete="off"
           autoFocus
           value={values.name}
@@ -141,26 +213,38 @@ function DebtAccountFields({
       </div>
       <div className="field">
         <label htmlFor="debt-type">Type</label>
-        <input
+        <input type="hidden" name="type" value={values.type} />
+        <select
           id="debt-type"
-          name="type"
-          list="debt-type-presets"
           required
-          placeholder="Credit Card EMI or Borrowed"
-          autoComplete="off"
-          value={values.type}
-          onChange={(e) => setType(e.target.value)}
-        />
-        <datalist id="debt-type-presets">
-          {TYPE_PRESETS.map((t) => (
-            <option key={t} value={t} />
+          value={
+            DEBT_TYPE_PRESETS.some((t) => t === values.type)
+              ? values.type
+              : values.type
+                ? "__custom__"
+                : ""
+          }
+          onChange={(e) => {
+            const next = e.target.value;
+            if (next === "__custom__") return;
+            setType(next);
+          }}
+        >
+          <option value="" disabled>
+            Choose a type…
+          </option>
+          {DEBT_TYPE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
           ))}
-        </datalist>
-        <p className="muted page-sub" style={{ margin: "0.35rem 0 0" }}>
-          Use type <strong>Borrowed</strong> for money from friends/family.
-        </p>
+          {values.type &&
+          !DEBT_TYPE_PRESETS.some((t) => t === values.type) ? (
+            <option value="__custom__">{values.type}</option>
+          ) : null}
+        </select>
       </div>
-      {mode === "create" ? (
+      {showOpeningCashflow ? (
         <div className="field">
           <label className="debt-check-label" htmlFor="debt-log-income">
             <input
@@ -171,16 +255,16 @@ function DebtAccountFields({
               checked={values.logAsIncome}
               onChange={(e) => setField("logAsIncome", e.target.checked)}
             />
-            I received this money (log as income)
+            {isLent
+              ? "Log as expense when created"
+              : "Log as income when created"}
           </label>
-          <p className="muted page-sub" style={{ margin: "0.35rem 0 0" }}>
-            Adds an income transaction under Borrowed so this month&apos;s cash
-            flow is correct. Turn off for older loans already in your accounts.
-          </p>
         </div>
       ) : null}
       <div className="field">
-        <label htmlFor="debt-starting">Starting amount</label>
+        <label htmlFor="debt-starting">
+          {isKuri ? "Pot amount" : isRevolving ? "Outstanding" : "Starting amount"}
+        </label>
         <input
           id="debt-starting"
           name="startingBalance"
@@ -189,6 +273,7 @@ function DebtAccountFields({
           min="0"
           required
           inputMode="decimal"
+          placeholder="0"
           value={values.startingBalance}
           onChange={(e) => setStartingOrTenure("startingBalance", e.target.value)}
         />
@@ -202,12 +287,15 @@ function DebtAccountFields({
           step="1"
           min="0"
           inputMode="numeric"
+          placeholder="0"
           value={values.totalMonths}
           onChange={(e) => setStartingOrTenure("totalMonths", e.target.value)}
         />
       </div>
       <div className="field">
-        <label htmlFor="debt-emi">Monthly EMI / repayment</label>
+        <label htmlFor="debt-emi">
+          {isKuri ? "Monthly contribution" : "Monthly EMI / repayment"}
+        </label>
         <div className="debt-paid-row">
           <input
             id="debt-emi"
@@ -216,28 +304,89 @@ function DebtAccountFields({
             step="0.01"
             min="0"
             inputMode="decimal"
+            placeholder="0"
             value={values.monthlyEmi}
-            onChange={(e) => setEmiOrMonths("monthlyEmi", e.target.value)}
+            onChange={(e) => setMonthlyEmi(e.target.value)}
           />
-          <button
-            type="button"
-            className="btn btn-ghost btn-xs"
-            onClick={() =>
-              setEmiOrMonths("monthlyEmi", String(suggestedEmi))
-            }
-            disabled={suggestedEmi <= 0}
-          >
-            Recalculate
-          </button>
+          {!hideInterest ? (
+            <button
+              type="button"
+              className="btn btn-ghost btn-xs"
+              onClick={() => setMonthlyEmi(String(principalEmi))}
+              disabled={principalEmi <= 0}
+            >
+              Principal only
+            </button>
+          ) : null}
         </div>
-        <p className="muted page-sub" style={{ margin: "0.35rem 0 0" }}>
-          {suggestedEmi > 0
-            ? `Suggested ${formatINR(suggestedEmi)} from starting ÷ months.`
-            : "Enter starting amount and total months to auto-fill EMI."}
-        </p>
       </div>
+      <input type="hidden" name="interestPercent" value={values.interestPercent} />
+      {!hideInterest ? (
+        <>
+          <div className="field">
+            <label htmlFor="debt-interest-pct">Interest % (flat annual)</label>
+            <input
+              id="debt-interest-pct"
+              type="number"
+              step="0.01"
+              min="0"
+              inputMode="decimal"
+              placeholder="0"
+              value={values.interestPercent}
+              onChange={(e) => setInterestPercent(e.target.value)}
+            />
+          </div>
+          {total > 0 && starting > 0 ? (
+            <div className="field">
+              <div className="debt-live-stats debt-live-stats-inputs">
+                <div className="field" style={{ margin: 0 }}>
+                  <label htmlFor="debt-monthly-interest">Monthly interest</label>
+                  <input
+                    id="debt-monthly-interest"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={String(monthlyInterest)}
+                    onChange={(e) => {
+                      const interest = Math.max(0, Number(e.target.value) || 0);
+                      setMonthlyEmi(
+                        String(
+                          Math.round((principalEmi + interest) * 100) / 100,
+                        ),
+                      );
+                    }}
+                  />
+                </div>
+                <div className="field" style={{ margin: 0 }}>
+                  <label htmlFor="debt-total-interest">Total interest</label>
+                  <input
+                    id="debt-total-interest"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={String(totalInterest)}
+                    onChange={(e) => {
+                      const interest = Math.max(0, Number(e.target.value) || 0);
+                      if (total <= 0) return;
+                      const nextEmi =
+                        Math.round(((starting + interest) / total) * 100) / 100;
+                      setMonthlyEmi(String(nextEmi));
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </>
+      ) : null}
       <div className="field">
-        <label htmlFor="debt-months-paid">Months paid already</label>
+        <label htmlFor="debt-months-paid">
+          {isKuri ? "Contributions paid" : "EMIs paid"}
+        </label>
         <input
           id="debt-months-paid"
           name="monthsPaid"
@@ -245,12 +394,61 @@ function DebtAccountFields({
           step="1"
           min="0"
           inputMode="numeric"
+          placeholder="0"
           value={values.monthsPaid}
-          onChange={(e) => setEmiOrMonths("monthsPaid", e.target.value)}
+          onChange={(e) => setMonthsPaid(e.target.value)}
         />
       </div>
       <div className="field">
-        <label htmlFor="debt-paid-till-now">Paid till now</label>
+        <label htmlFor="debt-months-left">Months left</label>
+        <input
+          id="debt-months-left"
+          type="number"
+          step="1"
+          min="0"
+          inputMode="numeric"
+          placeholder="0"
+          value={String(monthsLeft)}
+          onChange={(e) => {
+            const left = Math.max(0, Math.floor(Number(e.target.value) || 0));
+            if (total <= 0) return;
+            const paid = Math.max(0, Math.min(total, total - left));
+            setMonthsPaid(String(paid));
+          }}
+        />
+      </div>
+      <div className="field">
+        <label htmlFor="debt-outstanding">
+          {isKuri ? "Remaining" : "Remaining / outstanding"}
+        </label>
+        <input
+          id="debt-outstanding"
+          type="number"
+          step="0.01"
+          min="0"
+          inputMode="decimal"
+          placeholder="0"
+          value={
+            starting > 0
+              ? String(
+                  Math.round(Math.max(0, starting - paidTillNow) * 100) / 100,
+                )
+              : "0"
+          }
+          onChange={(e) => {
+            const outstanding = Math.max(0, Number(e.target.value) || 0);
+            const paid = Math.max(
+              0,
+              Math.round((starting - outstanding) * 100) / 100,
+            );
+            setField("paidTillNow", String(paid));
+          }}
+        />
+      </div>
+      <div className="field">
+        <label htmlFor="debt-paid-till-now">
+          {isKuri ? "Contributed so far" : "Principal paid so far"}
+        </label>
         <div className="debt-paid-row">
           <input
             id="debt-paid-till-now"
@@ -259,6 +457,7 @@ function DebtAccountFields({
             step="0.01"
             min="0"
             inputMode="decimal"
+            placeholder="0"
             value={values.paidTillNow}
             onChange={(e) => setField("paidTillNow", e.target.value)}
           />
@@ -267,21 +466,8 @@ function DebtAccountFields({
             className="btn btn-ghost btn-xs"
             onClick={() => setField("paidTillNow", String(computedPaid))}
           >
-            Recalculate
+            From EMI count
           </button>
-        </div>
-        <p className="muted page-sub" style={{ margin: "0.35rem 0 0" }}>
-          Suggested {formatINR(computedPaid)} from EMI × months paid.
-        </p>
-      </div>
-      <div className="debt-live-stats" aria-live="polite">
-        <div>
-          <span className="muted">Months left</span>
-          <strong>{monthsLeft}</strong>
-        </div>
-        <div>
-          <span className="muted">Remaining</span>
-          <strong>{formatINR(balanceLeft)}</strong>
         </div>
       </div>
       <div className="field">
@@ -289,6 +475,7 @@ function DebtAccountFields({
         <input
           id="debt-status"
           name="status"
+          placeholder="Status"
           value={values.status}
           onChange={(e) => setField("status", e.target.value)}
         />
@@ -344,6 +531,7 @@ export type EditableDebtAccount = {
   type: string;
   startingBalance: string | number;
   monthlyEmi: string | number;
+  interestPercent?: string | number;
   totalMonths: number;
   monthsPaid: number;
   paidTillNow: number;
@@ -356,21 +544,33 @@ export function EditDebtAccountButton({
   account: EditableDebtAccount;
 }) {
   const [open, setOpen] = useState(false);
-  const initial = useMemo<DebtAccountFormValues>(
-    () => ({
+  const initial = useMemo<DebtAccountFormValues>(() => {
+    const starting = Number(account.startingBalance) || 0;
+    const months = account.totalMonths ?? 0;
+    const monthly = Number(account.monthlyEmi) || 0;
+    const savedRate = Number(account.interestPercent);
+    const computedRate = computeFlatAnnualInterestPercent({
+      startingBalance: starting,
+      totalMonths: months,
+      monthlyEmi: monthly,
+    });
+    const interestPercent = String(
+      Number.isFinite(savedRate) && savedRate > 0 ? savedRate : computedRate,
+    );
+    return {
       id: account.id,
       name: account.name,
       type: account.type,
       startingBalance: String(account.startingBalance),
       monthlyEmi: String(account.monthlyEmi),
-      totalMonths: String(account.totalMonths ?? 0),
+      interestPercent,
+      totalMonths: String(months),
       monthsPaid: String(account.monthsPaid ?? 0),
       paidTillNow: String(account.paidTillNow ?? 0),
       status: account.status,
       logAsIncome: false,
-    }),
-    [account],
-  );
+    };
+  }, [account]);
   const [values, setValues] = useState<DebtAccountFormValues>(initial);
 
   function openModal() {
@@ -420,35 +620,61 @@ export function EditDebtAccountButton({
   );
 }
 
-type AccountOption = { id: string; name: string };
+type AccountOption = { id: string; name: string; type: string };
 
 export function AddDebtPaymentButton({
   accounts,
+  defaultAccountId,
 }: {
   accounts: AccountOption[];
+  defaultAccountId?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const initialAccount =
+    accounts.find((a) => a.id === defaultAccountId) ?? accounts[0];
+  const [accountId, setAccountId] = useState(initialAccount?.id ?? "");
+  const selected = accounts.find((a) => a.id === accountId) ?? accounts[0];
+  const paymentOptions = paymentOptionsForAccountType(selected?.type ?? "");
+  const [paymentType, setPaymentType] = useState(
+    defaultPaymentTypeForAccount(selected?.type ?? ""),
+  );
   const disabled = accounts.length === 0;
+
+  function close() {
+    setOpen(false);
+    const first =
+      accounts.find((a) => a.id === defaultAccountId) ?? accounts[0];
+    setAccountId(first?.id ?? "");
+    setPaymentType(defaultPaymentTypeForAccount(first?.type ?? ""));
+  }
+
+  function openModal() {
+    const first =
+      accounts.find((a) => a.id === defaultAccountId) ?? accounts[0];
+    setAccountId(first?.id ?? "");
+    setPaymentType(defaultPaymentTypeForAccount(first?.type ?? ""));
+    setOpen(true);
+  }
 
   return (
     <>
       <button
         type="button"
         className="btn btn-primary btn-xs"
-        onClick={() => setOpen(true)}
+        onClick={openModal}
         disabled={disabled}
         title={disabled ? "Add a debt account first" : undefined}
       >
         + Log payment
       </button>
-      <Modal open={open} title="Log payment" onClose={() => setOpen(false)}>
+      <Modal open={open} title="Log payment" onClose={close}>
         <ActionForm
           action={createDebtPayment}
           successMessage="Payment logged"
           errorMessage="Could not add payment"
           className="form-stack"
           resetOnSuccess
-          onSuccess={() => setOpen(false)}
+          onSuccess={close}
         >
           <div className="field">
             <label htmlFor="pay-dueDate">Due date</label>
@@ -460,18 +686,35 @@ export function AddDebtPaymentButton({
               id="pay-accountId"
               name="accountId"
               required
-              defaultValue={accounts[0]?.id}
+              value={accountId}
+              onChange={(e) => {
+                const id = e.target.value;
+                setAccountId(id);
+                const acc = accounts.find((a) => a.id === id);
+                setPaymentType(defaultPaymentTypeForAccount(acc?.type ?? ""));
+              }}
             >
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.name}
+                  {a.name} · {a.type}
                 </option>
               ))}
             </select>
           </div>
           <div className="field">
             <label htmlFor="pay-type">Payment type</label>
-            <input id="pay-type" name="paymentType" defaultValue="EMI" />
+            <select
+              id="pay-type"
+              name="paymentType"
+              value={paymentType}
+              onChange={(e) => setPaymentType(e.target.value)}
+            >
+              {paymentOptions.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="field">
             <label htmlFor="pay-amount">Amount</label>
@@ -483,6 +726,7 @@ export function AddDebtPaymentButton({
               min="0"
               required
               inputMode="decimal"
+              placeholder="0"
             />
           </div>
           <div className="field">
@@ -491,16 +735,9 @@ export function AddDebtPaymentButton({
               <option value="true">Yes</option>
               <option value="false">No</option>
             </select>
-            <p className="muted page-sub" style={{ margin: "0.35rem 0 0" }}>
-              Paid payments also create an expense under Transactions / Budget.
-            </p>
           </div>
           <div className="modal-actions">
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() => setOpen(false)}
-            >
+            <button type="button" className="btn btn-ghost" onClick={close}>
               Cancel
             </button>
             <button className="btn btn-primary" type="submit">

@@ -102,6 +102,14 @@ export default async function TransactionsPage({
               →
             </Link>
           </div>
+          <a
+            className="btn btn-ghost btn-xs"
+            href="/api/export/transactions?format=csv"
+            download
+            title="Download all transactions as CSV"
+          >
+            Export
+          </a>
           <AddTransactionButton
             categories={categories}
             defaultDate={`${month}-01`}

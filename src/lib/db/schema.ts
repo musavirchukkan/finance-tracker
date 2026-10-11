@@ -98,6 +98,10 @@ export const debtAccounts = pgTable("debt_accounts", {
   monthlyEmi: numeric("monthly_emi", { precision: 12, scale: 2 })
     .notNull()
     .default("0"),
+  /** Flat annual interest % used in the debt form (EMI remains source of cashflow). */
+  interestPercent: numeric("interest_percent", { precision: 8, scale: 2 })
+    .notNull()
+    .default("0"),
   totalMonths: integer("total_months").notNull().default(0),
   monthsPaid: integer("months_paid").notNull().default(0),
   status: text("status").notNull().default("Active Paydown"),
