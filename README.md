@@ -66,10 +66,9 @@ npm run db:up
 ```bash
 npm run db:push
 npm run db:seed
-npm run db:seed:demo   # optional: budgets, income/expense, debt sample data
 ```
 
-`db:seed:demo` clears that user’s transactions/budgets/debt and reloads factory dummy data (safe to re-run while reviewing).
+`db:seed` creates the login user (if missing) and default categories.
 
 ### 4. Run
 

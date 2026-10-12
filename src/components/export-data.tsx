@@ -5,8 +5,8 @@ export function ExportDataCard() {
         <div>
           <h2>Export data</h2>
           <p className="muted page-sub" style={{ margin: "0.25rem 0 0" }}>
-            Download all transactions before a DB wipe or schema change. Use the
-            file as a reference while re-entering values.
+            Download all transactions as a backup. Use the file as a reference
+            if you need to re-enter values later.
           </p>
         </div>
       </div>
