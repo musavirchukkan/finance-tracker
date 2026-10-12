@@ -58,7 +58,15 @@ export default async function AccountsPage() {
           </div>
         ) : (
           <div className="table-wrap">
-            <table className="data">
+            <table className="data distribute">
+              <colgroup>
+                <col className="col-account" />
+                <col className="col-type" />
+                <col className="col-balance" />
+                <col className="col-min" />
+                <col className="col-status" />
+                <col className="col-actions" />
+              </colgroup>
               <thead>
                 <tr>
                   <th>Account</th>
@@ -66,7 +74,7 @@ export default async function AccountsPage() {
                   <th className="num">Balance</th>
                   <th className="num">Min</th>
                   <th>Status</th>
-                  <th>
+                  <th className="shrink">
                     <span className="sr-only">Actions</span>
                   </th>
                 </tr>
@@ -78,21 +86,29 @@ export default async function AccountsPage() {
                       <Link className="linkish" href={`/accounts/${a.id}`}>
                         {a.label}
                       </Link>
-                      {a.balanceRules ? (
-                        <div className="muted" style={{ fontSize: "0.8rem" }}>
-                          {a.balanceRules}
-                        </div>
-                      ) : null}
                     </td>
                     <td>{a.accountType}</td>
                     <td className="num">{formatINR(a.balanceNum)}</td>
                     <td className="num">
-                      {a.minBalanceNum != null
-                        ? formatINR(a.minBalanceNum)
-                        : "—"}
+                      {a.balanceRules ? (
+                        <span
+                          className="min-balance-tip"
+                          data-tip={a.balanceRules}
+                          tabIndex={0}
+                          aria-label={`Minimum balance note: ${a.balanceRules}`}
+                        >
+                          {a.minBalanceNum != null
+                            ? formatINR(a.minBalanceNum)
+                            : "—"}
+                        </span>
+                      ) : a.minBalanceNum != null ? (
+                        formatINR(a.minBalanceNum)
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td>{a.status}</td>
-                    <td>
+                    <td className="shrink">
                       <div className="row-actions">
                         <Link
                           className="btn btn-ghost btn-xs"

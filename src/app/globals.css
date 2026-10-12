@@ -427,6 +427,105 @@ table.data td.num {
   width: 1%;
 }
 
+/* Hug content (use on action columns so buttons stay tight) */
+table.data th.shrink,
+table.data td.shrink {
+  width: 1%;
+  white-space: nowrap;
+}
+
+/* Even column share; reserve room for row actions */
+table.data.distribute {
+  table-layout: fixed;
+  width: 100%;
+}
+
+table.data.distribute col.col-account {
+  width: 26%;
+}
+
+table.data.distribute col.col-type {
+  width: 12%;
+}
+
+table.data.distribute col.col-balance {
+  width: 14%;
+}
+
+table.data.distribute col.col-min {
+  width: 14%;
+}
+
+table.data.distribute col.col-status {
+  width: 12%;
+}
+
+table.data.distribute col.col-actions {
+  width: 22%;
+}
+
+table.data.distribute td.tx-main,
+table.data.distribute td.tx-main a {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+table.data.distribute th.num,
+table.data.distribute td.num {
+  width: auto;
+}
+
+table.data.distribute th.shrink,
+table.data.distribute td.shrink {
+  width: auto;
+  overflow: visible;
+}
+
+.min-balance-tip {
+  position: relative;
+  display: inline-block;
+  cursor: help;
+  border-bottom: 1px dotted color-mix(in srgb, var(--muted) 55%, transparent);
+}
+
+.min-balance-tip[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 0.4rem);
+  z-index: 20;
+  min-width: 10rem;
+  max-width: min(18rem, 70vw);
+  padding: 0.45rem 0.65rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--bg-elevated);
+  color: var(--ink);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(0.15rem);
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease,
+    visibility 0.12s ease;
+  pointer-events: none;
+}
+
+.min-balance-tip[data-tip]:hover::after,
+.min-balance-tip[data-tip]:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
 .nowrap {
   white-space: nowrap;
 }

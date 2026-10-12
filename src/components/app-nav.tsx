@@ -77,7 +77,9 @@ export function AppNav({ name }: { name?: string | null }) {
   }, [router]);
 
   function go(href: string) {
-    if (pathname.startsWith(href)) {
+    // Only skip when already on that exact route. Detail pages like
+    // /accounts/[id] should still navigate back to /accounts.
+    if (pathname === href) {
       setPendingHref(null);
       return;
     }

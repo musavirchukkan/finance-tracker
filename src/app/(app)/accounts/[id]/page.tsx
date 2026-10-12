@@ -58,34 +58,25 @@ export default async function BankAccountDetailPage({
         <div className="stat-card tall">
           <span>Minimum balance</span>
           <strong>
-            {account.minBalanceNum != null
-              ? formatINR(account.minBalanceNum)
-              : "—"}
+            {account.balanceRules ? (
+              <span
+                className="min-balance-tip"
+                data-tip={account.balanceRules}
+                tabIndex={0}
+                aria-label={`Minimum balance note: ${account.balanceRules}`}
+              >
+                {account.minBalanceNum != null
+                  ? formatINR(account.minBalanceNum)
+                  : "—"}
+              </span>
+            ) : account.minBalanceNum != null ? (
+              formatINR(account.minBalanceNum)
+            ) : (
+              "—"
+            )}
           </strong>
         </div>
       </div>
-
-      {account.balanceRules || account.lastFour ? (
-        <section className="panel">
-          <div className="panel-head">
-            <h2>Account notes</h2>
-          </div>
-          <dl className="debt-detail-grid">
-            {account.lastFour ? (
-              <div>
-                <dt>Account ····</dt>
-                <dd>{account.lastFour}</dd>
-              </div>
-            ) : null}
-            {account.balanceRules ? (
-              <div style={{ gridColumn: "1 / -1" }}>
-                <dt>Balance / usage rules</dt>
-                <dd>{account.balanceRules}</dd>
-              </div>
-            ) : null}
-          </dl>
-        </section>
-      ) : null}
 
       <section className="panel">
         <div className="panel-head">

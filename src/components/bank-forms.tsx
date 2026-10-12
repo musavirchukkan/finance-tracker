@@ -97,13 +97,17 @@ function BankFields({
           value={values.minBalance}
           onChange={(e) => set("minBalance", e.target.value)}
         />
-      </div>
-      <div className="field">
-        <label htmlFor="bank-rules">Balance / usage rules</label>
+        <label
+          htmlFor="bank-rules"
+          className="muted"
+          style={{ marginTop: "0.55rem", display: "block" }}
+        >
+          Min-balance note (AMB, quarterly, txn limits…)
+        </label>
         <textarea
           id="bank-rules"
           name="balanceRules"
-          rows={3}
+          rows={2}
           placeholder="e.g. AMB ₹10,000 · Quarterly average · 30 free txns / day"
           value={values.balanceRules}
           onChange={(e) => set("balanceRules", e.target.value)}
