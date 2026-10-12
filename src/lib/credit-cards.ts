@@ -297,6 +297,82 @@ export function availableCredit(args: {
   return Math.max(0, Math.round((args.creditLimit - used) * 100) / 100);
 }
 
+type LimitLinkCard = {
+  id: string;
+  sharesLimitWithId?: string | null;
+  creditLimit?: string | number | null;
+  currentOutstanding?: string | number | null;
+};
+
+/** Walk sharesLimitWithId to the card that owns the shared limit. */
+export function resolveLimitRootId(
+  cardId: string,
+  cards: LimitLinkCard[],
+): string {
+  const byId = new Map(cards.map((c) => [c.id, c]));
+  let cur = cardId;
+  const seen = new Set<string>();
+  while (!seen.has(cur)) {
+    seen.add(cur);
+    const row = byId.get(cur);
+    const parent = row?.sharesLimitWithId ?? null;
+    if (!parent || !byId.has(parent)) return cur;
+    cur = parent;
+  }
+  return cur;
+}
+
+/** Cards that draw from the same shared limit as `cardId`. */
+export function sharedLimitMemberIds(
+  cardId: string,
+  cards: LimitLinkCard[],
+): string[] {
+  const rootId = resolveLimitRootId(cardId, cards);
+  return cards
+    .filter((c) => resolveLimitRootId(c.id, cards) === rootId)
+    .map((c) => c.id);
+}
+
+/**
+ * Available credit for a card, pooling revolving + EMI across every card
+ * that shares the same limit root.
+ */
+export function availableCreditForSharedLimit(args: {
+  cardId: string;
+  cards: LimitLinkCard[];
+  emiBlockedByCard: Map<string, number> | Record<string, number>;
+}): number | null {
+  const { cardId, cards } = args;
+  const emiMap =
+    args.emiBlockedByCard instanceof Map
+      ? args.emiBlockedByCard
+      : new Map(Object.entries(args.emiBlockedByCard));
+  const byId = new Map(cards.map((c) => [c.id, c]));
+  if (!byId.has(cardId)) return null;
+
+  const rootId = resolveLimitRootId(cardId, cards);
+  const root = byId.get(rootId);
+  const limit =
+    root?.creditLimit != null && root.creditLimit !== ""
+      ? Number(root.creditLimit)
+      : null;
+
+  const members = sharedLimitMemberIds(cardId, cards);
+  let revolving = 0;
+  let emiBlocked = 0;
+  for (const id of members) {
+    const row = byId.get(id);
+    revolving += Math.max(0, Number(row?.currentOutstanding ?? 0) || 0);
+    emiBlocked += Math.max(0, emiMap.get(id) ?? 0);
+  }
+
+  return availableCredit({
+    creditLimit: limit != null && Number.isFinite(limit) ? limit : null,
+    revolvingOutstanding: revolving,
+    emiBlocked,
+  });
+}
+
 /** Statement spend due + linked monthly EMI installments. */
 export function totalDueThisCycle(args: {
   statementDue: number;

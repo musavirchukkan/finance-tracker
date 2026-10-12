@@ -16,10 +16,12 @@ import {
   ensureCardCashflowCategories,
 } from "@/lib/credit-card-cashflow";
 import {
-  availableCredit,
+  availableCreditForSharedLimit,
   clampBillingDay,
   formatCardLabel,
   normalizeLastFour,
+  resolveLimitRootId,
+  sharedLimitMemberIds,
   summarizeCardStatement,
   totalDueThisCycle,
 } from "@/lib/credit-cards";
@@ -239,8 +241,10 @@ async function linkedEmiByCard(userId: string) {
 function withEmiAggregates(
   card: {
     id: string;
+    name: string;
     currentOutstanding: string;
     creditLimit: string | null;
+    sharesLimitWithId: string | null;
     billingDay: number | null;
     paymentDueDay: number | null;
   },
@@ -255,16 +259,55 @@ function withEmiAggregates(
       remaining: number;
     }[];
   } | undefined,
+  allCards: {
+    id: string;
+    name: string;
+    lastFour: string | null;
+    currentOutstanding: string;
+    creditLimit: string | null;
+    sharesLimitWithId: string | null;
+  }[],
+  emiByCard: Map<string, { emiBlocked: number }>,
 ) {
   const outstandingNum = toNumber(card.currentOutstanding);
-  const creditLimitNum =
-    card.creditLimit != null ? toNumber(card.creditLimit) : null;
   const emiBlockedNum = emi?.emiBlocked ?? 0;
   const emiMonthlyNum = emi?.emiMonthly ?? 0;
   const statementDueNum = summary.amountDue;
+
+  const rootId = resolveLimitRootId(card.id, allCards);
+  const root = allCards.find((c) => c.id === rootId) ?? card;
+  const memberIds = sharedLimitMemberIds(card.id, allCards);
+  const members = allCards.filter((c) => memberIds.includes(c.id));
+  const sharedLimit =
+    root.creditLimit != null ? toNumber(root.creditLimit) : null;
+  const groupRevolving = members.reduce(
+    (s, c) => s + toNumber(c.currentOutstanding),
+    0,
+  );
+  const groupEmiBlocked = members.reduce(
+    (s, c) => s + (emiByCard.get(c.id)?.emiBlocked ?? 0),
+    0,
+  );
+  const sharedPeers = members
+    .filter((c) => c.id !== card.id)
+    .map((c) => formatCardLabel(c.name, c.lastFour));
+
+  const emiBlockedMap = new Map(
+    [...emiByCard.entries()].map(([id, v]) => [id, v.emiBlocked]),
+  );
+
   return {
     outstandingNum,
-    creditLimitNum,
+    /** Limit shown for this card: own limit, or shared root limit. */
+    creditLimitNum: sharedLimit,
+    ownCreditLimitNum:
+      card.creditLimit != null ? toNumber(card.creditLimit) : null,
+    sharesLimitWithId: card.sharesLimitWithId,
+    sharedLimitRootId: rootId,
+    sharesLimit: memberIds.length > 1,
+    sharedWithLabels: sharedPeers,
+    groupRevolvingNum: groupRevolving,
+    groupEmiBlockedNum: groupEmiBlocked,
     nextBillDate: summary.nextBillDate,
     nextDueDate: summary.nextDueDate,
     lastBillDate: summary.lastBillDate,
@@ -276,13 +319,36 @@ function withEmiAggregates(
       linkedMonthlyEmi: emiMonthlyNum,
     }),
     nextBillPending: summary.nextBillPending,
-    availableNum: availableCredit({
-      creditLimit: creditLimitNum,
-      revolvingOutstanding: outstandingNum,
-      emiBlocked: emiBlockedNum,
+    availableNum: availableCreditForSharedLimit({
+      cardId: card.id,
+      cards: allCards,
+      emiBlockedByCard: emiBlockedMap,
     }),
     linkedEmis: emi?.emis ?? [],
   };
+}
+
+async function parseSharesLimitWithId(
+  userId: string,
+  cardId: string | null,
+  formData: FormData,
+) {
+  const raw = String(formData.get("sharesLimitWithId") ?? "").trim();
+  if (!raw) return null;
+  if (cardId && raw === cardId) {
+    throw new Error("A card cannot share limit with itself");
+  }
+  const [target] = await db
+    .select()
+    .from(creditCards)
+    .where(and(eq(creditCards.id, raw), eq(creditCards.userId, userId)))
+    .limit(1);
+  if (!target) throw new Error("Shared-limit card not found");
+  // Only link to a root card (one that doesn't itself share).
+  if (target.sharesLimitWithId) {
+    throw new Error("Pick the card that owns the shared limit");
+  }
+  return target.id;
 }
 
 export async function listCreditCards(userId: string) {
@@ -317,18 +383,18 @@ export async function listCreditCards(userId: string) {
     return {
       ...c,
       label: formatCardLabel(c.name, c.lastFour),
-      ...withEmiAggregates(c, summary, emiByCard.get(c.id)),
+      ...withEmiAggregates(c, summary, emiByCard.get(c.id), rows, emiByCard),
     };
   });
 }
 
 export async function getCreditCardDetail(userId: string, cardId: string) {
   await migrateRollingCreditCards(userId);
-  const [card] = await db
+  const allCards = await db
     .select()
     .from(creditCards)
-    .where(and(eq(creditCards.id, cardId), eq(creditCards.userId, userId)))
-    .limit(1);
+    .where(eq(creditCards.userId, userId));
+  const card = allCards.find((c) => c.id === cardId);
   if (!card) return null;
 
   const activities = await db
@@ -347,7 +413,7 @@ export async function getCreditCardDetail(userId: string, cardId: string) {
     card: {
       ...card,
       label: formatCardLabel(card.name, card.lastFour),
-      ...withEmiAggregates(card, summary, emi),
+      ...withEmiAggregates(card, summary, emi, allCards, emiByCard),
     },
     activities: activities.map((a) => ({
       ...a,
@@ -375,8 +441,14 @@ export async function createCreditCard(formData: FormData) {
   const outstanding = parseAmount(
     String(formData.get("currentOutstanding") ?? "0"),
   );
+  const sharesLimitWithId = await parseSharesLimitWithId(
+    user.id,
+    null,
+    formData,
+  );
   const limitRaw = String(formData.get("creditLimit") ?? "").trim();
-  const creditLimit = limitRaw ? parseAmount(limitRaw) : null;
+  const creditLimit =
+    sharesLimitWithId || !limitRaw ? null : parseAmount(limitRaw);
   const billingDay = clampBillingDay(
     Number(formData.get("billingDay") ?? "") || null,
   );
@@ -395,6 +467,7 @@ export async function createCreditCard(formData: FormData) {
       name,
       currentOutstanding: Math.max(0, outstanding).toFixed(2),
       creditLimit: creditLimit != null ? creditLimit.toFixed(2) : null,
+      sharesLimitWithId,
       billingDay,
       paymentDueDay,
       lastFour,
@@ -404,6 +477,7 @@ export async function createCreditCard(formData: FormData) {
     .returning();
 
   revalidateCards(row?.id);
+  if (sharesLimitWithId) revalidateCards(sharesLimitWithId);
 }
 
 export async function updateCreditCard(formData: FormData) {
@@ -413,8 +487,10 @@ export async function updateCreditCard(formData: FormData) {
   const outstanding = parseAmount(
     String(formData.get("currentOutstanding") ?? "0"),
   );
+  const sharesLimitWithId = await parseSharesLimitWithId(user.id, id, formData);
   const limitRaw = String(formData.get("creditLimit") ?? "").trim();
-  const creditLimit = limitRaw ? parseAmount(limitRaw) : null;
+  const creditLimit =
+    sharesLimitWithId || !limitRaw ? null : parseAmount(limitRaw);
   const billingDay = clampBillingDay(
     Number(formData.get("billingDay") ?? "") || null,
   );
@@ -426,12 +502,26 @@ export async function updateCreditCard(formData: FormData) {
 
   if (!id || !name) throw new Error("Missing fields");
 
+  // Clear dependents pointing at this card if it starts sharing with another.
+  if (sharesLimitWithId) {
+    await db
+      .update(creditCards)
+      .set({ sharesLimitWithId: null })
+      .where(
+        and(
+          eq(creditCards.userId, user.id),
+          eq(creditCards.sharesLimitWithId, id),
+        ),
+      );
+  }
+
   await db
     .update(creditCards)
     .set({
       name,
       currentOutstanding: Math.max(0, outstanding).toFixed(2),
       creditLimit: creditLimit != null ? creditLimit.toFixed(2) : null,
+      sharesLimitWithId,
       billingDay,
       paymentDueDay,
       lastFour,
@@ -441,6 +531,7 @@ export async function updateCreditCard(formData: FormData) {
     .where(and(eq(creditCards.id, id), eq(creditCards.userId, user.id)));
 
   revalidateCards(id);
+  if (sharesLimitWithId) revalidateCards(sharesLimitWithId);
 }
 
 export async function deleteCreditCard(formData: FormData) {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   activityLabel,
   availableCredit,
+  availableCreditForSharedLimit,
   clampBillingDay,
   dateForDayInMonth,
   daysInMonth,
@@ -10,6 +11,8 @@ import {
   nextCycleDate,
   normalizeLastFour,
   previousCycleDate,
+  resolveLimitRootId,
+  sharedLimitMemberIds,
   statementBillDateForCharge,
   summarizeCardStatement,
   totalDueThisCycle,
@@ -184,6 +187,68 @@ describe("availableCredit", () => {
         emiBlocked: 500,
       }),
     ).toBeNull();
+  });
+});
+
+describe("shared credit limit", () => {
+  const cards = [
+    {
+      id: "myzone",
+      name: "Axis My Zone",
+      creditLimit: "100000",
+      currentOutstanding: "10000",
+      sharesLimitWithId: null,
+    },
+    {
+      id: "indianoil",
+      name: "Axis IndianOil",
+      creditLimit: null,
+      currentOutstanding: "5000",
+      sharesLimitWithId: "myzone",
+    },
+    {
+      id: "value",
+      name: "Axis Value",
+      creditLimit: null,
+      currentOutstanding: "0",
+      sharesLimitWithId: "myzone",
+    },
+  ];
+
+  it("resolves add-on cards to the limit owner", () => {
+    expect(resolveLimitRootId("indianoil", cards)).toBe("myzone");
+    expect(resolveLimitRootId("myzone", cards)).toBe("myzone");
+  });
+
+  it("lists all members of the shared pool", () => {
+    expect(sharedLimitMemberIds("value", cards).sort()).toEqual([
+      "indianoil",
+      "myzone",
+      "value",
+    ]);
+  });
+
+  it("reduces available on every card when one has EMI", () => {
+    const emiBlockedByCard = {
+      myzone: 0,
+      indianoil: 40_000,
+      value: 0,
+    };
+    // limit 100000 − revolving 15000 − EMI 40000 = 45000
+    expect(
+      availableCreditForSharedLimit({
+        cardId: "myzone",
+        cards,
+        emiBlockedByCard,
+      }),
+    ).toBe(45_000);
+    expect(
+      availableCreditForSharedLimit({
+        cardId: "value",
+        cards,
+        emiBlockedByCard,
+      }),
+    ).toBe(45_000);
   });
 });
 

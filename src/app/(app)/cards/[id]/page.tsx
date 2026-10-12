@@ -10,7 +10,11 @@ import {
 } from "@/components/card-forms";
 import { InfoTip } from "@/components/info-tip";
 import { listBankAccounts } from "@/lib/bank-actions";
-import { deleteCreditCard, getCreditCardDetail } from "@/lib/card-actions";
+import {
+  deleteCreditCard,
+  getCreditCardDetail,
+  listCreditCards,
+} from "@/lib/card-actions";
 import { activityLabel } from "@/lib/credit-cards";
 import { formatINR } from "@/lib/money";
 import { requireUser } from "@/lib/session";
@@ -27,6 +31,10 @@ export default async function CardDetailPage({
 
   const banks = await listBankAccounts(user.id);
   const bankOptions = banks.map((a) => ({ id: a.id, name: a.name }));
+  const allCards = await listCreditCards(user.id);
+  const shareOptions = allCards
+    .filter((c) => !c.sharesLimitWithId && c.id !== id)
+    .map((c) => ({ id: c.id, label: c.label }));
   const { card, activities } = data;
 
   return (
@@ -42,10 +50,11 @@ export default async function CardDetailPage({
           <p className="muted page-sub">
             {card.status}
             {card.isRupay ? " · RuPay UPI" : ""}
+            {card.sharesLimit ? " · Shared limit" : ""}
           </p>
         </div>
         <div className="dash-actions">
-          <EditCreditCardButton card={card} />
+          <EditCreditCardButton card={card} shareOptions={shareOptions} />
           <ActionForm
             action={deleteCreditCard}
             successMessage="Card deleted"
@@ -67,7 +76,7 @@ export default async function CardDetailPage({
           <strong>{formatINR(card.amountDue)}</strong>
         </div>
         <div className="stat-card tall">
-          <span>Available</span>
+          <span>{card.sharesLimit ? "Shared available" : "Available"}</span>
           <strong>
             {card.availableNum != null ? formatINR(card.availableNum) : "—"}
           </strong>
@@ -88,7 +97,10 @@ export default async function CardDetailPage({
             </p>
             <p>
               <strong>Available</strong> = credit limit − revolving outstanding −
-              EMI remaining (blocked).
+              EMI remaining (blocked)
+              {card.sharesLimit
+                ? ", pooled across every card that shares this limit."
+                : "."}
             </p>
             <p>
               Spends after the bill date go on the next statement (next bill
@@ -118,13 +130,33 @@ export default async function CardDetailPage({
             <dd>{card.nextBillDate ?? "—"}</dd>
           </div>
           <div>
-            <dt>Credit limit</dt>
+            <dt>{card.sharesLimit ? "Shared credit limit" : "Credit limit"}</dt>
             <dd>
               {card.creditLimitNum != null
                 ? formatINR(card.creditLimitNum)
                 : "—"}
             </dd>
           </div>
+          {card.sharesLimit ? (
+            <>
+              <div>
+                <dt>Shared with</dt>
+                <dd>
+                  {card.sharedWithLabels.length > 0
+                    ? card.sharedWithLabels.join(", ")
+                    : "—"}
+                </dd>
+              </div>
+              <div>
+                <dt>Group revolving</dt>
+                <dd>{formatINR(card.groupRevolvingNum)}</dd>
+              </div>
+              <div>
+                <dt>Group EMI blocked</dt>
+                <dd>{formatINR(card.groupEmiBlockedNum)}</dd>
+              </div>
+            </>
+          ) : null}
           <div>
             <dt>Statement due</dt>
             <dd>{formatINR(card.statementDueNum)}</dd>

@@ -16,6 +16,9 @@ export default async function CardsPage() {
   const totalDue = cards.reduce((s, c) => s + c.amountDue, 0);
   const totalEmi = cards.reduce((s, c) => s + c.emiMonthlyNum, 0);
   const totalNextBill = cards.reduce((s, c) => s + c.nextBillPending, 0);
+  const shareOptions = cards
+    .filter((c) => !c.sharesLimitWithId)
+    .map((c) => ({ id: c.id, label: c.label }));
 
   return (
     <div className="page-stack">
@@ -34,11 +37,12 @@ export default async function CardsPage() {
               this month.
             </p>
             <p>
-              <strong>Available</strong> = limit − revolving outstanding − EMI
-              remaining blocked on the card.
+              <strong>Available</strong> = shared limit − revolving − EMI
+              blocked across every card in a shared-limit group (e.g. Axis add-on
+              cards).
             </p>
           </InfoTip>
-          <AddCreditCardButton />
+          <AddCreditCardButton shareOptions={shareOptions} />
         </div>
       </div>
 
@@ -94,6 +98,14 @@ export default async function CardsPage() {
                           {c.isRupay ? (
                             <span className="muted"> · RuPay</span>
                           ) : null}
+                          {c.sharesLimit ? (
+                            <div className="muted" style={{ fontSize: "0.8rem" }}>
+                              Shared limit
+                              {c.sharedWithLabels.length > 0
+                                ? ` · ${c.sharedWithLabels.join(", ")}`
+                                : ""}
+                            </div>
+                          ) : null}
                         </td>
                     <td className="num">{formatINR(c.amountDue)}</td>
                     <td className="num">
@@ -117,7 +129,10 @@ export default async function CardsPage() {
                         >
                           View
                         </Link>
-                        <EditCreditCardButton card={c} />
+                        <EditCreditCardButton
+                          card={c}
+                          shareOptions={shareOptions}
+                        />
                         <ActionForm
                           action={deleteCreditCard}
                           successMessage="Card deleted"

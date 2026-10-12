@@ -16,11 +16,17 @@ function todayLocal() {
   return new Date().toISOString().slice(0, 10);
 }
 
+type ShareLimitOption = {
+  id: string;
+  label: string;
+};
+
 type CardFormValues = {
   id?: string;
   name: string;
   currentOutstanding: string;
   creditLimit: string;
+  sharesLimitWithId: string;
   billingDay: string;
   paymentDueDay: string;
   lastFour: string;
@@ -32,6 +38,7 @@ const emptyCard: CardFormValues = {
   name: "",
   currentOutstanding: "0",
   creditLimit: "",
+  sharesLimitWithId: "",
   billingDay: "",
   paymentDueDay: "",
   lastFour: "",
@@ -42,13 +49,17 @@ const emptyCard: CardFormValues = {
 function CardFields({
   values,
   onChange,
+  shareOptions = [],
 }: {
   values: CardFormValues;
   onChange: (next: CardFormValues) => void;
+  shareOptions?: ShareLimitOption[];
 }) {
   function set<K extends keyof CardFormValues>(key: K, value: CardFormValues[K]) {
     onChange({ ...values, [key]: value });
   }
+
+  const sharesLimit = !!values.sharesLimitWithId;
 
   return (
     <>
@@ -105,8 +116,39 @@ function CardFields({
           onChange={(e) => set("currentOutstanding", e.target.value)}
         />
       </div>
+      {shareOptions.length > 0 ? (
+        <div className="field">
+          <label htmlFor="card-share-limit">Shares limit with</label>
+          <select
+            id="card-share-limit"
+            name="sharesLimitWithId"
+            value={values.sharesLimitWithId}
+            onChange={(e) => {
+              const next = e.target.value;
+              onChange({
+                ...values,
+                sharesLimitWithId: next,
+                creditLimit: next ? "" : values.creditLimit,
+              });
+            }}
+          >
+            <option value="">None — owns its own limit</option>
+            {shareOptions.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <p className="muted page-sub" style={{ margin: "0.35rem 0 0" }}>
+            Use for Axis-style add-on cards that share one limit. EMI or spends
+            on any linked card reduce available on all of them.
+          </p>
+        </div>
+      ) : null}
       <div className="field">
-        <label htmlFor="card-limit">Credit limit</label>
+        <label htmlFor="card-limit">
+          {sharesLimit ? "Credit limit (from shared card)" : "Credit limit"}
+        </label>
         <input
           id="card-limit"
           name="creditLimit"
@@ -114,8 +156,9 @@ function CardFields({
           step="0.01"
           min="0"
           inputMode="decimal"
-          placeholder="0"
+          placeholder={sharesLimit ? "Uses linked card limit" : "0"}
           value={values.creditLimit}
+          disabled={sharesLimit}
           onChange={(e) => set("creditLimit", e.target.value)}
         />
       </div>
@@ -161,7 +204,11 @@ function CardFields({
   );
 }
 
-export function AddCreditCardButton() {
+export function AddCreditCardButton({
+  shareOptions = [],
+}: {
+  shareOptions?: ShareLimitOption[];
+}) {
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<CardFormValues>(emptyCard);
 
@@ -187,7 +234,11 @@ export function AddCreditCardButton() {
           className="form-stack"
           onSuccess={close}
         >
-          <CardFields values={values} onChange={setValues} />
+          <CardFields
+            values={values}
+            onChange={setValues}
+            shareOptions={shareOptions}
+          />
           <div className="modal-actions">
             <button type="button" className="btn btn-ghost" onClick={close}>
               Cancel
@@ -204,29 +255,39 @@ export function AddCreditCardButton() {
 
 export function EditCreditCardButton({
   card,
+  shareOptions = [],
 }: {
   card: {
     id: string;
     name: string;
     currentOutstanding: string | number;
     creditLimit?: string | number | null;
+    ownCreditLimitNum?: number | null;
+    sharesLimitWithId?: string | null;
     billingDay?: number | null;
     paymentDueDay?: number | null;
     lastFour?: string | null;
     isRupay?: boolean;
     status: string;
   };
+  shareOptions?: ShareLimitOption[];
 }) {
   const [open, setOpen] = useState(false);
+  const options = shareOptions.filter((o) => o.id !== card.id);
   const initial = useMemo<CardFormValues>(
     () => ({
       id: card.id,
       name: card.name,
       currentOutstanding: String(card.currentOutstanding ?? "0"),
       creditLimit:
-        card.creditLimit != null && card.creditLimit !== ""
-          ? String(card.creditLimit)
-          : "",
+        card.sharesLimitWithId
+          ? ""
+          : card.ownCreditLimitNum != null
+            ? String(card.ownCreditLimitNum)
+            : card.creditLimit != null && card.creditLimit !== ""
+              ? String(card.creditLimit)
+              : "",
+      sharesLimitWithId: card.sharesLimitWithId ?? "",
       billingDay: card.billingDay != null ? String(card.billingDay) : "",
       paymentDueDay:
         card.paymentDueDay != null ? String(card.paymentDueDay) : "",
@@ -262,7 +323,11 @@ export function EditCreditCardButton({
           onSuccess={() => setOpen(false)}
         >
           <input type="hidden" name="id" value={card.id} />
-          <CardFields values={values} onChange={setValues} />
+          <CardFields
+            values={values}
+            onChange={setValues}
+            shareOptions={options}
+          />
           <div className="modal-actions">
             <button
               type="button"

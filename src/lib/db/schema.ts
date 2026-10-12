@@ -1,4 +1,5 @@
 import {
+  type AnyPgColumn,
   boolean,
   date,
   integer,
@@ -99,6 +100,15 @@ export const creditCards = pgTable("credit_cards", {
     .notNull()
     .default("0"),
   creditLimit: numeric("credit_limit", { precision: 14, scale: 2 }),
+  /**
+   * When set, this card shares the linked card's credit limit pool
+   * (e.g. Axis My Zone / IndianOil / Value Plus). Available = shared
+   * limit − sum(revolving + EMI blocked) across the whole group.
+   */
+  sharesLimitWithId: uuid("shares_limit_with_id").references(
+    (): AnyPgColumn => creditCards.id,
+    { onDelete: "set null" },
+  ),
   /** Day of month statement closes (1–28). */
   billingDay: integer("billing_day"),
   /** Day of month payment is due (1–28). */
