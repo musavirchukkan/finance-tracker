@@ -28,7 +28,7 @@ export default async function BankAccountDetailPage({
               ← Accounts
             </Link>
           </p>
-          <h2 className="page-title">{account.name}</h2>
+          <h2 className="page-title">{account.label}</h2>
           <p className="muted page-sub">
             {account.accountType} · {account.status}
           </p>
@@ -50,12 +50,42 @@ export default async function BankAccountDetailPage({
         </div>
       </div>
 
-      <div className="stat-grid cols-1">
+      <div className="stat-grid cols-2">
         <div className="stat-card tall left">
           <span>Current balance</span>
           <strong>{formatINR(account.balanceNum)}</strong>
         </div>
+        <div className="stat-card tall">
+          <span>Minimum balance</span>
+          <strong>
+            {account.minBalanceNum != null
+              ? formatINR(account.minBalanceNum)
+              : "—"}
+          </strong>
+        </div>
       </div>
+
+      {account.balanceRules || account.lastFour ? (
+        <section className="panel">
+          <div className="panel-head">
+            <h2>Account notes</h2>
+          </div>
+          <dl className="debt-detail-grid">
+            {account.lastFour ? (
+              <div>
+                <dt>Account ····</dt>
+                <dd>{account.lastFour}</dd>
+              </div>
+            ) : null}
+            {account.balanceRules ? (
+              <div style={{ gridColumn: "1 / -1" }}>
+                <dt>Balance / usage rules</dt>
+                <dd>{account.balanceRules}</dd>
+              </div>
+            ) : null}
+          </dl>
+        </section>
+      ) : null}
 
       <section className="panel">
         <div className="panel-head">

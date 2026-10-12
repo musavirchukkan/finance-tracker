@@ -27,8 +27,9 @@ export default async function AccountsPage() {
               or expenses so cashflow stays linked.
             </p>
             <p>
-              Balance updates from transactions that use this account as the
-              payment source.
+              Optional min balance and free-text rules (AMB, quarterly average,
+              txn limits) are notes only — they do not block spends. Debit-card
+              tracking under each account can come later.
             </p>
           </InfoTip>
           <AddBankAccountButton />
@@ -63,6 +64,7 @@ export default async function AccountsPage() {
                   <th>Account</th>
                   <th>Type</th>
                   <th className="num">Balance</th>
+                  <th className="num">Min</th>
                   <th>Status</th>
                   <th>
                     <span className="sr-only">Actions</span>
@@ -74,11 +76,21 @@ export default async function AccountsPage() {
                   <tr key={a.id}>
                     <td className="tx-main">
                       <Link className="linkish" href={`/accounts/${a.id}`}>
-                        {a.name}
+                        {a.label}
                       </Link>
+                      {a.balanceRules ? (
+                        <div className="muted" style={{ fontSize: "0.8rem" }}>
+                          {a.balanceRules}
+                        </div>
+                      ) : null}
                     </td>
                     <td>{a.accountType}</td>
                     <td className="num">{formatINR(a.balanceNum)}</td>
+                    <td className="num">
+                      {a.minBalanceNum != null
+                        ? formatINR(a.minBalanceNum)
+                        : "—"}
+                    </td>
                     <td>{a.status}</td>
                     <td>
                       <div className="row-actions">
@@ -102,7 +114,7 @@ export default async function AccountsPage() {
                 <tr>
                   <td colSpan={2}>Total</td>
                   <td className="num">{formatINR(totalBalance)}</td>
-                  <td colSpan={2}></td>
+                  <td colSpan={3}></td>
                 </tr>
               </tfoot>
             </table>

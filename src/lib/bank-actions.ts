@@ -8,6 +8,7 @@ import {
   applyBankBalanceForTransaction,
   reverseBankBalanceForTransaction,
 } from "@/lib/bank-account-cashflow";
+import { formatCardLabel, normalizeLastFour } from "@/lib/credit-cards";
 import { parseAmount, toNumber } from "@/lib/money";
 import { requireUser } from "@/lib/session";
 
@@ -30,6 +31,11 @@ export async function listBankAccounts(userId: string) {
   return rows.map((a) => ({
     ...a,
     balanceNum: toNumber(a.currentBalance),
+    minBalanceNum:
+      a.minBalance != null && a.minBalance !== ""
+        ? toNumber(a.minBalance)
+        : null,
+    label: formatCardLabel(a.name, a.lastFour),
   }));
 }
 
@@ -57,9 +63,23 @@ export async function getBankAccountDetail(userId: string, id: string) {
     account: {
       ...account,
       balanceNum: toNumber(account.currentBalance),
+      minBalanceNum:
+        account.minBalance != null && account.minBalance !== ""
+          ? toNumber(account.minBalance)
+          : null,
+      label: formatCardLabel(account.name, account.lastFour),
     },
     transactions: txs,
   };
+}
+
+function parseBankExtras(formData: FormData) {
+  const minRaw = String(formData.get("minBalance") ?? "").trim();
+  const minBalance = minRaw ? parseAmount(minRaw) : null;
+  const balanceRules =
+    String(formData.get("balanceRules") ?? "").trim() || null;
+  const lastFour = normalizeLastFour(String(formData.get("lastFour") ?? ""));
+  return { minBalance, balanceRules, lastFour };
 }
 
 export async function createBankAccount(formData: FormData) {
@@ -71,6 +91,7 @@ export async function createBankAccount(formData: FormData) {
   const accountType =
     String(formData.get("accountType") ?? "Savings").trim() || "Savings";
   const status = String(formData.get("status") ?? "Active").trim() || "Active";
+  const { minBalance, balanceRules, lastFour } = parseBankExtras(formData);
 
   if (!name) throw new Error("Name is required");
 
@@ -80,6 +101,9 @@ export async function createBankAccount(formData: FormData) {
       userId: user.id,
       name,
       currentBalance: currentBalance.toFixed(2),
+      minBalance: minBalance != null ? minBalance.toFixed(2) : null,
+      balanceRules,
+      lastFour,
       accountType,
       status,
     })
@@ -98,6 +122,7 @@ export async function updateBankAccount(formData: FormData) {
   const accountType =
     String(formData.get("accountType") ?? "Savings").trim() || "Savings";
   const status = String(formData.get("status") ?? "Active").trim() || "Active";
+  const { minBalance, balanceRules, lastFour } = parseBankExtras(formData);
 
   if (!id || !name) throw new Error("Missing fields");
 
@@ -106,6 +131,9 @@ export async function updateBankAccount(formData: FormData) {
     .set({
       name,
       currentBalance: currentBalance.toFixed(2),
+      minBalance: minBalance != null ? minBalance.toFixed(2) : null,
+      balanceRules,
+      lastFour,
       accountType,
       status,
     })

@@ -78,7 +78,11 @@ export default async function TransactionsPage({
     label: c.label,
     isRupay: c.isRupay,
   }));
-  const bankAccounts = banks.map((a) => ({ id: a.id, name: a.name }));
+  const bankAccounts = banks.map((a) => ({
+    id: a.id,
+    name: a.name,
+    label: a.label,
+  }));
   const categoryOptions =
     typeFilter === "all"
       ? cats

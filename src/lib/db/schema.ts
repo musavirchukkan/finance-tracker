@@ -68,6 +68,15 @@ export const bankAccounts = pgTable("bank_accounts", {
   currentBalance: numeric("current_balance", { precision: 14, scale: 2 })
     .notNull()
     .default("0"),
+  /** Minimum balance to maintain (AMB / quarterly / etc.). */
+  minBalance: numeric("min_balance", { precision: 14, scale: 2 }),
+  /**
+   * Free-text account rules, e.g. "AMB ₹10,000", "Quarterly average",
+   * "Max 30 free transactions / day".
+   */
+  balanceRules: text("balance_rules"),
+  /** Last 4 digits of the account number (for identification). */
+  lastFour: text("last_four"),
   /** e.g. Savings, Current, Wallet */
   accountType: text("account_type").notNull().default("Savings"),
   status: text("status").notNull().default("Active"),

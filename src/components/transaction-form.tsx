@@ -36,6 +36,8 @@ export type CreditCardOption = {
 export type BankAccountOption = {
   id: string;
   name: string;
+  /** Display label with last-4 when available. */
+  label?: string;
 };
 
 type Props = {
@@ -236,14 +238,14 @@ export function TransactionForm({
     setCardId("");
   }
 
-  /** UPI can be linked to a bank account or a credit card. */
-  const upiSourceValue = bankAccountId
+  /** UPI / POS can be linked to a bank account or a credit card. */
+  const dualSourceValue = bankAccountId
     ? `bank:${bankAccountId}`
     : cardId
       ? `card:${cardId}`
       : "";
 
-  function setUpiSource(value: string) {
+  function setDualSource(value: string) {
     if (value.startsWith("bank:")) {
       setBankAccountId(value.slice(5));
       setCardId("");
@@ -258,16 +260,24 @@ export function TransactionForm({
 
   const needsBankAccount =
     paymentMethod === "bank" || paymentMethod === "pay";
-  const needsCard =
-    type === "expense" &&
-    (paymentMethod === "card" || paymentMethod === "pay");
+  /** Pay bill always needs a credit card; POS uses dual source below. */
+  const needsCard = type === "expense" && paymentMethod === "pay";
   const needsUpiSource = paymentMethod === "upi";
+  /** POS swipe: debit from bank (for now) or charge a credit card. */
+  const needsPosSource = type === "expense" && paymentMethod === "card";
   const rupayCards = creditCards.filter((c) => c.isRupay);
   const showUpiOption =
     bankAccounts.length > 0 || (type === "expense" && rupayCards.length > 0);
+  const showPosOption =
+    type === "expense" &&
+    (bankAccounts.length > 0 || creditCards.length > 0);
 
   function cardLabel(c: CreditCardOption) {
     return c.label ?? c.name;
+  }
+
+  function bankLabel(a: BankAccountOption) {
+    return a.label ?? a.name;
   }
 
   async function refreshPending() {
@@ -345,13 +355,15 @@ export function TransactionForm({
       return;
     }
     if (needsCard && !cardId) {
-      toast.error(
-        paymentMethod === "pay" ? "Choose the card to pay" : "Choose the card",
-      );
+      toast.error("Choose the card to pay");
       return;
     }
     if (paymentMethod === "upi" && !bankAccountId && !cardId) {
       toast.error("Choose the UPI account or card");
+      return;
+    }
+    if (needsPosSource && !bankAccountId && !cardId) {
+      toast.error("Choose the bank account or credit card");
       return;
     }
 
@@ -375,7 +387,9 @@ export function TransactionForm({
       cardBillPayId:
         type === "expense" && paymentMethod === "pay" && cardId ? cardId : null,
       bankAccountId:
-        (needsBankAccount || (paymentMethod === "upi" && bankAccountId)) &&
+        (needsBankAccount ||
+          (paymentMethod === "upi" && bankAccountId) ||
+          (paymentMethod === "card" && bankAccountId)) &&
         bankAccountId
           ? bankAccountId
           : null,
@@ -569,7 +583,7 @@ export function TransactionForm({
             {bankAccounts.length > 0 ? (
               <option value="bank">Bank transfer</option>
             ) : null}
-            {type === "expense" && creditCards.length > 0 ? (
+            {showPosOption ? (
               <option value="card">Card swipe / POS</option>
             ) : null}
             {type === "expense" && creditCards.length > 0 ? (
@@ -585,8 +599,8 @@ export function TransactionForm({
             </span>
             <select
               className="qa-select"
-              value={upiSourceValue}
-              onChange={(e) => setUpiSource(e.target.value)}
+              value={dualSourceValue}
+              onChange={(e) => setDualSource(e.target.value)}
               aria-label={type === "income" ? "Into account" : "UPI from"}
               required
             >
@@ -597,7 +611,7 @@ export function TransactionForm({
               </option>
               {bankAccounts.map((a) => (
                 <option key={`upi-bank-${a.id}`} value={`bank:${a.id}`}>
-                  Bank · {a.name}
+                  Bank · {bankLabel(a)}
                 </option>
               ))}
               {type === "expense"
@@ -607,6 +621,34 @@ export function TransactionForm({
                     </option>
                   ))
                 : null}
+            </select>
+          </div>
+        ) : null}
+
+        {needsPosSource ? (
+          <div className="qa-field">
+            <span className="qa-label">Paid with</span>
+            <select
+              className="qa-select"
+              value={dualSourceValue}
+              onChange={(e) => setDualSource(e.target.value)}
+              aria-label="POS payment source"
+              required
+            >
+              <option value="" disabled>
+                Choose bank or credit card…
+              </option>
+              {bankAccounts.map((a) => (
+                <option key={`pos-bank-${a.id}`} value={`bank:${a.id}`}>
+                  Bank · {bankLabel(a)}
+                </option>
+              ))}
+              {creditCards.map((c) => (
+                <option key={`pos-card-${c.id}`} value={`card:${c.id}`}>
+                  Credit · {cardLabel(c)}
+                  {c.isRupay ? " (RuPay)" : ""}
+                </option>
+              ))}
             </select>
           </div>
         ) : null}
@@ -662,7 +704,7 @@ export function TransactionForm({
               </option>
               {bankAccounts.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.name}
+                  {bankLabel(a)}
                 </option>
               ))}
             </select>

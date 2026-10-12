@@ -13,6 +13,9 @@ type BankFormValues = {
   id?: string;
   name: string;
   currentBalance: string;
+  minBalance: string;
+  balanceRules: string;
+  lastFour: string;
   accountType: string;
   status: string;
 };
@@ -20,6 +23,9 @@ type BankFormValues = {
 const emptyBank: BankFormValues = {
   name: "",
   currentBalance: "0",
+  minBalance: "",
+  balanceRules: "",
+  lastFour: "",
   accountType: "Savings",
   status: "Active",
 };
@@ -50,16 +56,57 @@ function BankFields({
         />
       </div>
       <div className="field">
+        <label htmlFor="bank-last4">Last 4 digits</label>
+        <input
+          id="bank-last4"
+          name="lastFour"
+          inputMode="numeric"
+          maxLength={4}
+          pattern="[0-9]{4}"
+          placeholder="1234"
+          value={values.lastFour}
+          onChange={(e) =>
+            set("lastFour", e.target.value.replace(/\D/g, "").slice(0, 4))
+          }
+        />
+      </div>
+      <div className="field">
         <label htmlFor="bank-balance">Current balance</label>
         <input
           id="bank-balance"
           name="currentBalance"
           type="number"
           step="0.01"
+          min="0"
           inputMode="decimal"
           placeholder="0"
           value={values.currentBalance}
           onChange={(e) => set("currentBalance", e.target.value)}
+        />
+      </div>
+      <div className="field">
+        <label htmlFor="bank-min">Minimum balance</label>
+        <input
+          id="bank-min"
+          name="minBalance"
+          type="number"
+          step="0.01"
+          min="0"
+          inputMode="decimal"
+          placeholder="Optional"
+          value={values.minBalance}
+          onChange={(e) => set("minBalance", e.target.value)}
+        />
+      </div>
+      <div className="field">
+        <label htmlFor="bank-rules">Balance / usage rules</label>
+        <textarea
+          id="bank-rules"
+          name="balanceRules"
+          rows={3}
+          placeholder="e.g. AMB ₹10,000 · Quarterly average · 30 free txns / day"
+          value={values.balanceRules}
+          onChange={(e) => set("balanceRules", e.target.value)}
         />
       </div>
       <div className="field">
@@ -104,7 +151,7 @@ export function AddBankAccountButton() {
       >
         + Add account
       </button>
-      <Modal open={open} title="Add bank account" onClose={close}>
+      <Modal open={open} title="Add bank account" onClose={close} size="md">
         <ActionForm
           action={createBankAccount}
           successMessage="Account added"
@@ -134,6 +181,9 @@ export function EditBankAccountButton({
     id: string;
     name: string;
     currentBalance: string;
+    minBalance?: string | null;
+    balanceRules?: string | null;
+    lastFour?: string | null;
     accountType: string;
     status: string;
   };
@@ -143,6 +193,9 @@ export function EditBankAccountButton({
     id: account.id,
     name: account.name,
     currentBalance: account.currentBalance,
+    minBalance: account.minBalance ?? "",
+    balanceRules: account.balanceRules ?? "",
+    lastFour: account.lastFour ?? "",
     accountType: account.accountType,
     status: account.status,
   });
@@ -151,25 +204,33 @@ export function EditBankAccountButton({
     setOpen(false);
   }
 
+  function openEdit() {
+    setValues({
+      id: account.id,
+      name: account.name,
+      currentBalance: String(account.currentBalance ?? "0"),
+      minBalance:
+        account.minBalance != null && account.minBalance !== ""
+          ? String(account.minBalance)
+          : "",
+      balanceRules: account.balanceRules ?? "",
+      lastFour: account.lastFour ?? "",
+      accountType: account.accountType,
+      status: account.status,
+    });
+    setOpen(true);
+  }
+
   return (
     <>
       <button
         type="button"
         className="btn btn-ghost btn-xs"
-        onClick={() => {
-          setValues({
-            id: account.id,
-            name: account.name,
-            currentBalance: account.currentBalance,
-            accountType: account.accountType,
-            status: account.status,
-          });
-          setOpen(true);
-        }}
+        onClick={openEdit}
       >
         Edit
       </button>
-      <Modal open={open} title="Edit bank account" onClose={close}>
+      <Modal open={open} title="Edit bank account" onClose={close} size="md">
         <ActionForm
           action={updateBankAccount}
           successMessage="Account updated"

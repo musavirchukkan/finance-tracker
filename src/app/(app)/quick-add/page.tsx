@@ -27,7 +27,11 @@ export default async function QuickAddPage() {
             label: c.label,
             isRupay: c.isRupay,
           }))}
-          bankAccounts={banks.map((a) => ({ id: a.id, name: a.name }))}
+          bankAccounts={banks.map((a) => ({
+            id: a.id,
+            name: a.name,
+            label: a.label,
+          }))}
         />
       </section>
     </div>
