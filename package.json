@@ -18,6 +18,7 @@
     "db:seed": "tsx src/lib/db/seed.ts",
     "db:seed:base": "tsx src/lib/db/seed-base.ts",
     "db:seed:demo": "tsx src/lib/db/seed-demo.ts",
+    "db:wipe": "tsx src/lib/db/wipe-user.ts",
     "db:up": "docker compose up -d"
   },
   "dependencies": {
