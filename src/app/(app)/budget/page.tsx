@@ -7,6 +7,7 @@ import {
   IncomeDonut,
 } from "@/components/charts";
 import { BudgetCategoryTable } from "@/components/budget-table";
+import { InfoTip } from "@/components/info-tip";
 import { getBudgetSummary } from "@/lib/actions";
 import { formatINR } from "@/lib/money";
 import {
@@ -206,28 +207,41 @@ export default async function BudgetPage({
       <div className="page-header">
         <div>
           <h2 className="page-title">Budget</h2>
-          <p className="muted page-sub">
-            Income, spending, and category budgets for the month.
-          </p>
         </div>
-        <div className="month-switcher" role="group" aria-label="Month">
-          <Link
-            className="btn btn-ghost btn-xs"
-            href={`/budget?month=${prev}`}
-            aria-label={`Previous month, ${formatYearMonthLabel(prev)}`}
-          >
-            ←
-          </Link>
-          <span className="month-label" aria-current="date">
-            {formatYearMonthLabel(month)}
-          </span>
-          <Link
-            className="btn btn-ghost btn-xs"
-            href={`/budget?month=${next}`}
-            aria-label={`Next month, ${formatYearMonthLabel(next)}`}
-          >
-            →
-          </Link>
+        <div className="dash-actions">
+          <InfoTip title="Budget" label="About budget">
+            <p>
+              Set category budgets and compare them to actual income and spending
+              for the month.
+            </p>
+            <p>
+              Debt-style categories (EMI, Lent, Kuri, Credit Card) are not
+              budgeted — they are tracked under Debt and Cards instead.
+            </p>
+            <p>
+              Over-budget categories are highlighted so you can adjust limits or
+              spending.
+            </p>
+          </InfoTip>
+          <div className="month-switcher" role="group" aria-label="Month">
+            <Link
+              className="btn btn-ghost btn-xs"
+              href={`/budget?month=${prev}`}
+              aria-label={`Previous month, ${formatYearMonthLabel(prev)}`}
+            >
+              ←
+            </Link>
+            <span className="month-label" aria-current="date">
+              {formatYearMonthLabel(month)}
+            </span>
+            <Link
+              className="btn btn-ghost btn-xs"
+              href={`/budget?month=${next}`}
+              aria-label={`Next month, ${formatYearMonthLabel(next)}`}
+            >
+              →
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -549,9 +563,21 @@ export default async function BudgetPage({
       <section className="panel">
         <div className="panel-head">
           <h2>Expense budget by category</h2>
-          <span className="muted" style={{ fontSize: "0.85rem" }}>
-            {formatINR(totals.actual)} / {formatINR(totals.budget)}
-          </span>
+          <div className="dash-actions">
+            <InfoTip
+              title="What can be budgeted"
+              label="Which categories can be budgeted"
+            >
+              <p>
+                Only everyday spend categories appear here. EMI, Lent, Kuri,
+                Credit Card, and wallet cashout stay on Debt / Cards and cannot
+                get a monthly budget.
+              </p>
+            </InfoTip>
+            <span className="muted" style={{ fontSize: "0.85rem" }}>
+              {formatINR(totals.actual)} / {formatINR(totals.budget)}
+            </span>
+          </div>
         </div>
         {rows.length === 0 ? (
           <div className="empty">

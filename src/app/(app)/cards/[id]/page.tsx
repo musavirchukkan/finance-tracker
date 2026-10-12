@@ -6,9 +6,9 @@ import {
   DeleteCardActivityButton,
   EditCreditCardButton,
   PayBillButton,
-  WalletCashoutButton,
   WalletRechargeButton,
 } from "@/components/card-forms";
+import { InfoTip } from "@/components/info-tip";
 import { listBankAccounts } from "@/lib/bank-actions";
 import { deleteCreditCard, getCreditCardDetail } from "@/lib/card-actions";
 import { activityLabel } from "@/lib/credit-cards";
@@ -38,8 +38,11 @@ export default async function CardDetailPage({
               ← Cards
             </Link>
           </p>
-          <h2 className="page-title">{card.name}</h2>
-          <p className="muted page-sub">{card.status}</p>
+          <h2 className="page-title">{card.label}</h2>
+          <p className="muted page-sub">
+            {card.status}
+            {card.isRupay ? " · RuPay UPI" : ""}
+          </p>
         </div>
         <div className="dash-actions">
           <EditCreditCardButton card={card} />
@@ -64,11 +67,13 @@ export default async function CardDetailPage({
           <strong>{formatINR(card.amountDue)}</strong>
         </div>
         <div className="stat-card tall">
-          <span>Next bill (open)</span>
-          <strong>{formatINR(card.nextBillPending)}</strong>
+          <span>Available</span>
+          <strong>
+            {card.availableNum != null ? formatINR(card.availableNum) : "—"}
+          </strong>
         </div>
         <div className="stat-card tall">
-          <span>Total outstanding</span>
+          <span>Revolving outstanding</span>
           <strong>{formatINR(card.outstandingNum)}</strong>
         </div>
       </div>
@@ -76,6 +81,20 @@ export default async function CardDetailPage({
       <section className="panel">
         <div className="panel-head">
           <h2>Bill cycle</h2>
+          <InfoTip title="Due & available" label="How due and available work">
+            <p>
+              <strong>Due to pay</strong> = statement due + linked EMI for the
+              month.
+            </p>
+            <p>
+              <strong>Available</strong> = credit limit − revolving outstanding −
+              EMI remaining (blocked).
+            </p>
+            <p>
+              Spends after the bill date go on the next statement (next bill
+              open).
+            </p>
+          </InfoTip>
         </div>
         <dl className="debt-detail-grid">
           <div>
@@ -106,22 +125,68 @@ export default async function CardDetailPage({
                 : "—"}
             </dd>
           </div>
+          <div>
+            <dt>Statement due</dt>
+            <dd>{formatINR(card.statementDueNum)}</dd>
+          </div>
+          <div>
+            <dt>EMI this month</dt>
+            <dd>{formatINR(card.emiMonthlyNum)}</dd>
+          </div>
+          <div>
+            <dt>EMI remaining (blocked)</dt>
+            <dd>{formatINR(card.emiBlockedNum)}</dd>
+          </div>
+          <div>
+            <dt>Next bill (open)</dt>
+            <dd>{formatINR(card.nextBillPending)}</dd>
+          </div>
         </dl>
-        <p className="muted page-sub" style={{ marginTop: "0.75rem" }}>
-          Spends after the bill date go on the next statement. Days 29–31 use
-          the last day of shorter months.
-        </p>
       </section>
+
+      {card.linkedEmis.length > 0 ? (
+        <section className="panel">
+          <div className="panel-head">
+            <h2>Linked EMI</h2>
+            <InfoTip title="Linked EMI" label="About linked EMI">
+              <p>
+                Debts of type credit-card EMI linked to this card. Monthly EMI
+                adds to due to pay; remaining principal blocks available credit.
+              </p>
+            </InfoTip>
+          </div>
+          <div className="table-wrap">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>Debt</th>
+                  <th className="num">Monthly EMI</th>
+                  <th className="num">Remaining</th>
+                </tr>
+              </thead>
+              <tbody>
+                {card.linkedEmis.map((e) => (
+                  <tr key={e.id}>
+                    <td>
+                      <Link className="linkish" href={`/debt/${e.id}`}>
+                        {e.name}
+                      </Link>
+                    </td>
+                    <td className="num">{formatINR(e.monthlyEmi)}</td>
+                    <td className="num">{formatINR(e.remaining)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
 
       <section className="panel">
         <div className="panel-head">
           <h2>Actions</h2>
           <div className="dash-actions">
             <WalletRechargeButton cardId={card.id} />
-            <WalletCashoutButton
-              cardId={card.id}
-              bankAccounts={bankOptions}
-            />
             <CardFeeButton cardId={card.id} />
             <PayBillButton cardId={card.id} bankAccounts={bankOptions} />
           </div>
@@ -131,6 +196,14 @@ export default async function CardDetailPage({
       <section className="panel">
         <div className="panel-head">
           <h2>Activity</h2>
+          <InfoTip title="Card activity" label="About card activity">
+            <p>
+              <strong>Amount</strong> is the transaction total.{" "}
+              <strong>On card</strong> is how much changed revolving outstanding
+              (wallet top-ups may charge the card differently than wallet
+              credit).
+            </p>
+          </InfoTip>
         </div>
         {activities.length === 0 ? (
           <div className="empty">No card activity yet.</div>
@@ -163,14 +236,6 @@ export default async function CardDetailPage({
                           {" "}
                           · wallet {formatINR(a.walletCreditNum)} / charged{" "}
                           {formatINR(a.cardChargedNum)}
-                        </span>
-                      ) : null}
-                      {a.activityType === "wallet_cashout" &&
-                      a.bankFeeNum != null &&
-                      a.bankFeeNum > 0 ? (
-                        <span className="muted">
-                          {" "}
-                          · bank fee {formatINR(a.bankFeeNum)}
                         </span>
                       ) : null}
                     </td>

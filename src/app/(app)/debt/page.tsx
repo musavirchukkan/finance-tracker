@@ -8,6 +8,7 @@ import {
   AddDebtPaymentButton,
   EditDebtAccountButton,
 } from "@/components/debt-forms";
+import { InfoTip } from "@/components/info-tip";
 import {
   deleteDebtAccount,
   deleteDebtPayment,
@@ -98,6 +99,11 @@ export default async function DebtPage() {
     name: a.name,
     type: a.type,
   }));
+  const creditCardOptions = cards.map((c) => ({
+    id: c.id,
+    name: c.name,
+    label: c.label,
+  }));
   const activeAccounts = data.accounts.filter((a) => a.pending > 0);
   const paidPct =
     data.totals.starting > 0
@@ -113,15 +119,20 @@ export default async function DebtPage() {
       <div className="page-header">
         <div>
           <h2 className="page-title">Debt</h2>
-          <p className="muted page-sub">
-            Track loans, borrows, lends, and kuri.{" "}
-            <Link className="linkish" href="/cards">
-              Credit cards →
-            </Link>
-          </p>
         </div>
         <div className="dash-actions">
-          <AddDebtAccountButton />
+          <InfoTip title="Debt tracking" label="About debt tracking">
+            <p>
+              Track loans, borrows, lends, and kuri with EMI, interest, and
+              payoff progress.
+            </p>
+            <p>
+              Credit card revolving balances live under{" "}
+              <strong>Cards</strong> — link a CC EMI debt to a card so it counts
+              toward that card&apos;s due and available credit.
+            </p>
+          </InfoTip>
+          <AddDebtAccountButton creditCards={creditCardOptions} />
         </div>
       </div>
 
@@ -267,10 +278,12 @@ export default async function DebtPage() {
                               View
                             </Link>
                             <EditDebtAccountButton
+                              creditCards={creditCardOptions}
                               account={{
                                 id: a.id,
                                 name: a.name,
                                 type: a.type,
+                                creditCardId: a.creditCardId,
                                 startingBalance: a.startingBalance,
                                 monthlyEmi: a.monthlyEmi,
                                 interestPercent: a.interestPercent,
@@ -395,25 +408,43 @@ export default async function DebtPage() {
 
         <div className="split-col">
           <section className="panel">
-            <h2>Debt reduction</h2>
-            <p className="muted page-sub" style={{ marginBottom: "1rem" }}>
-              Projected path to ₹0 by {format(new Date(goal), "MMM yyyy")} vs
-              actual remaining.
-            </p>
+            <div className="panel-head">
+              <h2>Debt reduction</h2>
+              <InfoTip title="Debt reduction" label="About debt reduction">
+                <p>
+                  Projected path to ₹0 by{" "}
+                  {format(new Date(goal), "MMM yyyy")} versus actual remaining
+                  balance over time.
+                </p>
+                <p>
+                  The curve uses your EMI schedule and payoff goal to show where
+                  you should be vs where you are.
+                </p>
+              </InfoTip>
+            </div>
             <DebtReductionChart points={curve} />
           </section>
 
           <section className="panel">
             <div className="panel-head">
               <h2>Payoff curve</h2>
-              <EditDebtGoalButton goal={goal} label="Edit goal" />
+              <div className="dash-actions">
+                <InfoTip title="Payoff goal" label="About payoff goal">
+                  <p>
+                    Target zero by{" "}
+                    {format(new Date(goal), "MMM d, yyyy")}
+                    {monthsLeft === 0
+                      ? " (goal month)."
+                      : ` · ${monthsLeft} month${monthsLeft === 1 ? "" : "s"} left.`}
+                  </p>
+                  <p>
+                    Projected is the planned balance each month; actual left is
+                    what you still owe from logged payments.
+                  </p>
+                </InfoTip>
+                <EditDebtGoalButton goal={goal} label="Edit goal" />
+              </div>
             </div>
-            <p className="muted page-sub" style={{ marginBottom: "1rem" }}>
-              Target zero by {format(new Date(goal), "MMM d, yyyy")} ·{" "}
-              {monthsLeft === 0
-                ? "goal month"
-                : `${monthsLeft} month${monthsLeft === 1 ? "" : "s"} left`}
-            </p>
             <div className="table-wrap">
               <table className="data">
                 <thead>

@@ -136,14 +136,22 @@ function isPaymentType(type: string) {
  * - Closed cycle (prevBill, lastBill]: charges appear on the bill that closed lastBill.
  * - Payments on/after lastBill reduce amount due.
  * - Open cycle (lastBill, ∞ / nextBill]: charges go to next bill.
+ * - If the payment due for lastBill is already past and there is no unpaid
+ *   closed-cycle activity left, advance due/bill display to the next cycle
+ *   (e.g. card added after due date, or no payment logged for that cycle).
+ * - When activity history does not explain a balance, `currentOutstanding`
+ *   fills amount due (minus open-cycle pending when known).
  */
 export function summarizeCardStatement(args: {
   billingDay: number | null | undefined;
   paymentDueDay: number | null | undefined;
   activities: StatementActivity[];
   from?: Date;
+  /** Revolving balance on the card; used when activities under-explain due. */
+  currentOutstanding?: number;
 }): CardStatementSummary {
   const from = args.from ?? new Date();
+  const todayKey = toDateKey(startOfDay(from));
   const nextBillDate = nextCycleDate(args.billingDay, from);
   const lastBillDate = previousCycleDate(args.billingDay, from);
 
@@ -154,7 +162,7 @@ export function summarizeCardStatement(args: {
     prevBillDate = previousCycleDate(args.billingDay, dayBefore);
   }
 
-  const nextDueDate = lastBillDate
+  let nextDueDate = lastBillDate
     ? dueDateForBill(lastBillDate, args.paymentDueDay)
     : nextCycleDate(args.paymentDueDay, from);
 
@@ -186,11 +194,40 @@ export function summarizeCardStatement(args: {
     }
   }
 
-  const amountDue = Math.max(
+  let amountDue = Math.max(
     0,
     Math.round((closedCharges - paymentsAfterBill) * 100) / 100,
   );
   nextBillPending = Math.max(0, Math.round(nextBillPending * 100) / 100);
+
+  const hasChargeActivities = args.activities.some(
+    (a) => a.outstandingDelta > 0 && !isPaymentType(a.activityType),
+  );
+  const outstanding = Math.max(0, args.currentOutstanding ?? 0);
+
+  // Past due with nothing still owed on that closed cycle → track next bill/due.
+  const dueIsPast = !!nextDueDate && nextDueDate < todayKey;
+  if (dueIsPast && amountDue <= 0) {
+    nextDueDate = nextBillDate
+      ? dueDateForBill(nextBillDate, args.paymentDueDay)
+      : nextCycleDate(args.paymentDueDay, from);
+  }
+
+  // No (or incomplete) activity ledger: revolving outstanding is what to pay,
+  // minus charges already attributed to the open/next statement.
+  if (!hasChargeActivities && outstanding > 0) {
+    amountDue = Math.max(
+      0,
+      Math.round((outstanding - nextBillPending) * 100) / 100,
+    );
+  } else if (hasChargeActivities && outstanding > 0) {
+    // Prefer the larger of activity-closed due vs outstanding not yet on next bill.
+    const fromOutstanding = Math.max(
+      0,
+      Math.round((outstanding - nextBillPending) * 100) / 100,
+    );
+    amountDue = Math.max(amountDue, fromOutstanding);
+  }
 
   return {
     lastBillDate,
@@ -207,7 +244,7 @@ export function activityLabel(type: string): string {
     case "spend":
       return "Spend";
     case "wallet_recharge":
-      return "Wallet recharge";
+      return "Card → wallet";
     case "wallet_cashout":
       return "Wallet → bank";
     case "fee":
@@ -229,4 +266,47 @@ export function statementBillDateForCharge(
   const [y, m, d] = chargeDate.split("-").map(Number);
   const charge = new Date(y, m - 1, d, 0, 0, 0, 0);
   return nextCycleDate(day, charge);
+}
+
+/** Display label with optional last-4 digits, e.g. "HDFC ···· 4321". */
+export function formatCardLabel(
+  name: string,
+  lastFour?: string | null,
+): string {
+  const digits = String(lastFour ?? "").replace(/\D/g, "").slice(-4);
+  if (digits.length === 4) return `${name} ···· ${digits}`;
+  return name;
+}
+
+export function normalizeLastFour(raw: string | null | undefined): string | null {
+  const digits = String(raw ?? "").replace(/\D/g, "").slice(-4);
+  return digits.length === 4 ? digits : null;
+}
+
+/** Available credit after revolving + EMI principal blocked. */
+export function availableCredit(args: {
+  creditLimit: number | null | undefined;
+  revolvingOutstanding: number;
+  emiBlocked: number;
+}): number | null {
+  if (args.creditLimit == null || !Number.isFinite(args.creditLimit)) {
+    return null;
+  }
+  const used =
+    Math.max(0, args.revolvingOutstanding) + Math.max(0, args.emiBlocked);
+  return Math.max(0, Math.round((args.creditLimit - used) * 100) / 100);
+}
+
+/** Statement spend due + linked monthly EMI installments. */
+export function totalDueThisCycle(args: {
+  statementDue: number;
+  linkedMonthlyEmi: number;
+}): number {
+  return Math.max(
+    0,
+    Math.round(
+      (Math.max(0, args.statementDue) + Math.max(0, args.linkedMonthlyEmi)) *
+        100,
+    ) / 100,
+  );
 }

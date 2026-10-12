@@ -21,7 +21,12 @@ export default async function QuickAddPage() {
             kind: c.kind,
             icon: c.icon,
           }))}
-          creditCards={cards.map((c) => ({ id: c.id, name: c.name }))}
+          creditCards={cards.map((c) => ({
+            id: c.id,
+            name: c.name,
+            label: c.label,
+            isRupay: c.isRupay,
+          }))}
           bankAccounts={banks.map((a) => ({ id: a.id, name: a.name }))}
         />
       </section>

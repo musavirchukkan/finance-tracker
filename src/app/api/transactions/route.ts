@@ -14,6 +14,7 @@ const bodySchema = z.object({
   amount: z.union([z.string(), z.number()]),
   clientId: z.string().min(1).optional(),
   creditCardId: z.string().uuid().nullable().optional(),
+  cardBillPayId: z.string().uuid().nullable().optional(),
   bankAccountId: z.string().uuid().nullable().optional(),
 });
 
@@ -53,6 +54,7 @@ export async function POST(request: Request) {
       amount,
       clientId: parsed.data.clientId,
       creditCardId: parsed.data.creditCardId ?? null,
+      cardBillPayId: parsed.data.cardBillPayId ?? null,
       bankAccountId: parsed.data.bankAccountId ?? null,
     });
     if (!result.duplicate) {
@@ -66,6 +68,9 @@ export async function POST(request: Request) {
       revalidatePath("/accounts");
       if (parsed.data.creditCardId) {
         revalidatePath(`/cards/${parsed.data.creditCardId}`);
+      }
+      if (parsed.data.cardBillPayId) {
+        revalidatePath(`/cards/${parsed.data.cardBillPayId}`);
       }
       if (parsed.data.bankAccountId) {
         revalidatePath(`/accounts/${parsed.data.bankAccountId}`);

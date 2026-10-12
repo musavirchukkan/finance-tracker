@@ -1,4 +1,5 @@
 import { format, subMonths, startOfMonth, addDays } from "date-fns";
+import { isBudgetableCategoryName } from "@/lib/budget-categories";
 
 /** Simple deterministic RNG so demo data is stable across runs. */
 export function createRng(seed = 42) {
@@ -79,12 +80,14 @@ export function buildBudgetRows(
   expenseCats: CategoryRef[],
   yearMonth: string,
 ) {
-  return expenseCats.map((c) => ({
-    userId,
-    categoryId: c.id,
-    yearMonth,
-    amount: (DEFAULT_EXPENSE_BUDGETS[c.name] ?? 2000).toFixed(2),
-  }));
+  return expenseCats
+    .filter((c) => isBudgetableCategoryName(c.name))
+    .map((c) => ({
+      userId,
+      categoryId: c.id,
+      yearMonth,
+      amount: (DEFAULT_EXPENSE_BUDGETS[c.name] ?? 2000).toFixed(2),
+    }));
 }
 
 export function buildMonthTransactions(

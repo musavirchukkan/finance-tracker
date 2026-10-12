@@ -16,11 +16,16 @@ import {
   ensureCardCashflowCategories,
 } from "@/lib/credit-card-cashflow";
 import {
+  availableCredit,
   clampBillingDay,
+  formatCardLabel,
+  normalizeLastFour,
   summarizeCardStatement,
+  totalDueThisCycle,
 } from "@/lib/credit-cards";
 import {
   computeOutstanding,
+  isCreditCardEmiType,
   isCreditCardType,
 } from "@/lib/debt-kinds";
 import { parseAmount, toNumber } from "@/lib/money";
@@ -122,9 +127,11 @@ function statementFromActivities(
   },
   activities: { date: string; activityType: string; outstandingDelta: string }[],
 ) {
+  const outstanding = toNumber(card.currentOutstanding);
   const summary = summarizeCardStatement({
     billingDay: card.billingDay,
     paymentDueDay: card.paymentDueDay,
+    currentOutstanding: outstanding,
     activities: activities.map((a) => ({
       date: a.date,
       activityType: a.activityType,
@@ -136,11 +143,146 @@ function statementFromActivities(
   if (card.billingDay == null) {
     return {
       ...summary,
-      amountDue: toNumber(card.currentOutstanding),
+      amountDue: outstanding,
       nextBillPending: 0,
     };
   }
   return summary;
+}
+
+async function linkedEmiByCard(userId: string) {
+  const accounts = await db
+    .select()
+    .from(debtAccounts)
+    .where(eq(debtAccounts.userId, userId));
+
+  const ccEmiAccounts = accounts.filter(
+    (a) => a.creditCardId && isCreditCardEmiType(a.type),
+  );
+  if (ccEmiAccounts.length === 0) {
+    return new Map<
+      string,
+      {
+        emiBlocked: number;
+        emiMonthly: number;
+        emis: {
+          id: string;
+          name: string;
+          monthlyEmi: number;
+          remaining: number;
+        }[];
+      }
+    >();
+  }
+
+  const payments = await db
+    .select()
+    .from(debtPayments)
+    .where(eq(debtPayments.userId, userId));
+
+  const paymentsByAccount = new Map<
+    string,
+    { amount: number; isPaid: boolean; paymentType: string }[]
+  >();
+  for (const p of payments) {
+    const list = paymentsByAccount.get(p.accountId) ?? [];
+    list.push({
+      amount: toNumber(p.amount),
+      isPaid: p.isPaid,
+      paymentType: p.paymentType,
+    });
+    paymentsByAccount.set(p.accountId, list);
+  }
+
+  const byCard = new Map<
+    string,
+    {
+      emiBlocked: number;
+      emiMonthly: number;
+      emis: {
+        id: string;
+        name: string;
+        monthlyEmi: number;
+        remaining: number;
+      }[];
+    }
+  >();
+
+  for (const a of ccEmiAccounts) {
+    const cardId = a.creditCardId!;
+    const remaining = computeOutstanding({
+      startingBalance: toNumber(a.startingBalance),
+      payments: paymentsByAccount.get(a.id) ?? [],
+    });
+    const monthly = toNumber(a.monthlyEmi);
+    const bucket = byCard.get(cardId) ?? {
+      emiBlocked: 0,
+      emiMonthly: 0,
+      emis: [],
+    };
+    if (remaining > 0) {
+      bucket.emiBlocked += remaining;
+      bucket.emiMonthly += monthly;
+      bucket.emis.push({
+        id: a.id,
+        name: a.name,
+        monthlyEmi: monthly,
+        remaining,
+      });
+    }
+    byCard.set(cardId, bucket);
+  }
+
+  return byCard;
+}
+
+function withEmiAggregates(
+  card: {
+    id: string;
+    currentOutstanding: string;
+    creditLimit: string | null;
+    billingDay: number | null;
+    paymentDueDay: number | null;
+  },
+  summary: ReturnType<typeof statementFromActivities>,
+  emi: {
+    emiBlocked: number;
+    emiMonthly: number;
+    emis: {
+      id: string;
+      name: string;
+      monthlyEmi: number;
+      remaining: number;
+    }[];
+  } | undefined,
+) {
+  const outstandingNum = toNumber(card.currentOutstanding);
+  const creditLimitNum =
+    card.creditLimit != null ? toNumber(card.creditLimit) : null;
+  const emiBlockedNum = emi?.emiBlocked ?? 0;
+  const emiMonthlyNum = emi?.emiMonthly ?? 0;
+  const statementDueNum = summary.amountDue;
+  return {
+    outstandingNum,
+    creditLimitNum,
+    nextBillDate: summary.nextBillDate,
+    nextDueDate: summary.nextDueDate,
+    lastBillDate: summary.lastBillDate,
+    statementDueNum,
+    emiBlockedNum,
+    emiMonthlyNum,
+    amountDue: totalDueThisCycle({
+      statementDue: statementDueNum,
+      linkedMonthlyEmi: emiMonthlyNum,
+    }),
+    nextBillPending: summary.nextBillPending,
+    availableNum: availableCredit({
+      creditLimit: creditLimitNum,
+      revolvingOutstanding: outstandingNum,
+      emiBlocked: emiBlockedNum,
+    }),
+    linkedEmis: emi?.emis ?? [],
+  };
 }
 
 export async function listCreditCards(userId: string) {
@@ -168,17 +310,14 @@ export async function listCreditCards(userId: string) {
     byCard.set(a.cardId, list);
   }
 
+  const emiByCard = await linkedEmiByCard(userId);
+
   return rows.map((c) => {
     const summary = statementFromActivities(c, byCard.get(c.id) ?? []);
     return {
       ...c,
-      outstandingNum: toNumber(c.currentOutstanding),
-      creditLimitNum: c.creditLimit != null ? toNumber(c.creditLimit) : null,
-      nextBillDate: summary.nextBillDate,
-      nextDueDate: summary.nextDueDate,
-      lastBillDate: summary.lastBillDate,
-      amountDue: summary.amountDue,
-      nextBillPending: summary.nextBillPending,
+      label: formatCardLabel(c.name, c.lastFour),
+      ...withEmiAggregates(c, summary, emiByCard.get(c.id)),
     };
   });
 }
@@ -201,18 +340,14 @@ export async function getCreditCardDetail(userId: string, cardId: string) {
     .orderBy(desc(cardActivities.date), desc(cardActivities.createdAt));
 
   const summary = statementFromActivities(card, activities);
+  const emiByCard = await linkedEmiByCard(userId);
+  const emi = emiByCard.get(cardId);
 
   return {
     card: {
       ...card,
-      outstandingNum: toNumber(card.currentOutstanding),
-      creditLimitNum:
-        card.creditLimit != null ? toNumber(card.creditLimit) : null,
-      nextBillDate: summary.nextBillDate,
-      nextDueDate: summary.nextDueDate,
-      lastBillDate: summary.lastBillDate,
-      amountDue: summary.amountDue,
-      nextBillPending: summary.nextBillPending,
+      label: formatCardLabel(card.name, card.lastFour),
+      ...withEmiAggregates(card, summary, emi),
     },
     activities: activities.map((a) => ({
       ...a,
@@ -224,6 +359,14 @@ export async function getCreditCardDetail(userId: string, cardId: string) {
       bankFeeNum: a.bankFee != null ? toNumber(a.bankFee) : null,
     })),
   };
+}
+
+function parseCardExtra(formData: FormData) {
+  const lastFour = normalizeLastFour(String(formData.get("lastFour") ?? ""));
+  const isRupay =
+    formData.get("isRupay") === "on" ||
+    formData.get("isRupay") === "true";
+  return { lastFour, isRupay };
 }
 
 export async function createCreditCard(formData: FormData) {
@@ -241,6 +384,7 @@ export async function createCreditCard(formData: FormData) {
     Number(formData.get("paymentDueDay") ?? "") || null,
   );
   const status = String(formData.get("status") ?? "Active").trim() || "Active";
+  const { lastFour, isRupay } = parseCardExtra(formData);
 
   if (!name) throw new Error("Name is required");
 
@@ -253,6 +397,8 @@ export async function createCreditCard(formData: FormData) {
       creditLimit: creditLimit != null ? creditLimit.toFixed(2) : null,
       billingDay,
       paymentDueDay,
+      lastFour,
+      isRupay,
       status,
     })
     .returning();
@@ -276,6 +422,7 @@ export async function updateCreditCard(formData: FormData) {
     Number(formData.get("paymentDueDay") ?? "") || null,
   );
   const status = String(formData.get("status") ?? "Active").trim() || "Active";
+  const { lastFour, isRupay } = parseCardExtra(formData);
 
   if (!id || !name) throw new Error("Missing fields");
 
@@ -287,6 +434,8 @@ export async function updateCreditCard(formData: FormData) {
       creditLimit: creditLimit != null ? creditLimit.toFixed(2) : null,
       billingDay,
       paymentDueDay,
+      lastFour,
+      isRupay,
       status,
     })
     .where(and(eq(creditCards.id, id), eq(creditCards.userId, user.id)));
@@ -338,11 +487,36 @@ export async function logWalletRecharge(formData: FormData) {
     throw new Error("Card charged cannot be less than wallet credit");
   }
 
+  const [card] = await db
+    .select({ name: creditCards.name })
+    .from(creditCards)
+    .where(and(eq(creditCards.id, cardId), eq(creditCards.userId, user.id)))
+    .limit(1);
+  if (!card) throw new Error("Card not found");
+
   const fee = Math.round((cardCharged - walletCredit) * 100) / 100;
   const description =
     note ||
-    `Wallet recharge ₹${walletCredit.toFixed(0)}` +
-      (fee > 0 ? ` (card ₹${cardCharged.toFixed(0)}, fee ₹${fee.toFixed(0)})` : "");
+    `Card → wallet ₹${walletCredit.toFixed(0)}` +
+      (fee > 0 ? ` (card ₹${cardCharged.toFixed(0)}, fee ₹${fee.toFixed(0)})` : "") +
+      ` — ${card.name}`;
+
+  const cats = await ensureCardCashflowCategories(user.id);
+  // Expense for what the card was charged; do not set creditCardId on the tx
+  // (outstanding is updated via the activity below — avoid double-counting).
+  const [tx] = await db
+    .insert(transactions)
+    .values({
+      userId: user.id,
+      date,
+      occurredAt: new Date(`${date}T12:00:00`),
+      description,
+      categoryId: cats.creditCardCategoryId,
+      type: "expense",
+      amount: cardCharged.toFixed(2),
+      creditCardId: null,
+    })
+    .returning();
 
   await db.insert(cardActivities).values({
     userId: user.id,
@@ -354,95 +528,10 @@ export async function logWalletRecharge(formData: FormData) {
     walletCredit: walletCredit.toFixed(2),
     cardCharged: cardCharged.toFixed(2),
     description,
+    transactionId: tx?.id ?? null,
   });
   await adjustCardOutstanding(user.id, cardId, cardCharged);
   revalidateCards(cardId);
-}
-
-export async function logWalletCashout(formData: FormData) {
-  const user = await requireUser();
-  const cardId = String(formData.get("cardId") ?? "");
-  const date = String(formData.get("date") ?? "");
-  const amount = parseAmount(String(formData.get("amount") ?? "0"));
-  const bankFee = parseAmount(String(formData.get("bankFee") ?? "0"));
-  const bankAccountId =
-    String(formData.get("bankAccountId") ?? "").trim() || null;
-  const note = String(formData.get("description") ?? "").trim();
-
-  if (!cardId || !date) throw new Error("Missing fields");
-  if (amount <= 0) throw new Error("Enter amount to bank");
-
-  const cats = await ensureCardCashflowCategories(user.id);
-  const net = Math.max(0, Math.round((amount - bankFee) * 100) / 100);
-  const [card] = await db
-    .select({ name: creditCards.name })
-    .from(creditCards)
-    .where(and(eq(creditCards.id, cardId), eq(creditCards.userId, user.id)))
-    .limit(1);
-  if (!card) throw new Error("Card not found");
-
-  const [incomeTx] = await db
-    .insert(transactions)
-    .values({
-      userId: user.id,
-      date,
-      occurredAt: new Date(`${date}T12:00:00`),
-      description:
-        note || `Wallet → bank — ${card.name}`,
-      categoryId: cats.walletCashoutCategoryId,
-      type: "income",
-      amount: net.toFixed(2),
-      bankAccountId,
-    })
-    .returning();
-
-  if (bankAccountId && net > 0) {
-    const { applyBankBalanceForTransaction } = await import(
-      "@/lib/bank-account-cashflow"
-    );
-    await applyBankBalanceForTransaction({
-      userId: user.id,
-      bankAccountId,
-      type: "income",
-      amount: net,
-    });
-  }
-
-  let feeTxId: string | null = null;
-  if (bankFee > 0) {
-    const [feeTx] = await db
-      .insert(transactions)
-      .values({
-        userId: user.id,
-        date,
-        occurredAt: new Date(`${date}T12:00:00`),
-        description: `Bank charge — wallet cashout — ${card.name}`,
-        categoryId: cats.bankChargesCategoryId,
-        type: "expense",
-        amount: bankFee.toFixed(2),
-      })
-      .returning();
-    feeTxId = feeTx?.id ?? null;
-  }
-
-  await db.insert(cardActivities).values({
-    userId: user.id,
-    cardId,
-    date,
-    activityType: "wallet_cashout",
-    amount: amount.toFixed(2),
-    outstandingDelta: "0",
-    bankFee: bankFee > 0 ? bankFee.toFixed(2) : null,
-    description: note || `Wallet → bank ₹${amount.toFixed(0)}`,
-    transactionId: incomeTx?.id ?? null,
-    relatedTransactionId: feeTxId,
-  });
-
-  revalidateCards(cardId);
-  if (bankAccountId) {
-    revalidatePath("/accounts");
-    revalidatePath(`/accounts/${bankAccountId}`);
-  }
 }
 
 export async function logCardFee(formData: FormData) {
@@ -508,6 +597,7 @@ export async function logCardBillPayment(formData: FormData) {
 
   if (!cardId || !date) throw new Error("Missing fields");
   if (amount <= 0) throw new Error("Enter payment amount");
+  if (!bankAccountId) throw new Error("Choose the account you paid from");
 
   const [card] = await db
     .select({ name: creditCards.name })
@@ -533,7 +623,7 @@ export async function logCardBillPayment(formData: FormData) {
     })
     .returning();
 
-  if (bankAccountId && amount > 0) {
+  if (amount > 0) {
     const { applyBankBalanceForTransaction } = await import(
       "@/lib/bank-account-cashflow"
     );
@@ -557,10 +647,8 @@ export async function logCardBillPayment(formData: FormData) {
   });
   await adjustCardOutstanding(user.id, cardId, -amount);
   revalidateCards(cardId);
-  if (bankAccountId) {
-    revalidatePath("/accounts");
-    revalidatePath(`/accounts/${bankAccountId}`);
-  }
+  revalidatePath("/accounts");
+  revalidatePath(`/accounts/${bankAccountId}`);
 }
 
 export async function deleteCardActivity(formData: FormData) {

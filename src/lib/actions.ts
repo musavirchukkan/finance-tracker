@@ -5,8 +5,11 @@ import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import {
+  bankAccounts,
   budgets,
+  cardActivities,
   categories,
+  creditCards,
   debtAccounts,
   debtPayments,
   debtSettings,
@@ -14,6 +17,7 @@ import {
   transactions,
   users,
 } from "@/lib/db/schema";
+import { alias } from "drizzle-orm/pg-core";
 import { parseAmount, toNumber } from "@/lib/money";
 import { requireUser } from "@/lib/session";
 import { monthDateBounds, yearMonthFromDate } from "@/lib/months";
@@ -23,6 +27,7 @@ import {
   computeTotalInterest,
   validateDebtTenure,
 } from "@/lib/debt-account";
+import { isBudgetableCategoryName } from "@/lib/budget-categories";
 import {
   createBorrowedIncomeTransaction,
   createLentExpenseTransaction,
@@ -32,8 +37,10 @@ import {
   isLentType,
   syncDebtPaymentTransaction,
 } from "@/lib/debt-cashflow";
+import { formatCardLabel } from "@/lib/credit-cards";
 import {
   computeOutstanding,
+  isCreditCardEmiType,
   paymentBalanceEffect,
 } from "@/lib/debt-kinds";
 
@@ -42,11 +49,16 @@ function parsePaymentSource(formData: FormData, type: "expense" | "income") {
     type === "expense"
       ? String(formData.get("creditCardId") ?? "").trim() || null
       : null;
+  const cardBillPayId =
+    type === "expense"
+      ? String(formData.get("cardBillPayId") ?? "").trim() || null
+      : null;
   let bankAccountId =
     String(formData.get("bankAccountId") ?? "").trim() || null;
-  // Card spend and bank debit are mutually exclusive.
+  // Card spend is charged on the card — not paid from a bank account.
+  // Bill pay can (and usually does) debit a bank / UPI account.
   if (creditCardId) bankAccountId = null;
-  return { creditCardId, bankAccountId };
+  return { creditCardId, cardBillPayId, bankAccountId };
 }
 
 export async function createTransaction(formData: FormData) {
@@ -58,7 +70,10 @@ export async function createTransaction(formData: FormData) {
     ? "income"
     : "expense";
   const amount = parseAmount(String(formData.get("amount") ?? "0"));
-  const { creditCardId, bankAccountId } = parsePaymentSource(formData, type);
+  const { creditCardId, cardBillPayId, bankAccountId } = parsePaymentSource(
+    formData,
+    type,
+  );
 
   if (!date || !categoryId) {
     throw new Error("Missing required fields");
@@ -71,6 +86,7 @@ export async function createTransaction(formData: FormData) {
     type,
     amount,
     creditCardId,
+    cardBillPayId,
     bankAccountId,
   });
 
@@ -84,6 +100,7 @@ export async function createTransaction(formData: FormData) {
     revalidatePath("/cards");
     revalidatePath("/accounts");
     if (creditCardId) revalidatePath(`/cards/${creditCardId}`);
+    if (cardBillPayId) revalidatePath(`/cards/${cardBillPayId}`);
     if (bankAccountId) revalidatePath(`/accounts/${bankAccountId}`);
   }
 }
@@ -98,10 +115,16 @@ export async function updateTransaction(formData: FormData) {
     ? "income"
     : "expense";
   const amount = parseAmount(String(formData.get("amount") ?? "0"));
-  const { creditCardId, bankAccountId } = parsePaymentSource(formData, type);
+  const { creditCardId, cardBillPayId, bankAccountId } = parsePaymentSource(
+    formData,
+    type,
+  );
 
-  const { reverseActivitiesForTransaction, recordSpendOnCard } =
-    await import("@/lib/credit-card-cashflow");
+  const {
+    reverseActivitiesForTransaction,
+    recordSpendOnCard,
+    recordBillPaymentOnCard,
+  } = await import("@/lib/credit-card-cashflow");
   const {
     reverseBankBalanceForTransaction,
     applyBankBalanceForTransaction,
@@ -132,6 +155,15 @@ export async function updateTransaction(formData: FormData) {
       description,
       transactionId: id,
     });
+  } else if (type === "expense" && cardBillPayId && amount > 0) {
+    await recordBillPaymentOnCard({
+      userId: user.id,
+      cardId: cardBillPayId,
+      date,
+      amount,
+      description: description || `Bill payment`,
+      transactionId: id,
+    });
   }
 
   await applyBankBalanceForTransaction({
@@ -149,6 +181,7 @@ export async function updateTransaction(formData: FormData) {
   revalidatePath("/cards");
   revalidatePath("/accounts");
   if (creditCardId) revalidatePath(`/cards/${creditCardId}`);
+  if (cardBillPayId) revalidatePath(`/cards/${cardBillPayId}`);
   if (bankAccountId) revalidatePath(`/accounts/${bankAccountId}`);
 }
 
@@ -184,6 +217,17 @@ export async function upsertBudgetAmount(formData: FormData) {
   const yearMonth = String(formData.get("yearMonth") ?? "");
   const amount = parseAmount(String(formData.get("amount") ?? "0"));
 
+  const [cat] = await db
+    .select()
+    .from(categories)
+    .where(
+      and(eq(categories.id, categoryId), eq(categories.userId, user.id)),
+    )
+    .limit(1);
+  if (!cat || cat.kind !== "expense" || !isBudgetableCategoryName(cat.name)) {
+    throw new Error("This category cannot have a budget");
+  }
+
   const existing = await db
     .select()
     .from(budgets)
@@ -215,7 +259,10 @@ export async function upsertBudgetAmount(formData: FormData) {
   revalidatePath("/analytics");
 }
 
-function revalidateDebtCashflow(accountId?: string) {
+function revalidateDebtCashflow(
+  accountId?: string,
+  creditCardId?: string | null,
+) {
   revalidatePath("/debt");
   if (accountId) revalidatePath(`/debt/${accountId}`);
   revalidatePath("/goals");
@@ -223,6 +270,17 @@ function revalidateDebtCashflow(accountId?: string) {
   revalidatePath("/transactions");
   revalidatePath("/budget");
   revalidatePath("/quick-add");
+  revalidatePath("/cards");
+  if (creditCardId) revalidatePath(`/cards/${creditCardId}`);
+}
+
+function parseDebtCreditCardId(type: string, formData: FormData): string | null {
+  if (!isCreditCardEmiType(type)) return null;
+  const creditCardId = String(formData.get("creditCardId") ?? "").trim();
+  if (!creditCardId) {
+    throw new Error("Choose a credit card for Credit Card EMI");
+  }
+  return creditCardId;
 }
 
 export async function createDebtAccount(formData: FormData) {
@@ -254,6 +312,7 @@ export async function createDebtAccount(formData: FormData) {
     formData.get("logOpeningCashflow") === "true";
 
   if (!name || !type) throw new Error("Name and type are required");
+  const creditCardId = parseDebtCreditCardId(type, formData);
 
   validateDebtTenure({
     startingBalance,
@@ -295,6 +354,7 @@ export async function createDebtAccount(formData: FormData) {
       totalMonths,
       monthsPaid,
       status,
+      creditCardId,
       receivedTransactionId,
     })
     .returning();
@@ -310,7 +370,7 @@ export async function createDebtAccount(formData: FormData) {
     });
   }
 
-  revalidateDebtCashflow(account?.id);
+  revalidateDebtCashflow(account?.id, creditCardId);
 }
 
 async function upsertPaidToDatePayment(args: {
@@ -396,6 +456,13 @@ export async function updateDebtAccount(formData: FormData) {
   const status = String(formData.get("status") ?? "Active Paydown").trim();
 
   if (!id || !name || !type) throw new Error("Missing fields");
+  const creditCardId = parseDebtCreditCardId(type, formData);
+
+  const [prev] = await db
+    .select({ creditCardId: debtAccounts.creditCardId })
+    .from(debtAccounts)
+    .where(and(eq(debtAccounts.id, id), eq(debtAccounts.userId, user.id)))
+    .limit(1);
 
   validateDebtTenure({
     startingBalance,
@@ -416,6 +483,7 @@ export async function updateDebtAccount(formData: FormData) {
       totalMonths,
       monthsPaid,
       status,
+      creditCardId,
     })
     .where(and(eq(debtAccounts.id, id), eq(debtAccounts.userId, user.id)));
 
@@ -425,7 +493,10 @@ export async function updateDebtAccount(formData: FormData) {
     paidTillNow,
   });
 
-  revalidateDebtCashflow(id);
+  revalidateDebtCashflow(id, creditCardId);
+  if (prev?.creditCardId && prev.creditCardId !== creditCardId) {
+    revalidatePath(`/cards/${prev.creditCardId}`);
+  }
 }
 
 export async function deleteDebtAccount(formData: FormData) {
@@ -436,6 +507,7 @@ export async function deleteDebtAccount(formData: FormData) {
     .select({
       id: debtAccounts.id,
       receivedTransactionId: debtAccounts.receivedTransactionId,
+      creditCardId: debtAccounts.creditCardId,
     })
     .from(debtAccounts)
     .where(and(eq(debtAccounts.id, id), eq(debtAccounts.userId, user.id)))
@@ -465,7 +537,21 @@ export async function deleteDebtAccount(formData: FormData) {
     .delete(debtAccounts)
     .where(and(eq(debtAccounts.id, id), eq(debtAccounts.userId, user.id)));
 
-  revalidateDebtCashflow(id);
+  revalidateDebtCashflow(id, account.creditCardId);
+}
+
+async function creditCardIdForDebtAccount(
+  userId: string,
+  accountId: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ creditCardId: debtAccounts.creditCardId })
+    .from(debtAccounts)
+    .where(
+      and(eq(debtAccounts.id, accountId), eq(debtAccounts.userId, userId)),
+    )
+    .limit(1);
+  return row?.creditCardId ?? null;
 }
 
 export async function createDebtPayment(formData: FormData) {
@@ -495,7 +581,8 @@ export async function createDebtPayment(formData: FormData) {
     await syncDebtPaymentTransaction(payment.id, user.id);
   }
 
-  revalidateDebtCashflow(accountId);
+  const cardId = await creditCardIdForDebtAccount(user.id, accountId);
+  revalidateDebtCashflow(accountId, cardId);
 }
 
 export async function toggleDebtPaymentPaid(formData: FormData) {
@@ -516,7 +603,10 @@ export async function toggleDebtPaymentPaid(formData: FormData) {
 
   await syncDebtPaymentTransaction(id, user.id);
 
-  revalidateDebtCashflow(existing?.accountId);
+  const cardId = existing?.accountId
+    ? await creditCardIdForDebtAccount(user.id, existing.accountId)
+    : null;
+  revalidateDebtCashflow(existing?.accountId, cardId);
 }
 
 export async function deleteDebtPayment(formData: FormData) {
@@ -535,7 +625,10 @@ export async function deleteDebtPayment(formData: FormData) {
     .delete(debtPayments)
     .where(and(eq(debtPayments.id, id), eq(debtPayments.userId, user.id)));
 
-  revalidateDebtCashflow(existing?.accountId);
+  const cardId = existing?.accountId
+    ? await creditCardIdForDebtAccount(user.id, existing.accountId)
+    : null;
+  revalidateDebtCashflow(existing?.accountId, cardId);
 }
 
 export async function updateDebtGoal(formData: FormData) {
@@ -680,17 +773,19 @@ export async function getBudgetSummary(userId: string, yearMonth: string) {
     actualRows.map((a) => [a.categoryId, toNumber(a.total)]),
   );
 
-  const rows = cats.map((c) => {
-    const budget = budgetMap.get(c.id) ?? 0;
-    const actual = actualMap.get(c.id) ?? 0;
-    return {
-      categoryId: c.id,
-      category: c.name,
-      budget,
-      actual,
-      difference: budget - actual,
-    };
-  });
+  const rows = cats
+    .filter((c) => isBudgetableCategoryName(c.name))
+    .map((c) => {
+      const budget = budgetMap.get(c.id) ?? 0;
+      const actual = actualMap.get(c.id) ?? 0;
+      return {
+        categoryId: c.id,
+        category: c.name,
+        budget,
+        actual,
+        difference: budget - actual,
+      };
+    });
 
   const totals = rows.reduce(
     (acc, r) => ({
@@ -793,6 +888,10 @@ export async function listTransactions(
 
   const total = Number(countRow?.count ?? 0);
 
+  const spendCard = alias(creditCards, "spend_card");
+  const billCard = alias(creditCards, "bill_card");
+  const billActivity = alias(cardActivities, "bill_activity");
+
   const query = db
     .select({
       id: transactions.id,
@@ -804,19 +903,45 @@ export async function listTransactions(
       categoryId: transactions.categoryId,
       categoryName: categories.name,
       categoryKind: categories.kind,
+      creditCardId: transactions.creditCardId,
+      creditCardName: spendCard.name,
+      creditCardLastFour: spendCard.lastFour,
+      bankAccountId: transactions.bankAccountId,
+      bankAccountName: bankAccounts.name,
+      billPayCardName: billCard.name,
+      billPayCardLastFour: billCard.lastFour,
     })
     .from(transactions)
     .innerJoin(categories, eq(transactions.categoryId, categories.id))
+    .leftJoin(spendCard, eq(transactions.creditCardId, spendCard.id))
+    .leftJoin(bankAccounts, eq(transactions.bankAccountId, bankAccounts.id))
+    .leftJoin(
+      billActivity,
+      and(
+        eq(billActivity.transactionId, transactions.id),
+        eq(billActivity.activityType, "bill_payment"),
+      ),
+    )
+    .leftJoin(billCard, eq(billActivity.cardId, billCard.id))
     .where(where)
     .orderBy(desc(transactions.occurredAt), desc(transactions.createdAt));
 
-  const rows =
+  const mapped = (
     pageSize != null
       ? await query.limit(pageSize).offset(offset)
-      : await query;
+      : await query
+  ).map((row) => ({
+    ...row,
+    creditCardName: row.creditCardName
+      ? formatCardLabel(row.creditCardName, row.creditCardLastFour)
+      : null,
+    billPayCardName: row.billPayCardName
+      ? formatCardLabel(row.billPayCardName, row.billPayCardLastFour)
+      : null,
+  }));
 
   return {
-    rows,
+    rows: mapped,
     total,
     page,
     pageSize: pageSize ?? total,
@@ -847,6 +972,8 @@ export async function insertTransactionForUser(
     occurredAt?: string;
     clientId?: string;
     creditCardId?: string | null;
+    /** Pay down card outstanding (bill payment), not a new card spend. */
+    cardBillPayId?: string | null;
     bankAccountId?: string | null;
   },
 ): Promise<{ id: string; duplicate: boolean }> {
@@ -876,10 +1003,15 @@ export async function insertTransactionForUser(
       ? new Date().toISOString().slice(0, 10)
       : occurredAt.toISOString().slice(0, 10));
 
+  const cardBillPayId =
+    input.type === "expense" && input.cardBillPayId
+      ? input.cardBillPayId
+      : null;
   const creditCardId =
-    input.type === "expense" && input.creditCardId
+    input.type === "expense" && input.creditCardId && !cardBillPayId
       ? input.creditCardId
       : null;
+  // Bill pay may also debit a bank account; card spend may not.
   const bankAccountId =
     creditCardId || !input.bankAccountId ? null : input.bankAccountId;
 
@@ -908,6 +1040,18 @@ export async function insertTransactionForUser(
         date: dateOnly,
         amount: input.amount,
         description: input.description,
+        transactionId: row.id,
+      });
+    } else if (cardBillPayId && input.amount > 0) {
+      const { recordBillPaymentOnCard } = await import(
+        "@/lib/credit-card-cashflow"
+      );
+      await recordBillPaymentOnCard({
+        userId,
+        cardId: cardBillPayId,
+        date: dateOnly,
+        amount: input.amount,
+        description: input.description || "Bill payment",
         transactionId: row.id,
       });
     }
@@ -1079,6 +1223,21 @@ export async function getDebtAccountDetail(userId: string, accountId: string) {
     monthlyEmi: account.monthlyEmiNum,
   });
 
+  let creditCardName: string | null = null;
+  if (account.creditCardId) {
+    const [card] = await db
+      .select({ name: creditCards.name })
+      .from(creditCards)
+      .where(
+        and(
+          eq(creditCards.id, account.creditCardId),
+          eq(creditCards.userId, userId),
+        ),
+      )
+      .limit(1);
+    creditCardName = card?.name ?? null;
+  }
+
   return {
     account: {
       ...account,
@@ -1086,6 +1245,7 @@ export async function getDebtAccountDetail(userId: string, accountId: string) {
       monthsLeft,
       monthlyInterest,
       totalInterest,
+      creditCardName,
     },
     payments,
   };

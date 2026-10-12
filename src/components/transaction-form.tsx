@@ -28,6 +28,9 @@ export type CategoryOption = {
 export type CreditCardOption = {
   id: string;
   name: string;
+  /** Display label with last-4 when available. */
+  label?: string;
+  isRupay?: boolean;
 };
 
 export type BankAccountOption = {
@@ -175,28 +178,7 @@ function QuickCategoryPicker({
   );
 }
 
-/** Encoded as `bank:uuid` | `card:uuid` | "". */
-function encodePaymentSource(
-  bankAccountId: string,
-  creditCardId: string,
-): string {
-  if (creditCardId) return `card:${creditCardId}`;
-  if (bankAccountId) return `bank:${bankAccountId}`;
-  return "";
-}
-
-function parsePaymentSource(value: string): {
-  bankAccountId: string;
-  creditCardId: string;
-} {
-  if (value.startsWith("card:")) {
-    return { bankAccountId: "", creditCardId: value.slice(5) };
-  }
-  if (value.startsWith("bank:")) {
-    return { bankAccountId: value.slice(5), creditCardId: "" };
-  }
-  return { bankAccountId: "", creditCardId: "" };
-}
+type PaymentMethod = "cash" | "upi" | "bank" | "card" | "pay";
 
 export function TransactionForm({
   categories,
@@ -214,7 +196,9 @@ export function TransactionForm({
   const [type, setType] = useState<"expense" | "income">("expense");
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
-  const [paymentSource, setPaymentSource] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  const [bankAccountId, setBankAccountId] = useState("");
+  const [cardId, setCardId] = useState("");
   const [categoryId, setCategoryId] = useState(
     () => categories.find((c) => c.kind === "expense")?.id ?? "",
   );
@@ -240,10 +224,50 @@ export function TransactionForm({
     setType(next);
     const nextFiltered = categories.filter((c) => c.kind === next);
     setCategoryId(nextFiltered[0]?.id ?? "");
-    // Drop card selection when switching to income (cards only for expenses).
-    if (next === "income" && paymentSource.startsWith("card:")) {
-      setPaymentSource("");
+    if (next === "income") {
+      setPaymentMethod("cash");
+      setCardId("");
     }
+  }
+
+  function changePaymentMethod(next: PaymentMethod) {
+    setPaymentMethod(next);
+    setBankAccountId("");
+    setCardId("");
+  }
+
+  /** UPI can be linked to a bank account or a credit card. */
+  const upiSourceValue = bankAccountId
+    ? `bank:${bankAccountId}`
+    : cardId
+      ? `card:${cardId}`
+      : "";
+
+  function setUpiSource(value: string) {
+    if (value.startsWith("bank:")) {
+      setBankAccountId(value.slice(5));
+      setCardId("");
+    } else if (value.startsWith("card:")) {
+      setCardId(value.slice(5));
+      setBankAccountId("");
+    } else {
+      setBankAccountId("");
+      setCardId("");
+    }
+  }
+
+  const needsBankAccount =
+    paymentMethod === "bank" || paymentMethod === "pay";
+  const needsCard =
+    type === "expense" &&
+    (paymentMethod === "card" || paymentMethod === "pay");
+  const needsUpiSource = paymentMethod === "upi";
+  const rupayCards = creditCards.filter((c) => c.isRupay);
+  const showUpiOption =
+    bankAccounts.length > 0 || (type === "expense" && rupayCards.length > 0);
+
+  function cardLabel(c: CreditCardOption) {
+    return c.label ?? c.name;
   }
 
   async function refreshPending() {
@@ -287,7 +311,9 @@ export function TransactionForm({
   function resetForm() {
     setAmount("");
     setDescription("");
-    setPaymentSource("");
+    setPaymentMethod("cash");
+    setBankAccountId("");
+    setCardId("");
     setDateValue(todayLocal());
     setTimeValue(nowTimeLocal());
     setEditWhen(false);
@@ -314,7 +340,29 @@ export function TransactionForm({
       return;
     }
 
-    const { bankAccountId, creditCardId } = parsePaymentSource(paymentSource);
+    if (needsBankAccount && !bankAccountId) {
+      toast.error("Choose the bank account");
+      return;
+    }
+    if (needsCard && !cardId) {
+      toast.error(
+        paymentMethod === "pay" ? "Choose the card to pay" : "Choose the card",
+      );
+      return;
+    }
+    if (paymentMethod === "upi" && !bankAccountId && !cardId) {
+      toast.error("Choose the UPI account or card");
+      return;
+    }
+
+    const cardSpendId =
+      type === "expense" &&
+      cardId &&
+      (paymentMethod === "card" ||
+        (paymentMethod === "upi" && !bankAccountId))
+        ? cardId
+        : null;
+
     const payload = {
       clientId,
       date,
@@ -323,9 +371,14 @@ export function TransactionForm({
       categoryId: selectedCategoryId,
       type,
       amount: amountNum,
-      creditCardId:
-        type === "expense" && creditCardId ? creditCardId : null,
-      bankAccountId: bankAccountId || null,
+      creditCardId: cardSpendId,
+      cardBillPayId:
+        type === "expense" && paymentMethod === "pay" && cardId ? cardId : null,
+      bankAccountId:
+        (needsBankAccount || (paymentMethod === "upi" && bankAccountId)) &&
+        bankAccountId
+          ? bankAccountId
+          : null,
     };
 
     if (!navigator.onLine) {
@@ -499,35 +552,119 @@ export function TransactionForm({
           />
         </div>
 
-        {bankAccounts.length > 0 ||
-        (type === "expense" && creditCards.length > 0) ? (
+        <div className="qa-field">
+          <span className="qa-label">
+            {type === "income" ? "Received how" : "Paid how"}
+          </span>
+          <select
+            className="qa-select"
+            value={paymentMethod}
+            onChange={(e) =>
+              changePaymentMethod(e.target.value as PaymentMethod)
+            }
+            aria-label={type === "income" ? "Received how" : "Paid how"}
+          >
+            <option value="cash">Cash</option>
+            {showUpiOption ? <option value="upi">UPI</option> : null}
+            {bankAccounts.length > 0 ? (
+              <option value="bank">Bank transfer</option>
+            ) : null}
+            {type === "expense" && creditCards.length > 0 ? (
+              <option value="card">Card swipe / POS</option>
+            ) : null}
+            {type === "expense" && creditCards.length > 0 ? (
+              <option value="pay">Pay card bill</option>
+            ) : null}
+          </select>
+        </div>
+
+        {needsUpiSource ? (
           <div className="qa-field">
             <span className="qa-label">
-              {type === "income" ? "Into account" : "Paid from"}
+              {type === "income" ? "Into account" : "UPI from"}
             </span>
             <select
               className="qa-select"
-              value={
-                type === "income" && paymentSource.startsWith("card:")
-                  ? ""
-                  : paymentSource
-              }
-              onChange={(e) => setPaymentSource(e.target.value)}
-              aria-label={type === "income" ? "Into account" : "Paid from"}
+              value={upiSourceValue}
+              onChange={(e) => setUpiSource(e.target.value)}
+              aria-label={type === "income" ? "Into account" : "UPI from"}
+              required
             >
-              <option value="">Cash / UPI / other</option>
+              <option value="" disabled>
+                {type === "income"
+                  ? "Choose account…"
+                  : "Choose bank or card…"}
+              </option>
               {bankAccounts.map((a) => (
-                <option key={a.id} value={encodePaymentSource(a.id, "")}>
+                <option key={`upi-bank-${a.id}`} value={`bank:${a.id}`}>
                   Bank · {a.name}
                 </option>
               ))}
               {type === "expense"
-                ? creditCards.map((c) => (
-                    <option key={c.id} value={encodePaymentSource("", c.id)}>
-                      Card · {c.name}
+                ? rupayCards.map((c) => (
+                    <option key={`upi-card-${c.id}`} value={`card:${c.id}`}>
+                      RuPay · {cardLabel(c)}
                     </option>
                   ))
                 : null}
+            </select>
+          </div>
+        ) : null}
+
+        {needsCard ? (
+          <div className="qa-field">
+            <span className="qa-label">Credit card</span>
+            <select
+              className="qa-select"
+              value={cardId}
+              onChange={(e) => setCardId(e.target.value)}
+              aria-label="Credit card"
+              required
+            >
+              <option value="" disabled>
+                Choose card…
+              </option>
+              {creditCards.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {cardLabel(c)}
+                  {c.isRupay ? " (RuPay)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+
+        {needsBankAccount ||
+        (type === "income" &&
+          paymentMethod !== "upi" &&
+          bankAccounts.length > 0) ? (
+          <div className="qa-field">
+            <span className="qa-label">
+              {type === "income"
+                ? "Into account"
+                : paymentMethod === "pay"
+                  ? "Pay from account"
+                  : "Account"}
+            </span>
+            <select
+              className="qa-select"
+              value={bankAccountId}
+              onChange={(e) => setBankAccountId(e.target.value)}
+              aria-label="Bank account"
+              required={needsBankAccount}
+            >
+              <option value="" disabled={needsBankAccount}>
+                {needsBankAccount
+                  ? bankAccounts.length === 0
+                    ? "Add a bank account first…"
+                    : "Choose account…"
+                  : "Optional"}
+              </option>
+              {bankAccounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
             </select>
           </div>
         ) : null}

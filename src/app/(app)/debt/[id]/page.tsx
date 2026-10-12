@@ -5,12 +5,14 @@ import {
   AddDebtPaymentButton,
   EditDebtAccountButton,
 } from "@/components/debt-forms";
+import { InfoTip } from "@/components/info-tip";
 import {
   deleteDebtAccount,
   deleteDebtPayment,
   getDebtAccountDetail,
   toggleDebtPaymentPaid,
 } from "@/lib/actions";
+import { listCreditCards } from "@/lib/card-actions";
 import { PAID_TO_DATE_TYPE } from "@/lib/debt-account";
 import { formatINR } from "@/lib/money";
 import { requireUser } from "@/lib/session";
@@ -25,6 +27,12 @@ export default async function DebtDetailPage({
   const data = await getDebtAccountDetail(user.id, id);
   if (!data) notFound();
 
+  const cards = await listCreditCards(user.id);
+  const creditCardOptions = cards.map((c) => ({
+    id: c.id,
+    name: c.name,
+    label: c.label,
+  }));
   const { account, payments } = data;
   const visiblePayments = payments.filter(
     (p) => p.paymentType !== PAID_TO_DATE_TYPE,
@@ -49,10 +57,12 @@ export default async function DebtDetailPage({
         </div>
         <div className="dash-actions">
           <EditDebtAccountButton
+            creditCards={creditCardOptions}
             account={{
               id: account.id,
               name: account.name,
               type: account.type,
+              creditCardId: account.creditCardId,
               startingBalance: account.startingBalance,
               monthlyEmi: account.monthlyEmi,
               interestPercent: account.interestPercent,
@@ -95,12 +105,33 @@ export default async function DebtDetailPage({
       <section className="panel">
         <div className="panel-head">
           <h2>Details</h2>
+          <InfoTip title="Debt details" label="About debt details">
+            <p>
+              <strong>Remaining</strong> is starting balance minus payments
+              logged. Monthly interest is estimated from the interest % on the
+              remaining principal.
+            </p>
+            <p>
+              If this is a credit-card EMI, it is linked to a card so the EMI
+              counts toward that card&apos;s due and blocks available credit.
+            </p>
+          </InfoTip>
         </div>
         <dl className="debt-detail-grid">
           <div>
             <dt>Type</dt>
             <dd>{account.type}</dd>
           </div>
+          {account.creditCardId && account.creditCardName ? (
+            <div>
+              <dt>Credit card</dt>
+              <dd>
+                <Link className="linkish" href={`/cards/${account.creditCardId}`}>
+                  {account.creditCardName}
+                </Link>
+              </dd>
+            </div>
+          ) : null}
           <div>
             <dt>Status</dt>
             <dd>{account.status}</dd>

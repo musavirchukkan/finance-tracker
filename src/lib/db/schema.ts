@@ -94,6 +94,10 @@ export const creditCards = pgTable("credit_cards", {
   billingDay: integer("billing_day"),
   /** Day of month payment is due (1–28). */
   paymentDueDay: integer("payment_due_day"),
+  /** Last 4 digits of the card number (for identification). */
+  lastFour: text("last_four"),
+  /** RuPay cards can be used for UPI. */
+  isRupay: boolean("is_rupay").notNull().default(false),
   status: text("status").notNull().default("Active"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
@@ -196,6 +200,10 @@ export const debtAccounts = pgTable("debt_accounts", {
   totalMonths: integer("total_months").notNull().default(0),
   monthsPaid: integer("months_paid").notNull().default(0),
   status: text("status").notNull().default("Active Paydown"),
+  /** Linked rolling card when type is Credit Card EMI. */
+  creditCardId: uuid("credit_card_id").references(() => creditCards.id, {
+    onDelete: "set null",
+  }),
   /** Income tx logged when borrowed money was received. */
   receivedTransactionId: uuid("received_transaction_id").references(
     () => transactions.id,
@@ -284,6 +292,7 @@ export const creditCardsRelations = relations(creditCards, ({ one, many }) => ({
   user: one(users, { fields: [creditCards.userId], references: [users.id] }),
   activities: many(cardActivities),
   transactions: many(transactions),
+  debtAccounts: many(debtAccounts),
 }));
 
 export const transactionsRelations = relations(transactions, ({ one }) => ({
@@ -317,6 +326,10 @@ export const cardActivitiesRelations = relations(cardActivities, ({ one }) => ({
 export const debtAccountsRelations = relations(debtAccounts, ({ one, many }) => ({
   user: one(users, { fields: [debtAccounts.userId], references: [users.id] }),
   payments: many(debtPayments),
+  creditCard: one(creditCards, {
+    fields: [debtAccounts.creditCardId],
+    references: [creditCards.id],
+  }),
   receivedTransaction: one(transactions, {
     fields: [debtAccounts.receivedTransactionId],
     references: [transactions.id],

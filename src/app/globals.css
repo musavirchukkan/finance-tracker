@@ -299,6 +299,53 @@ textarea {
   margin: 0;
 }
 
+.info-tip-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-style: italic;
+  font-family: var(--font-display);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+
+.info-tip-btn:hover,
+.info-tip-btn:focus-visible {
+  color: var(--ink);
+  border-color: var(--line-strong);
+  background: var(--surface-hover);
+  outline: none;
+}
+
+.info-tip-body {
+  display: grid;
+  gap: 0.75rem;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.info-tip-body p {
+  margin: 0;
+}
+
+.info-tip-body strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+
 .section-sub {
   margin: var(--space-4) 0 var(--space-2);
   font-size: var(--text-sm);
@@ -370,6 +417,14 @@ table.data tfoot td {
 .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* Beat `table.data th { text-align: left }` so headers match numeric cells */
+table.data th.num,
+table.data td.num {
+  text-align: right;
+  white-space: nowrap;
+  width: 1%;
 }
 
 .nowrap {
@@ -1680,12 +1735,40 @@ button:disabled {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
-  margin-bottom: var(--space-3);
 }
 
-.filter-pills.wrap {
-  max-height: 5.5rem;
-  overflow-y: auto;
+.filter-select-wrap {
+  display: inline-flex;
+  min-width: min(14rem, 100%);
+  flex: 1 1 10rem;
+  max-width: 18rem;
+}
+
+.filter-select {
+  width: 100%;
+  min-height: 2.25rem;
+  padding: 0.4rem 2rem 0.4rem 0.75rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  background: var(--bg-elevated);
+  color: var(--ink);
+  font-size: var(--text-sm);
+  font-weight: 650;
+  cursor: pointer;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 1rem) calc(50% - 0.15rem),
+    calc(100% - 0.7rem) calc(50% - 0.15rem);
+  background-size: 0.35rem 0.35rem, 0.35rem 0.35rem;
+  background-repeat: no-repeat;
+}
+
+.filter-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: none;
 }
 
 .filter-pill {

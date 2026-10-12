@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeOutstanding,
   defaultPaymentTypeForAccount,
+  isCreditCardEmiType,
   isCreditCardType,
   isCreditLineType,
   isKuriType,
@@ -20,6 +21,9 @@ describe("type detectors", () => {
   it("detects credit card rolling", () => {
     expect(isCreditCardType("Credit Card")).toBe(true);
     expect(isCreditCardType("Credit Card EMI")).toBe(false);
+    expect(isCreditCardEmiType("Credit Card EMI")).toBe(true);
+    expect(isCreditCardEmiType("CC EMI")).toBe(true);
+    expect(isCreditCardEmiType("Personal Loan")).toBe(false);
   });
 
   it("treats credit line like a loan, not revolving", () => {

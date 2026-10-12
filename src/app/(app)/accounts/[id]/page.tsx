@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
 import { EditBankAccountButton } from "@/components/bank-forms";
+import { InfoTip } from "@/components/info-tip";
 import { deleteBankAccount, getBankAccountDetail } from "@/lib/bank-actions";
 import { formatINR } from "@/lib/money";
 import { requireUser } from "@/lib/session";
@@ -59,6 +60,12 @@ export default async function BankAccountDetailPage({
       <section className="panel">
         <div className="panel-head">
           <h2>Recent transactions</h2>
+          <InfoTip title="Account activity" label="About account activity">
+            <p>
+              Shows transactions that used this account as the payment source.
+              Balance moves with those income and expense entries.
+            </p>
+          </InfoTip>
         </div>
         {txs.length === 0 ? (
           <div className="empty">

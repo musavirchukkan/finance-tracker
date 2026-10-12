@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
 import { AddTransactionButton } from "@/components/add-modals";
+import { CategoryFilterSelect } from "@/components/category-filter-select";
+import { InfoTip } from "@/components/info-tip";
 import { deleteTransaction, listCategories, listTransactions } from "@/lib/actions";
 import { listBankAccounts } from "@/lib/bank-actions";
 import { listCreditCards } from "@/lib/card-actions";
@@ -70,7 +72,12 @@ export default async function TransactionsPage({
     kind: c.kind,
     icon: c.icon,
   }));
-  const creditCards = cards.map((c) => ({ id: c.id, name: c.name }));
+  const creditCards = cards.map((c) => ({
+    id: c.id,
+    name: c.name,
+    label: c.label,
+    isRupay: c.isRupay,
+  }));
   const bankAccounts = banks.map((a) => ({ id: a.id, name: a.name }));
   const categoryOptions =
     typeFilter === "all"
@@ -84,11 +91,15 @@ export default async function TransactionsPage({
       <div className="page-header">
         <div>
           <h2 className="page-title">Transactions</h2>
-          <p className="muted page-sub">
-            Income and expenses for the month. Works offline.
-          </p>
         </div>
         <div className="dash-actions">
+          <InfoTip title="Transactions" label="About transactions">
+            <p>Income and expenses for the selected month.</p>
+            <p>
+              Entries queue offline and sync when you&apos;re back online. Choose
+              a bank account, card, cash, or UPI as the payment source.
+            </p>
+          </InfoTip>
           <div className="month-switcher" role="group" aria-label="Month">
             <Link
               className="btn btn-ghost btn-xs"
@@ -158,30 +169,15 @@ export default async function TransactionsPage({
               </Link>
             ))}
           </div>
-        </div>
-
-        <div className="filter-pills wrap" role="group" aria-label="Category">
-          <Link
-            href={buildTxHref({ month, type: typeFilter })}
-            className={!categoryId ? "filter-pill active" : "filter-pill"}
-          >
-            All categories
-          </Link>
-          {categoryOptions.map((c) => (
-            <Link
-              key={c.id}
-              href={buildTxHref({
-                month,
-                type: typeFilter,
-                category: c.id,
-              })}
-              className={
-                categoryId === c.id ? "filter-pill active" : "filter-pill"
-              }
-            >
-              {c.name}
-            </Link>
-          ))}
+          <CategoryFilterSelect
+            month={month}
+            type={typeFilter}
+            categoryId={categoryId}
+            options={categoryOptions.map((c) => ({
+              id: c.id,
+              name: c.name,
+            }))}
+          />
         </div>
 
         {rows.length === 0 ? (
@@ -198,6 +194,7 @@ export default async function TransactionsPage({
                     <th>When</th>
                     <th>Description</th>
                     <th>Category</th>
+                    <th>Paid from</th>
                     <th className="num">Amount</th>
                     <th></th>
                   </tr>
@@ -216,6 +213,15 @@ export default async function TransactionsPage({
                           hour: "2-digit",
                           minute: "2-digit",
                         });
+                    const paidFrom = row.billPayCardName
+                      ? row.bankAccountName
+                        ? `Pay bill · ${row.billPayCardName} ← ${row.bankAccountName}`
+                        : `Pay bill · ${row.billPayCardName}`
+                      : row.creditCardName
+                        ? `Card spend · ${row.creditCardName}`
+                        : row.bankAccountName
+                          ? `Account · ${row.bankAccountName}`
+                          : "—";
                     return (
                       <tr key={row.id}>
                         <td className="nowrap">{whenLabel}</td>
@@ -230,6 +236,7 @@ export default async function TransactionsPage({
                           <span className={`badge ${row.type}`}>{row.type}</span>{" "}
                           {row.categoryName}
                         </td>
+                        <td className="nowrap muted">{paidFrom}</td>
                         <td
                           className={`num ${row.type === "income" ? "pos" : ""}`}
                         >

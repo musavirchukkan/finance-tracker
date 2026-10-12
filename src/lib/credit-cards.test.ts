@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   activityLabel,
+  availableCredit,
   clampBillingDay,
   dateForDayInMonth,
   daysInMonth,
   dueDateForBill,
+  formatCardLabel,
   nextCycleDate,
+  normalizeLastFour,
   previousCycleDate,
   statementBillDateForCharge,
   summarizeCardStatement,
+  totalDueThisCycle,
 } from "@/lib/credit-cards";
 
 describe("clampBillingDay", () => {
@@ -113,10 +117,86 @@ describe("summarizeCardStatement", () => {
     expect(summary.amountDue).toBe(2500);
     expect(summary.nextBillPending).toBe(500);
   });
+
+  it("uses current outstanding when there are no charge activities", () => {
+    const summary = summarizeCardStatement({
+      billingDay: 25,
+      paymentDueDay: 10,
+      from: new Date(2026, 9, 5), // 5 Oct — due for Sept bill is still ahead (10 Oct)
+      currentOutstanding: 12_000,
+      activities: [],
+    });
+    expect(summary.amountDue).toBe(12_000);
+    expect(summary.nextDueDate).toBe("2026-10-10");
+  });
+
+  it("advances due to next cycle when payment due date already passed", () => {
+    // Bill day 25, due day 10: last bill 25 Sep → due 10 Oct. Today 12 Oct → past.
+    const summary = summarizeCardStatement({
+      billingDay: 25,
+      paymentDueDay: 10,
+      from: new Date(2026, 9, 12),
+      currentOutstanding: 8_000,
+      activities: [],
+    });
+    expect(summary.lastBillDate).toBe("2026-09-25");
+    expect(summary.nextBillDate).toBe("2026-10-25");
+    // Due for the upcoming 25 Oct bill → 10 Nov
+    expect(summary.nextDueDate).toBe("2026-11-10");
+    expect(summary.amountDue).toBe(8_000);
+  });
 });
 
 describe("activityLabel", () => {
   it("labels wallet recharge", () => {
-    expect(activityLabel("wallet_recharge")).toBe("Wallet recharge");
+    expect(activityLabel("wallet_recharge")).toBe("Card → wallet");
+  });
+});
+
+describe("formatCardLabel / normalizeLastFour", () => {
+  it("appends last four when valid", () => {
+    expect(formatCardLabel("HDFC", "4821")).toBe("HDFC ···· 4821");
+    expect(normalizeLastFour("12-34")).toBe("1234");
+  });
+
+  it("omits incomplete last four", () => {
+    expect(formatCardLabel("HDFC", "12")).toBe("HDFC");
+    expect(normalizeLastFour("12")).toBeNull();
+  });
+});
+
+describe("availableCredit", () => {
+  it("blocks limit by revolving + EMI remaining", () => {
+    expect(
+      availableCredit({
+        creditLimit: 50_000,
+        revolvingOutstanding: 0,
+        emiBlocked: 25_000,
+      }),
+    ).toBe(25_000);
+  });
+
+  it("returns null without a limit", () => {
+    expect(
+      availableCredit({
+        creditLimit: null,
+        revolvingOutstanding: 1000,
+        emiBlocked: 500,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("totalDueThisCycle", () => {
+  it("adds statement due and monthly EMI", () => {
+    expect(
+      totalDueThisCycle({ statementDue: 3000, linkedMonthlyEmi: 2500 }),
+    ).toBe(5500);
+  });
+
+  it("ignores paid-off EMI (zero monthly)", () => {
+    expect(
+      totalDueThisCycle({ statementDue: 3000, linkedMonthlyEmi: 0 }),
+    ).toBe(3000);
   });
 });

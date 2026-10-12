@@ -47,6 +47,16 @@ export function isCreditCardType(type: string) {
   return t === "credit card" || t === "cc" || t === "credit card rolling";
 }
 
+/** Installment EMI converted on a revolving credit card (links to credit_cards). */
+export function isCreditCardEmiType(type: string) {
+  const t = normalizeDebtType(type);
+  return (
+    t === "credit card emi" ||
+    t === "cc emi" ||
+    (t.includes("credit card") && t.includes("emi"))
+  );
+}
+
 export function isCreditLineType(type: string) {
   const t = normalizeDebtType(type);
   return t === "credit line" || t === "line of credit" || t === "loc";

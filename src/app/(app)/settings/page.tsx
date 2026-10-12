@@ -1,5 +1,6 @@
 import { AccountSettings } from "@/components/account-settings";
 import { ExportDataCard } from "@/components/export-data";
+import { InfoTip } from "@/components/info-tip";
 import { PwaInstallCard } from "@/components/pwa-install-card";
 import { SettingsForms } from "@/components/settings-forms";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -17,10 +18,13 @@ export default async function SettingsPage() {
       <div className="page-header">
         <div>
           <h2 className="page-title">Settings</h2>
-          <p className="muted page-sub">
-            Account, theme, install Ledger, categories, and offline data.
-          </p>
         </div>
+        <InfoTip title="Settings" label="About settings">
+          <p>
+            Manage your account, theme, home-screen install, categories, and
+            offline export.
+          </p>
+        </InfoTip>
       </div>
 
       <AccountSettings

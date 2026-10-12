@@ -4,6 +4,7 @@ import {
   DeleteBankAccountButton,
   EditBankAccountButton,
 } from "@/components/bank-forms";
+import { InfoTip } from "@/components/info-tip";
 import { listBankAccounts } from "@/lib/bank-actions";
 import { formatINR } from "@/lib/money";
 import { requireUser } from "@/lib/session";
@@ -18,11 +19,18 @@ export default async function AccountsPage() {
       <div className="page-header">
         <div>
           <h2 className="page-title">Accounts</h2>
-          <p className="muted page-sub">
-            Bank and wallet balances — pick one when you add a transaction.
-          </p>
         </div>
         <div className="dash-actions">
+          <InfoTip title="Bank accounts" label="About bank accounts">
+            <p>
+              Track bank and wallet balances. Pick an account when you add income
+              or expenses so cashflow stays linked.
+            </p>
+            <p>
+              Balance updates from transactions that use this account as the
+              payment source.
+            </p>
+          </InfoTip>
           <AddBankAccountButton />
         </div>
       </div>

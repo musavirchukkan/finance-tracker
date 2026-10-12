@@ -148,6 +148,27 @@ export async function recordSpendOnCard(args: {
   await adjustCardOutstanding(args.userId, args.cardId, args.amount);
 }
 
+export async function recordBillPaymentOnCard(args: {
+  userId: string;
+  cardId: string;
+  date: string;
+  amount: number;
+  description: string;
+  transactionId: string;
+}) {
+  await db.insert(cardActivities).values({
+    userId: args.userId,
+    cardId: args.cardId,
+    date: args.date,
+    activityType: "bill_payment",
+    amount: args.amount.toFixed(2),
+    outstandingDelta: (-args.amount).toFixed(2),
+    description: args.description || `Bill payment ₹${args.amount.toFixed(0)}`,
+    transactionId: args.transactionId,
+  });
+  await adjustCardOutstanding(args.userId, args.cardId, -args.amount);
+}
+
 export async function deleteLinkedCashflowTx(
   userId: string,
   transactionId: string | null | undefined,

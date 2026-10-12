@@ -8,7 +8,6 @@ import {
   deleteCardActivity,
   logCardBillPayment,
   logCardFee,
-  logWalletCashout,
   logWalletRecharge,
   updateCreditCard,
 } from "@/lib/card-actions";
@@ -24,6 +23,8 @@ type CardFormValues = {
   creditLimit: string;
   billingDay: string;
   paymentDueDay: string;
+  lastFour: string;
+  isRupay: boolean;
   status: string;
 };
 
@@ -33,6 +34,8 @@ const emptyCard: CardFormValues = {
   creditLimit: "",
   billingDay: "",
   paymentDueDay: "",
+  lastFour: "",
+  isRupay: false,
   status: "Active",
 };
 
@@ -60,6 +63,33 @@ function CardFields({
           value={values.name}
           onChange={(e) => set("name", e.target.value)}
         />
+      </div>
+      <div className="field">
+        <label htmlFor="card-last-four">Last 4 digits</label>
+        <input
+          id="card-last-four"
+          name="lastFour"
+          inputMode="numeric"
+          maxLength={4}
+          placeholder="1234"
+          value={values.lastFour}
+          onChange={(e) =>
+            set("lastFour", e.target.value.replace(/\D/g, "").slice(0, 4))
+          }
+        />
+      </div>
+      <div className="field">
+        <label className="debt-check-label" htmlFor="card-rupay">
+          <input
+            id="card-rupay"
+            name="isRupay"
+            type="checkbox"
+            value="true"
+            checked={values.isRupay}
+            onChange={(e) => set("isRupay", e.target.checked)}
+          />
+          RuPay (can pay via UPI)
+        </label>
       </div>
       <div className="field">
         <label htmlFor="card-outstanding">Outstanding</label>
@@ -182,6 +212,8 @@ export function EditCreditCardButton({
     creditLimit?: string | number | null;
     billingDay?: number | null;
     paymentDueDay?: number | null;
+    lastFour?: string | null;
+    isRupay?: boolean;
     status: string;
   };
 }) {
@@ -198,6 +230,8 @@ export function EditCreditCardButton({
       billingDay: card.billingDay != null ? String(card.billingDay) : "",
       paymentDueDay:
         card.paymentDueDay != null ? String(card.paymentDueDay) : "",
+      lastFour: card.lastFour ?? "",
+      isRupay: !!card.isRupay,
       status: card.status,
     }),
     [card],
@@ -314,18 +348,18 @@ export function WalletRechargeButton({ cardId }: { cardId: string }) {
         className="btn btn-primary btn-xs"
         onClick={() => setOpen(true)}
       >
-        Wallet recharge
+        Card → wallet
       </button>
       <DateAmountShell
         open={open}
-        title="Wallet recharge"
+        title="Card → wallet"
         onClose={() => {
           setOpen(false);
           setWalletCredit("");
           setCardCharged("");
         }}
         action={logWalletRecharge}
-        successMessage="Recharge logged"
+        successMessage="Recharge logged — also added to transactions"
         cardId={cardId}
       >
         <div className="field">
@@ -367,79 +401,6 @@ export function WalletRechargeButton({ cardId }: { cardId: string }) {
         <div className="field">
           <label htmlFor="recharge-note">Note</label>
           <input id="recharge-note" name="description" placeholder="Note" />
-        </div>
-      </DateAmountShell>
-    </>
-  );
-}
-
-export function WalletCashoutButton({
-  cardId,
-  bankAccounts = [],
-}: {
-  cardId: string;
-  bankAccounts?: { id: string; name: string }[];
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button
-        type="button"
-        className="btn btn-ghost btn-xs"
-        onClick={() => setOpen(true)}
-      >
-        Wallet → bank
-      </button>
-      <DateAmountShell
-        open={open}
-        title="Wallet → bank"
-        onClose={() => setOpen(false)}
-        action={logWalletCashout}
-        successMessage="Cashout logged"
-        cardId={cardId}
-      >
-        <div className="field">
-          <label htmlFor="cashout-amount">Amount to bank</label>
-          <input
-            id="cashout-amount"
-            name="amount"
-            type="number"
-            step="0.01"
-            min="0"
-            required
-            inputMode="decimal"
-            placeholder="0"
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="cashout-fee">Bank charge</label>
-          <input
-            id="cashout-fee"
-            name="bankFee"
-            type="number"
-            step="0.01"
-            min="0"
-            inputMode="decimal"
-            placeholder="0"
-            defaultValue="0"
-          />
-        </div>
-        {bankAccounts.length > 0 ? (
-          <div className="field">
-            <label htmlFor="cashout-bank">Credit to account</label>
-            <select id="cashout-bank" name="bankAccountId" defaultValue="">
-              <option value="">Don’t update balance</option>
-              {bankAccounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-        <div className="field">
-          <label htmlFor="cashout-note">Note</label>
-          <input id="cashout-note" name="description" placeholder="Note" />
         </div>
       </DateAmountShell>
     </>
@@ -521,7 +482,7 @@ export function PayBillButton({
         title="Pay bill"
         onClose={() => setOpen(false)}
         action={logCardBillPayment}
-        successMessage="Bill payment logged"
+        successMessage="Bill payment logged — also added to transactions"
         cardId={cardId}
       >
         <div className="field">
@@ -537,19 +498,21 @@ export function PayBillButton({
             placeholder="0"
           />
         </div>
-        {bankAccounts.length > 0 ? (
-          <div className="field">
-            <label htmlFor="bill-bank">Pay from account</label>
-            <select id="bill-bank" name="bankAccountId" defaultValue="">
-              <option value="">Don’t update balance</option>
-              {bankAccounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
+        <div className="field">
+          <label htmlFor="bill-bank">Pay from account</label>
+          <select id="bill-bank" name="bankAccountId" required defaultValue="">
+            <option value="" disabled>
+              {bankAccounts.length === 0
+                ? "Add a bank account first…"
+                : "Choose account…"}
+            </option>
+            {bankAccounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="field">
           <label htmlFor="bill-note">Note</label>
           <input id="bill-note" name="description" placeholder="Note" />

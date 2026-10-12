@@ -22,6 +22,7 @@ import {
   DEBT_TYPE_PRESETS,
   defaultPaymentTypeForAccount,
   isBorrowedType,
+  isCreditCardEmiType,
   isKuriType,
   isLentType,
   isNoInterestType,
@@ -29,10 +30,17 @@ import {
   paymentOptionsForAccountType,
 } from "@/lib/debt-kinds";
 
+export type CreditCardOption = {
+  id: string;
+  name: string;
+  label?: string;
+};
+
 type DebtAccountFormValues = {
   id?: string;
   name: string;
   type: string;
+  creditCardId: string;
   startingBalance: string;
   monthlyEmi: string;
   interestPercent: string;
@@ -46,6 +54,7 @@ type DebtAccountFormValues = {
 const emptyValues: DebtAccountFormValues = {
   name: "",
   type: "",
+  creditCardId: "",
   startingBalance: "0",
   monthlyEmi: "0",
   interestPercent: "0",
@@ -60,10 +69,12 @@ function DebtAccountFields({
   values,
   onChange,
   mode,
+  creditCards = [],
 }: {
   values: DebtAccountFormValues;
   onChange: (next: DebtAccountFormValues) => void;
   mode: "create" | "edit";
+  creditCards?: CreditCardOption[];
 }) {
   const starting = Number(values.startingBalance) || 0;
   const emi = Number(values.monthlyEmi) || 0;
@@ -88,6 +99,7 @@ function DebtAccountFields({
   const isBorrowed = isBorrowedType(values.type);
   const isLent = isLentType(values.type);
   const isKuri = isKuriType(values.type);
+  const isCcEmi = isCreditCardEmiType(values.type);
   const isRevolving = isRevolvingCreditType(values.type);
   const isNoInterest = isNoInterestType(values.type);
   const hideInterest = isNoInterest || isKuri || isRevolving;
@@ -110,6 +122,7 @@ function DebtAccountFields({
     const next: DebtAccountFormValues = {
       ...values,
       type: nextType,
+      creditCardId: isCreditCardEmiType(nextType) ? values.creditCardId : "",
       logAsIncome: mode === "create" ? borrowed || lent : values.logAsIncome,
       interestPercent: noInterest ? "0" : values.interestPercent,
       status: isKuriType(nextType)
@@ -199,24 +212,12 @@ function DebtAccountFields({
   return (
     <>
       <div className="field">
-        <label htmlFor="debt-name">Name</label>
-        <input
-          id="debt-name"
-          name="name"
-          required
-          placeholder="Name"
-          autoComplete="off"
-          autoFocus
-          value={values.name}
-          onChange={(e) => setField("name", e.target.value)}
-        />
-      </div>
-      <div className="field">
         <label htmlFor="debt-type">Type</label>
         <input type="hidden" name="type" value={values.type} />
         <select
           id="debt-type"
           required
+          autoFocus
           value={
             DEBT_TYPE_PRESETS.some((t) => t === values.type)
               ? values.type
@@ -243,6 +244,41 @@ function DebtAccountFields({
             <option value="__custom__">{values.type}</option>
           ) : null}
         </select>
+      </div>
+      {isCcEmi ? (
+        <div className="field">
+          <label htmlFor="debt-card">Credit card</label>
+          <select
+            id="debt-card"
+            name="creditCardId"
+            required
+            value={values.creditCardId}
+            onChange={(e) => setField("creditCardId", e.target.value)}
+          >
+            <option value="" disabled>
+              {creditCards.length === 0
+                ? "Add a card under Cards first…"
+                : "Choose a card…"}
+            </option>
+            {creditCards.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label ?? c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+      <div className="field">
+        <label htmlFor="debt-name">Name</label>
+        <input
+          id="debt-name"
+          name="name"
+          required
+          placeholder="Name"
+          autoComplete="off"
+          value={values.name}
+          onChange={(e) => setField("name", e.target.value)}
+        />
       </div>
       {showOpeningCashflow ? (
         <div className="field">
@@ -484,7 +520,11 @@ function DebtAccountFields({
   );
 }
 
-export function AddDebtAccountButton() {
+export function AddDebtAccountButton({
+  creditCards = [],
+}: {
+  creditCards?: CreditCardOption[];
+}) {
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<DebtAccountFormValues>(emptyValues);
 
@@ -510,7 +550,12 @@ export function AddDebtAccountButton() {
           className="form-stack"
           onSuccess={close}
         >
-          <DebtAccountFields values={values} onChange={setValues} mode="create" />
+          <DebtAccountFields
+            values={values}
+            onChange={setValues}
+            mode="create"
+            creditCards={creditCards}
+          />
           <div className="modal-actions">
             <button type="button" className="btn btn-ghost" onClick={close}>
               Cancel
@@ -529,6 +574,7 @@ export type EditableDebtAccount = {
   id: string;
   name: string;
   type: string;
+  creditCardId?: string | null;
   startingBalance: string | number;
   monthlyEmi: string | number;
   interestPercent?: string | number;
@@ -540,8 +586,10 @@ export type EditableDebtAccount = {
 
 export function EditDebtAccountButton({
   account,
+  creditCards = [],
 }: {
   account: EditableDebtAccount;
+  creditCards?: CreditCardOption[];
 }) {
   const [open, setOpen] = useState(false);
   const initial = useMemo<DebtAccountFormValues>(() => {
@@ -561,6 +609,7 @@ export function EditDebtAccountButton({
       id: account.id,
       name: account.name,
       type: account.type,
+      creditCardId: account.creditCardId ?? "",
       startingBalance: String(account.startingBalance),
       monthlyEmi: String(account.monthlyEmi),
       interestPercent,
@@ -601,7 +650,12 @@ export function EditDebtAccountButton({
           onSuccess={() => setOpen(false)}
         >
           <input type="hidden" name="id" value={account.id} />
-          <DebtAccountFields values={values} onChange={setValues} mode="edit" />
+          <DebtAccountFields
+            values={values}
+            onChange={setValues}
+            mode="edit"
+            creditCards={creditCards}
+          />
           <div className="modal-actions">
             <button
               type="button"

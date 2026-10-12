@@ -7,6 +7,7 @@ export type PendingTransaction = {
   type: "expense" | "income";
   amount: number;
   creditCardId?: string | null;
+  cardBillPayId?: string | null;
   bankAccountId?: string | null;
   createdAt: string;
 };
@@ -48,6 +49,7 @@ export async function queueTransaction(
     type: tx.type,
     amount: tx.amount,
     creditCardId: tx.creditCardId ?? null,
+    cardBillPayId: tx.cardBillPayId ?? null,
     bankAccountId: tx.bankAccountId ?? null,
     createdAt: new Date().toISOString(),
   };

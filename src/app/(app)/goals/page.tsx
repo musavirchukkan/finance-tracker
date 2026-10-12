@@ -5,6 +5,7 @@ import {
   AddMoneyToGoalButton,
   DeleteGoalButton,
 } from "@/components/goal-forms";
+import { InfoTip } from "@/components/info-tip";
 import { listSavingsGoals } from "@/lib/actions";
 import { formatINR } from "@/lib/money";
 import { requireUser } from "@/lib/session";
@@ -33,11 +34,17 @@ export default async function GoalsPage() {
       <div className="page-header">
         <div>
           <h2 className="page-title">Goals</h2>
-          <p className="muted page-sub">
-            Create savings goals and add money as you go.
-          </p>
         </div>
-        <AddGoalButton />
+        <div className="dash-actions">
+          <InfoTip title="Savings goals" label="About savings goals">
+            <p>Create savings goals and add money as you go.</p>
+            <p>
+              Progress is based on contributions you log toward each target.
+              Debt payoff is tracked separately under Debt.
+            </p>
+          </InfoTip>
+          <AddGoalButton />
+        </div>
       </div>
 
       <div className="stat-grid cols-3">
