@@ -13,17 +13,18 @@ concurrency:
 jobs:
   quality:
     name: Lint, typecheck, test, build
-    runs-on: ubuntu-latest
+    # Pin OS so ubuntu-latest → 26 migration does not surprise us
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Install
