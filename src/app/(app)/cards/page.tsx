@@ -5,6 +5,7 @@ import {
   EditCreditCardButton,
 } from "@/components/card-forms";
 import { InfoTip } from "@/components/info-tip";
+import { ReviewCallout } from "@/components/review-callout";
 import { deleteCreditCard, listCreditCards } from "@/lib/card-actions";
 import { formatINR } from "@/lib/money";
 import { requireUser } from "@/lib/session";
@@ -19,6 +20,13 @@ export default async function CardsPage() {
   const shareOptions = cards
     .filter((c) => !c.sharesLimitWithId)
     .map((c) => ({ id: c.id, label: c.label }));
+  // One note per shared-limit root (or single card) with negative available.
+  const overLimitCards = cards.filter(
+    (c) =>
+      c.availableNum != null &&
+      c.availableNum < 0 &&
+      (!c.sharesLimitWithId || c.sharedLimitRootId === c.id),
+  );
 
   return (
     <div className="page-stack">
@@ -41,6 +49,11 @@ export default async function CardsPage() {
               blocked across every card in a shared-limit group (e.g. Axis add-on
               cards).
             </p>
+            <p>
+              Available can go negative if the ledger is over limit — spends are
+              never blocked. Use the review note to catch missing payments or
+              EMI links, then the books catch up.
+            </p>
           </InfoTip>
           <AddCreditCardButton shareOptions={shareOptions} />
         </div>
@@ -60,6 +73,30 @@ export default async function CardsPage() {
           <strong>{formatINR(totalOutstanding)}</strong>
         </div>
       </div>
+
+      {overLimitCards.length > 0 ? (
+        <ReviewCallout title="Negative available — review">
+          <p>
+            {overLimitCards
+              .map(
+                (c) =>
+                  `${c.label} (${
+                    c.availableNum != null
+                      ? formatINR(c.availableNum)
+                      : formatINR(-c.overLimitNum)
+                  }${
+                    c.sharesLimit && c.sharedWithLabels.length > 0
+                      ? ` · shared with ${c.sharedWithLabels.join(", ")}`
+                      : ""
+                  })`,
+              )
+              .join("; ")}{" "}
+            {overLimitCards.length === 1 ? "is" : "are"} over the credit limit.
+            That is allowed — check for a missing bill payment or an EMI that
+            should be linked. Once the books catch up, available recovers.
+          </p>
+        </ReviewCallout>
+      ) : null}
 
       <section className="panel">
         <div className="panel-head">
@@ -113,7 +150,13 @@ export default async function CardsPage() {
                         ? formatINR(c.emiMonthlyNum)
                         : "—"}
                     </td>
-                    <td className="num">
+                    <td
+                      className={`num${
+                        c.availableNum != null && c.availableNum < 0
+                          ? " neg"
+                          : ""
+                      }`}
+                    >
                       {c.availableNum != null
                         ? formatINR(c.availableNum)
                         : "—"}

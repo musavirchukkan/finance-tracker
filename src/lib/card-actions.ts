@@ -296,6 +296,17 @@ function withEmiAggregates(
     [...emiByCard.entries()].map(([id, v]) => [id, v.emiBlocked]),
   );
 
+  const availableNum = availableCreditForSharedLimit({
+    cardId: card.id,
+    cards: allCards,
+    emiBlockedByCard: emiBlockedMap,
+  });
+  const groupUsed = groupRevolving + groupEmiBlocked;
+  const overLimitNum =
+    sharedLimit != null
+      ? Math.max(0, Math.round((groupUsed - sharedLimit) * 100) / 100)
+      : 0;
+
   return {
     outstandingNum,
     /** Limit shown for this card: own limit, or shared root limit. */
@@ -308,6 +319,8 @@ function withEmiAggregates(
     sharedWithLabels: sharedPeers,
     groupRevolvingNum: groupRevolving,
     groupEmiBlockedNum: groupEmiBlocked,
+    /** How far over the (shared) limit — 0 if within limit or no limit set. */
+    overLimitNum,
     nextBillDate: summary.nextBillDate,
     nextDueDate: summary.nextDueDate,
     lastBillDate: summary.lastBillDate,
@@ -319,11 +332,7 @@ function withEmiAggregates(
       linkedMonthlyEmi: emiMonthlyNum,
     }),
     nextBillPending: summary.nextBillPending,
-    availableNum: availableCreditForSharedLimit({
-      cardId: card.id,
-      cards: allCards,
-      emiBlockedByCard: emiBlockedMap,
-    }),
+    availableNum,
     linkedEmis: emi?.emis ?? [],
   };
 }

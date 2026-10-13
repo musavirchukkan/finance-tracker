@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
 import { EditBankAccountButton } from "@/components/bank-forms";
 import { InfoTip } from "@/components/info-tip";
+import { ReviewCallout } from "@/components/review-callout";
 import { deleteBankAccount, getBankAccountDetail } from "@/lib/bank-actions";
 import { formatINR } from "@/lib/money";
 import { requireUser } from "@/lib/session";
@@ -53,7 +54,9 @@ export default async function BankAccountDetailPage({
       <div className="stat-grid cols-2">
         <div className="stat-card tall left">
           <span>Current balance</span>
-          <strong>{formatINR(account.balanceNum)}</strong>
+          <strong className={account.balanceNum < 0 ? "neg" : undefined}>
+            {formatINR(account.balanceNum)}
+          </strong>
         </div>
         <div className="stat-card tall">
           <span>Minimum balance</span>
@@ -78,13 +81,29 @@ export default async function BankAccountDetailPage({
         </div>
       </div>
 
+      {account.balanceNum < 0 ? (
+        <ReviewCallout title="Negative balance — review ledger">
+          <p>
+            This account is at {formatINR(account.balanceNum)}. Ledger never
+            blocks spends for that — you may be missing an income, refund, salary
+            credit, or card bill payment, or the opening balance needs a refresh.
+          </p>
+          <p>
+            Add the missing transaction with its real date, or edit this account
+            and set the latest balance from the bank app. The negative clears
+            once the books catch up.
+          </p>
+        </ReviewCallout>
+      ) : null}
+
       <section className="panel">
         <div className="panel-head">
           <h2>Recent transactions</h2>
           <InfoTip title="Account activity" label="About account activity">
             <p>
               Shows transactions that used this account as the payment source.
-              Balance moves with those income and expense entries.
+              Balance moves with those income and expense entries. Negative
+              balances are allowed so you can reconcile missing credits later.
             </p>
           </InfoTip>
         </div>

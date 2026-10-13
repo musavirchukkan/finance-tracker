@@ -179,6 +179,16 @@ describe("availableCredit", () => {
     ).toBe(25_000);
   });
 
+  it("goes negative when used exceeds the limit", () => {
+    expect(
+      availableCredit({
+        creditLimit: 50_000,
+        revolvingOutstanding: 40_000,
+        emiBlocked: 15_000,
+      }),
+    ).toBe(-5_000);
+  });
+
   it("returns null without a limit", () => {
     expect(
       availableCredit({

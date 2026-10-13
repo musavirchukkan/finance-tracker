@@ -5,6 +5,7 @@ import {
   EditBankAccountButton,
 } from "@/components/bank-forms";
 import { InfoTip } from "@/components/info-tip";
+import { ReviewCallout } from "@/components/review-callout";
 import { listBankAccounts } from "@/lib/bank-actions";
 import { formatINR } from "@/lib/money";
 import { requireUser } from "@/lib/session";
@@ -13,6 +14,7 @@ export default async function AccountsPage() {
   const user = await requireUser();
   const accounts = await listBankAccounts(user.id);
   const totalBalance = accounts.reduce((s, a) => s + a.balanceNum, 0);
+  const negativeAccounts = accounts.filter((a) => a.balanceNum < 0);
 
   return (
     <div className="page-stack">
@@ -27,9 +29,9 @@ export default async function AccountsPage() {
               or expenses so cashflow stays linked.
             </p>
             <p>
-              Optional min balance and free-text rules (AMB, quarterly average,
-              txn limits) are notes only — they do not block spends. Debit-card
-              tracking under each account can come later.
+              Spends are never blocked if the ledger goes negative — that usually
+              means a missing income, refund, or bill payment. Add the missing
+              txn (with its real date) or edit the balance to match the bank.
             </p>
           </InfoTip>
           <AddBankAccountButton />
@@ -39,13 +41,27 @@ export default async function AccountsPage() {
       <div className="stat-grid cols-2">
         <div className="stat-card tall left">
           <span>Total balance</span>
-          <strong>{formatINR(totalBalance)}</strong>
+          <strong className={totalBalance < 0 ? "neg" : undefined}>
+            {formatINR(totalBalance)}
+          </strong>
         </div>
         <div className="stat-card tall">
           <span>Accounts</span>
           <strong>{accounts.length}</strong>
         </div>
       </div>
+
+      {negativeAccounts.length > 0 ? (
+        <ReviewCallout title="Negative balances to review">
+          <p>
+            {negativeAccounts.map((a) => a.label).join(", ")}{" "}
+            {negativeAccounts.length === 1 ? "is" : "are"} below ₹0. That is
+            allowed — check for a missing credit/income or update the latest
+            bank balance. Once the missing txn is logged, the balance should
+            recover.
+          </p>
+        </ReviewCallout>
+      ) : null}
 
       <section className="panel">
         <div className="panel-head">
@@ -88,7 +104,9 @@ export default async function AccountsPage() {
                       </Link>
                     </td>
                     <td>{a.accountType}</td>
-                    <td className="num">{formatINR(a.balanceNum)}</td>
+                    <td className={`num${a.balanceNum < 0 ? " neg" : ""}`}>
+                      {formatINR(a.balanceNum)}
+                    </td>
                     <td className="num">
                       {a.balanceRules ? (
                         <span

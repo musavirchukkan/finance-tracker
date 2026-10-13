@@ -716,6 +716,38 @@ table.data.distribute td.shrink {
   color: var(--danger);
 }
 
+.review-callout {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0 0 var(--space-4);
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--line));
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+}
+
+.review-callout-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--danger);
+}
+
+.review-callout-body {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.review-callout-body p {
+  margin: 0;
+}
+
+.review-callout-body p + p {
+  margin-top: 0.35rem;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

@@ -283,7 +283,8 @@ export function normalizeLastFour(raw: string | null | undefined): string | null
   return digits.length === 4 ? digits : null;
 }
 
-/** Available credit after revolving + EMI principal blocked. */
+/** Available credit after revolving + EMI principal blocked.
+ *  Can be negative when used exceeds the limit (ledger never blocks spends). */
 export function availableCredit(args: {
   creditLimit: number | null | undefined;
   revolvingOutstanding: number;
@@ -294,7 +295,7 @@ export function availableCredit(args: {
   }
   const used =
     Math.max(0, args.revolvingOutstanding) + Math.max(0, args.emiBlocked);
-  return Math.max(0, Math.round((args.creditLimit - used) * 100) / 100);
+  return Math.round((args.creditLimit - used) * 100) / 100;
 }
 
 type LimitLinkCard = {

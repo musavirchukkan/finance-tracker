@@ -9,6 +9,7 @@ import {
   WalletRechargeButton,
 } from "@/components/card-forms";
 import { InfoTip } from "@/components/info-tip";
+import { ReviewCallout } from "@/components/review-callout";
 import { listBankAccounts } from "@/lib/bank-actions";
 import {
   deleteCreditCard,
@@ -77,7 +78,13 @@ export default async function CardDetailPage({
         </div>
         <div className="stat-card tall">
           <span>{card.sharesLimit ? "Shared available" : "Available"}</span>
-          <strong>
+          <strong
+            className={
+              card.availableNum != null && card.availableNum < 0
+                ? "neg"
+                : undefined
+            }
+          >
             {card.availableNum != null ? formatINR(card.availableNum) : "—"}
           </strong>
         </div>
@@ -86,6 +93,24 @@ export default async function CardDetailPage({
           <strong>{formatINR(card.outstandingNum)}</strong>
         </div>
       </div>
+
+      {card.availableNum != null && card.availableNum < 0 ? (
+        <ReviewCallout title="Negative available — review ledger">
+          <p>
+            Available is {formatINR(card.availableNum)}
+            {card.sharesLimit ? " on this shared limit" : ""}
+            {card.sharesLimit && card.sharedWithLabels.length > 0
+              ? ` (with ${card.sharedWithLabels.join(", ")})`
+              : ""}
+            . Ledger never blocks spends for that — you may be missing a bill
+            payment, or a debt EMI that should be linked to this card.
+          </p>
+          <p>
+            Add the missing payment or link the EMI with its real date. The
+            negative clears once the books catch up.
+          </p>
+        </ReviewCallout>
+      ) : null}
 
       <section className="panel">
         <div className="panel-head">
