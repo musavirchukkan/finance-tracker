@@ -87,6 +87,21 @@ describe("computeOutstanding", () => {
     // 20k + 15k charge − 10k bill; cashout ignored
     expect(outstanding).toBe(25_000);
   });
+
+  it("reduces outstanding by principal only when split is present", () => {
+    const outstanding = computeOutstanding({
+      startingBalance: 30_000,
+      payments: [
+        {
+          amount: 2646.61,
+          isPaid: true,
+          paymentType: "EMI",
+          principalAmount: 2113.92,
+        },
+      ],
+    });
+    expect(outstanding).toBe(Math.round((30_000 - 2113.92) * 100) / 100);
+  });
 });
 
 describe("paymentOptionsForAccountType", () => {

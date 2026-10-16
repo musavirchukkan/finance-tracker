@@ -2380,12 +2380,14 @@ button:disabled {
   gap: var(--space-2);
 }
 
-.stat-grid.cols-3 {
+.stat-grid.cols-3,
+.stat-grid.cols-4 {
   grid-template-columns: 1fr;
   gap: var(--space-3);
 }
 
 .stat-grid.cols-3 .stat-card,
+.stat-grid.cols-4 .stat-card,
 .stat-card.tall {
   min-height: 8.25rem;
   padding: var(--space-5) var(--space-5);
@@ -2394,6 +2396,7 @@ button:disabled {
 }
 
 .stat-grid.cols-3 .stat-card strong,
+.stat-grid.cols-4 .stat-card strong,
 .stat-card.tall strong {
   font-size: clamp(1.25rem, 4vw, 1.85rem);
 }
@@ -3299,6 +3302,10 @@ button:disabled {
 
   .stat-grid.cols-3 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .stat-grid.cols-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .form-row {

@@ -9,14 +9,21 @@ import {
   updateDebtAccount,
 } from "@/lib/actions";
 import {
+  DEFAULT_GST_ON_INTEREST_PERCENT,
   computeFlatAnnualInterestPercent,
+  computeGstOnInterest,
   computeMonthlyEmi,
-  computeMonthlyEmiFromInterestPercent,
   computeMonthlyInterest,
   computePaidTillNow,
+  computeSuggestedEmiPi,
   computeTotalInterest,
+  normalizeInterestType,
+  rebuildFromSchedule,
   remainingMonths,
+  suggestInstallmentSplit,
+  type InterestType,
 } from "@/lib/debt-account";
+import { formatINR } from "@/lib/money";
 import {
   DEBT_TYPE_OPTIONS,
   DEBT_TYPE_PRESETS,
@@ -44,6 +51,8 @@ type DebtAccountFormValues = {
   startingBalance: string;
   monthlyEmi: string;
   interestPercent: string;
+  interestType: InterestType;
+  gstPercent: string;
   totalMonths: string;
   monthsPaid: string;
   paidTillNow: string;
@@ -58,6 +67,8 @@ const emptyValues: DebtAccountFormValues = {
   startingBalance: "0",
   monthlyEmi: "0",
   interestPercent: "0",
+  interestType: "fixed",
+  gstPercent: String(DEFAULT_GST_ON_INTEREST_PERCENT),
   totalMonths: "0",
   monthsPaid: "0",
   paidTillNow: "0",
@@ -153,17 +164,35 @@ function DebtAccountFields({
     const rate = forcePrincipalOnly
       ? 0
       : Math.max(0, Number(next.interestPercent) || 0);
+    const interestType = normalizeInterestType(next.interestType);
     const nextEmi =
       rate > 0
-        ? computeMonthlyEmiFromInterestPercent({
+        ? computeSuggestedEmiPi({
             startingBalance: nextStarting,
             totalMonths: nextTotal,
             interestPercent: rate,
+            interestType,
           })
         : nextPrincipal;
     next.interestPercent = String(rate);
+    next.interestType = interestType;
     next.monthlyEmi = String(nextEmi);
-    next.paidTillNow = String(computePaidTillNow(nextPrincipal, nextPaidMonths));
+    if (interestType === "reducing" && nextEmi > 0 && nextStarting > 0) {
+      const rebuilt = rebuildFromSchedule({
+        startingBalance: nextStarting,
+        monthlyEmi: nextEmi,
+        interestPercent: rate,
+        interestType,
+        monthsPaid: nextPaidMonths,
+        totalMonths: nextTotal,
+        gstPercent: Number(next.gstPercent) || DEFAULT_GST_ON_INTEREST_PERCENT,
+      });
+      next.paidTillNow = String(rebuilt.principalPaid);
+    } else {
+      next.paidTillNow = String(
+        computePaidTillNow(nextPrincipal, nextPaidMonths),
+      );
+    }
     onChange(next);
   }
 
@@ -178,6 +207,10 @@ function DebtAccountFields({
     applyTenure({ ...values, interestPercent: value });
   }
 
+  function setInterestType(value: InterestType) {
+    applyTenure({ ...values, interestType: value });
+  }
+
   function setMonthlyEmi(value: string) {
     const next = { ...values, monthlyEmi: value };
     const nextEmi = Number(value) || 0;
@@ -188,19 +221,41 @@ function DebtAccountFields({
       Math.floor(Number(next.monthsPaid) || 0),
     );
     const nextPrincipal = computeMonthlyEmi(nextStarting, nextTotal);
-    next.interestPercent = String(
-      computeFlatAnnualInterestPercent({
-        startingBalance: nextStarting,
-        totalMonths: nextTotal,
-        monthlyEmi: nextEmi,
-      }),
-    );
+    // Back-solve flat rate from EMI only when interest type is fixed.
+    if (normalizeInterestType(next.interestType) === "fixed") {
+      next.interestPercent = String(
+        computeFlatAnnualInterestPercent({
+          startingBalance: nextStarting,
+          totalMonths: nextTotal,
+          monthlyEmi: nextEmi,
+        }),
+      );
+    }
     next.paidTillNow = String(computePaidTillNow(nextPrincipal, nextPaidMonths));
     onChange(next);
   }
 
+  function applyScheduleRebuild(next: DebtAccountFormValues) {
+    const rebuilt = rebuildFromSchedule({
+      startingBalance: Number(next.startingBalance) || 0,
+      monthlyEmi: Number(next.monthlyEmi) || 0,
+      interestPercent: Number(next.interestPercent) || 0,
+      interestType: next.interestType,
+      monthsPaid: Math.max(0, Math.floor(Number(next.monthsPaid) || 0)),
+      totalMonths: Math.max(0, Math.floor(Number(next.totalMonths) || 0)),
+      gstPercent: Number(next.gstPercent) || DEFAULT_GST_ON_INTEREST_PERCENT,
+    });
+    next.paidTillNow = String(rebuilt.principalPaid);
+    onChange(next);
+    return rebuilt;
+  }
+
   function setMonthsPaid(value: string) {
     const next = { ...values, monthsPaid: value };
+    if (normalizeInterestType(next.interestType) === "reducing") {
+      applyScheduleRebuild(next);
+      return;
+    }
     const nextPaidMonths = Math.max(0, Math.floor(Number(value) || 0));
     const nextStarting = Number(next.startingBalance) || 0;
     const nextTotal = Math.max(0, Math.floor(Number(next.totalMonths) || 0));
@@ -208,6 +263,35 @@ function DebtAccountFields({
     next.paidTillNow = String(computePaidTillNow(nextPrincipal, nextPaidMonths));
     onChange(next);
   }
+
+  function rebuildScheduleFromForm() {
+    applyScheduleRebuild({ ...values });
+  }
+
+  const schedulePreview = useMemo(() => {
+    if (hideInterest && !isCcEmi) return null;
+    if ((Number(values.monthlyEmi) || 0) <= 0) return null;
+    if ((Number(values.startingBalance) || 0) <= 0) return null;
+    return rebuildFromSchedule({
+      startingBalance: Number(values.startingBalance) || 0,
+      monthlyEmi: Number(values.monthlyEmi) || 0,
+      interestPercent: Number(values.interestPercent) || 0,
+      interestType: values.interestType,
+      monthsPaid: Math.max(0, Math.floor(Number(values.monthsPaid) || 0)),
+      totalMonths: Math.max(0, Math.floor(Number(values.totalMonths) || 0)),
+      gstPercent: Number(values.gstPercent) || DEFAULT_GST_ON_INTEREST_PERCENT,
+    });
+  }, [
+    hideInterest,
+    isCcEmi,
+    values.startingBalance,
+    values.monthlyEmi,
+    values.interestPercent,
+    values.interestType,
+    values.monthsPaid,
+    values.totalMonths,
+    values.gstPercent,
+  ]);
 
   return (
     <>
@@ -299,7 +383,13 @@ function DebtAccountFields({
       ) : null}
       <div className="field">
         <label htmlFor="debt-starting">
-          {isKuri ? "Pot amount" : isRevolving ? "Outstanding" : "Starting amount"}
+          {isKuri
+            ? "Pot amount"
+            : isRevolving
+              ? "Outstanding"
+              : isCcEmi
+                ? "Principal (starting)"
+                : "Starting amount"}
         </label>
         <input
           id="debt-starting"
@@ -357,10 +447,33 @@ function DebtAccountFields({
         </div>
       </div>
       <input type="hidden" name="interestPercent" value={values.interestPercent} />
+      <input type="hidden" name="interestType" value={values.interestType} />
+      <input type="hidden" name="gstPercent" value={values.gstPercent} />
       {!hideInterest ? (
         <>
           <div className="field">
-            <label htmlFor="debt-interest-pct">Interest % (flat annual)</label>
+            <label htmlFor="debt-interest-type">Interest type</label>
+            <select
+              id="debt-interest-type"
+              value={values.interestType}
+              onChange={(e) =>
+                setInterestType(
+                  e.target.value === "reducing" ? "reducing" : "fixed",
+                )
+              }
+            >
+              <option value="fixed">Fixed (flat annual)</option>
+              <option value="reducing">Reducing balance</option>
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="debt-interest-pct">
+              Interest % (
+              {values.interestType === "reducing"
+                ? "reducing annual"
+                : "flat annual"}
+              )
+            </label>
             <input
               id="debt-interest-pct"
               type="number"
@@ -372,7 +485,20 @@ function DebtAccountFields({
               onChange={(e) => setInterestPercent(e.target.value)}
             />
           </div>
-          {total > 0 && starting > 0 ? (
+          <div className="field">
+            <label htmlFor="debt-gst-pct">GST % on interest</label>
+            <input
+              id="debt-gst-pct"
+              type="number"
+              step="0.01"
+              min="0"
+              inputMode="decimal"
+              placeholder={String(DEFAULT_GST_ON_INTEREST_PERCENT)}
+              value={values.gstPercent}
+              onChange={(e) => setField("gstPercent", e.target.value)}
+            />
+          </div>
+          {total > 0 && starting > 0 && values.interestType === "fixed" ? (
             <div className="field">
               <div className="debt-live-stats debt-live-stats-inputs">
                 <div className="field" style={{ margin: 0 }}>
@@ -504,7 +630,31 @@ function DebtAccountFields({
           >
             From EMI count
           </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-xs"
+            onClick={rebuildScheduleFromForm}
+            title="Walk start → rate → EMI for each completed month and set principal paid"
+          >
+            Rebuild from schedule
+          </button>
         </div>
+        {schedulePreview ? (
+          <p className="muted page-sub" style={{ margin: "0.45rem 0 0" }}>
+            After {values.monthsPaid || 0} EMI
+            {Number(values.monthsPaid) === 1 ? "" : "s"}: remaining{" "}
+            {formatINR(schedulePreview.remaining)}
+            {schedulePreview.next ? (
+              <>
+                {" "}
+                · next P {formatINR(schedulePreview.next.principal)} · I{" "}
+                {formatINR(schedulePreview.next.interest)} · Tax{" "}
+                {formatINR(schedulePreview.next.gst)} · pay{" "}
+                {formatINR(schedulePreview.next.total)}
+              </>
+            ) : null}
+          </p>
+        ) : null}
       </div>
       <div className="field">
         <label htmlFor="debt-status">Status</label>
@@ -578,6 +728,8 @@ export type EditableDebtAccount = {
   startingBalance: string | number;
   monthlyEmi: string | number;
   interestPercent?: string | number;
+  interestType?: string | null;
+  gstPercent?: string | number | null;
   totalMonths: number;
   monthsPaid: number;
   paidTillNow: number;
@@ -605,6 +757,7 @@ export function EditDebtAccountButton({
     const interestPercent = String(
       Number.isFinite(savedRate) && savedRate > 0 ? savedRate : computedRate,
     );
+    const gstSaved = Number(account.gstPercent);
     return {
       id: account.id,
       name: account.name,
@@ -613,6 +766,12 @@ export function EditDebtAccountButton({
       startingBalance: String(account.startingBalance),
       monthlyEmi: String(account.monthlyEmi),
       interestPercent,
+      interestType: normalizeInterestType(account.interestType),
+      gstPercent: String(
+        Number.isFinite(gstSaved) && gstSaved >= 0
+          ? gstSaved
+          : DEFAULT_GST_ON_INTEREST_PERCENT,
+      ),
       totalMonths: String(months),
       monthsPaid: String(account.monthsPaid ?? 0),
       paidTillNow: String(account.paidTillNow ?? 0),
@@ -674,7 +833,18 @@ export function EditDebtAccountButton({
   );
 }
 
-type AccountOption = { id: string; name: string; type: string };
+type AccountOption = {
+  id: string;
+  name: string;
+  type: string;
+  pending?: number;
+  monthlyEmiNum?: number;
+  interestPercent?: number;
+  interestType?: string | null;
+  gstPercent?: number;
+  startingBalanceNum?: number;
+  totalMonths?: number;
+};
 
 export function AddDebtPaymentButton({
   accounts,
@@ -692,7 +862,32 @@ export function AddDebtPaymentButton({
   const [paymentType, setPaymentType] = useState(
     defaultPaymentTypeForAccount(selected?.type ?? ""),
   );
+  const suggested = useMemo(() => {
+    if (!selected) {
+      return { principal: 0, interest: 0, gst: 0, total: 0 };
+    }
+    return suggestInstallmentSplit({
+      remainingPrincipal: Math.max(0, selected.pending ?? 0),
+      interestPercent: selected.interestPercent ?? 0,
+      interestType: selected.interestType ?? "fixed",
+      emiPi: selected.monthlyEmiNum,
+      gstPercent: selected.gstPercent ?? DEFAULT_GST_ON_INTEREST_PERCENT,
+      totalMonths: selected.totalMonths,
+      startingBalance: selected.startingBalanceNum,
+    });
+  }, [selected]);
+  const [principal, setPrincipal] = useState("");
+  const [interest, setInterest] = useState("");
+  const [gst, setGst] = useState("");
+  const showSplit =
+    paymentType === "EMI" || isCreditCardEmiType(selected?.type ?? "");
   const disabled = accounts.length === 0;
+
+  function applySuggestedSplit() {
+    setPrincipal(String(suggested.principal));
+    setInterest(String(suggested.interest));
+    setGst(String(suggested.gst));
+  }
 
   function close() {
     setOpen(false);
@@ -700,6 +895,9 @@ export function AddDebtPaymentButton({
       accounts.find((a) => a.id === defaultAccountId) ?? accounts[0];
     setAccountId(first?.id ?? "");
     setPaymentType(defaultPaymentTypeForAccount(first?.type ?? ""));
+    setPrincipal("");
+    setInterest("");
+    setGst("");
   }
 
   function openModal() {
@@ -707,8 +905,16 @@ export function AddDebtPaymentButton({
       accounts.find((a) => a.id === defaultAccountId) ?? accounts[0];
     setAccountId(first?.id ?? "");
     setPaymentType(defaultPaymentTypeForAccount(first?.type ?? ""));
+    setPrincipal("");
+    setInterest("");
+    setGst("");
     setOpen(true);
   }
+
+  const pNum = Number(principal) || 0;
+  const iNum = Number(interest) || 0;
+  const gNum = Number(gst) || 0;
+  const splitTotal = Math.round((pNum + iNum + gNum) * 100) / 100;
 
   return (
     <>
@@ -746,6 +952,9 @@ export function AddDebtPaymentButton({
                 setAccountId(id);
                 const acc = accounts.find((a) => a.id === id);
                 setPaymentType(defaultPaymentTypeForAccount(acc?.type ?? ""));
+                setPrincipal("");
+                setInterest("");
+                setGst("");
               }}
             >
               {accounts.map((a) => (
@@ -770,19 +979,96 @@ export function AddDebtPaymentButton({
               ))}
             </select>
           </div>
-          <div className="field">
-            <label htmlFor="pay-amount">Amount</label>
-            <input
-              id="pay-amount"
-              name="amount"
-              type="number"
-              step="0.01"
-              min="0"
-              required
-              inputMode="decimal"
-              placeholder="0"
-            />
-          </div>
+          {showSplit ? (
+            <>
+              <div className="field">
+                <div className="debt-paid-row">
+                  <label htmlFor="pay-principal">Principal</label>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-xs"
+                    onClick={applySuggestedSplit}
+                  >
+                    Suggest from rate
+                  </button>
+                </div>
+                <input
+                  id="pay-principal"
+                  name="principalAmount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={principal}
+                  onChange={(e) => setPrincipal(e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="pay-interest">Interest</label>
+                <input
+                  id="pay-interest"
+                  name="interestAmount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={interest}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setInterest(next);
+                    const gstPct =
+                      selected?.gstPercent ?? DEFAULT_GST_ON_INTEREST_PERCENT;
+                    setGst(String(computeGstOnInterest(Number(next) || 0, gstPct)));
+                  }}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="pay-gst">GST on interest</label>
+                <input
+                  id="pay-gst"
+                  name="gstAmount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={gst}
+                  onChange={(e) => setGst(e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="pay-amount">Total</label>
+                <input
+                  id="pay-amount"
+                  name="amount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  required
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={splitTotal > 0 ? String(splitTotal) : ""}
+                  readOnly
+                />
+              </div>
+            </>
+          ) : (
+            <div className="field">
+              <label htmlFor="pay-amount">Amount</label>
+              <input
+                id="pay-amount"
+                name="amount"
+                type="number"
+                step="0.01"
+                min="0"
+                required
+                inputMode="decimal"
+                placeholder="0"
+              />
+            </div>
+          )}
           <div className="field">
             <label htmlFor="pay-isPaid">Paid?</label>
             <select id="pay-isPaid" name="isPaid" defaultValue="true">

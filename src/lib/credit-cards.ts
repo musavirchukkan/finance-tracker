@@ -89,8 +89,8 @@ export function previousCycleDate(
 }
 
 /**
- * Payment due date for a closed bill.
- * If due day is after bill day in that month → same month; otherwise next month.
+ * Payment due date for a closed bill from a day-of-month due day.
+ * @deprecated Prefer dueDateFromBill with paymentDueGapDays.
  */
 export function dueDateForBill(
   billDateKey: string,
@@ -107,6 +107,54 @@ export function dueDateForBill(
     due = dateForDayInMonth(y, m + 1, day);
   }
   return toDateKey(due);
+}
+
+/** Clamp due-gap to a sensible range (1–60 calendar days). */
+export function clampDueGapDays(
+  days: number | null | undefined,
+): number | null {
+  if (days == null || !Number.isFinite(days)) return null;
+  const n = Math.floor(days);
+  if (n < 1 || n > 60) return null;
+  return n;
+}
+
+/**
+ * Payment due = statement date + gap calendar days (month-length aware).
+ * Example: bill 2026-09-20 + 20 days → 2026-10-10.
+ */
+export function dueDateFromBill(
+  billDateKey: string,
+  gapDays: number | null | undefined,
+): string | null {
+  const gap = clampDueGapDays(gapDays);
+  if (gap == null) return null;
+  const [ys, ms, ds] = billDateKey.split("-").map(Number);
+  if (!ys || !ms || !ds) return null;
+  const due = new Date(ys, ms - 1, ds, 12, 0, 0, 0);
+  due.setDate(due.getDate() + gap);
+  return toDateKey(due);
+}
+
+/**
+ * Estimate gap days from legacy billing day + due day-of-month fields.
+ * Used when migrating old card rows.
+ */
+export function estimateDueGapDays(
+  billingDay: number | null | undefined,
+  dueDay: number | null | undefined,
+): number {
+  const bill = clampBillingDay(billingDay);
+  const due = clampBillingDay(dueDay);
+  if (!bill || !due) return 20;
+  const billKey = toDateKey(dateForDayInMonth(2024, 0, bill));
+  const dueKey = dueDateForBill(billKey, due);
+  if (!dueKey) return 20;
+  const [by, bm, bd] = billKey.split("-").map(Number);
+  const [dy, dm, dd] = dueKey.split("-").map(Number);
+  const a = new Date(by, bm - 1, bd, 12, 0, 0, 0);
+  const b = new Date(dy, dm - 1, dd, 12, 0, 0, 0);
+  return Math.max(1, Math.round((b.getTime() - a.getTime()) / 86400000));
 }
 
 export type StatementActivity = {
@@ -137,23 +185,33 @@ function isPaymentType(type: string) {
  * - Payments on/after lastBill reduce amount due.
  * - Open cycle (lastBill, ∞ / nextBill]: charges go to next bill.
  * - If the payment due for lastBill is already past and there is no unpaid
- *   closed-cycle activity left, advance due/bill display to the next cycle
- *   (e.g. card added after due date, or no payment logged for that cycle).
- * - When activity history does not explain a balance, `currentOutstanding`
- *   fills amount due (minus open-cycle pending when known).
+ *   closed-cycle balance left, advance due/bill display to the next cycle.
+ * - `statementAmount` (bank bill) pins due-to-pay; leftover outstanding → next bill.
+ * - `pinToCurrentStatement` keeps outstanding on the current bill (add-card mid-cycle).
  */
 export function summarizeCardStatement(args: {
   billingDay: number | null | undefined;
-  paymentDueDay: number | null | undefined;
+  /** Calendar days after bill date until payment is due. */
+  paymentDueGapDays: number | null | undefined;
   activities: StatementActivity[];
   from?: Date;
   /** Revolving balance on the card; used when activities under-explain due. */
   currentOutstanding?: number;
+  /** Explicit closed-statement amount from the bank (optional). */
+  statementAmount?: number | null;
+  /** Force outstanding onto current statement due (don't advance cycle early). */
+  pinToCurrentStatement?: boolean;
 }): CardStatementSummary {
   const from = args.from ?? new Date();
   const todayKey = toDateKey(startOfDay(from));
   const nextBillDate = nextCycleDate(args.billingDay, from);
   const lastBillDate = previousCycleDate(args.billingDay, from);
+  const gap = clampDueGapDays(args.paymentDueGapDays);
+  const pin = !!args.pinToCurrentStatement;
+  const statementRaw =
+    args.statementAmount != null && Number.isFinite(args.statementAmount)
+      ? Math.max(0, args.statementAmount)
+      : null;
 
   let prevBillDate: string | null = null;
   if (lastBillDate) {
@@ -163,8 +221,10 @@ export function summarizeCardStatement(args: {
   }
 
   let nextDueDate = lastBillDate
-    ? dueDateForBill(lastBillDate, args.paymentDueDay)
-    : nextCycleDate(args.paymentDueDay, from);
+    ? dueDateFromBill(lastBillDate, gap)
+    : nextBillDate
+      ? dueDateFromBill(nextBillDate, gap)
+      : null;
 
   let closedCharges = 0;
   let paymentsAfterBill = 0;
@@ -205,28 +265,47 @@ export function summarizeCardStatement(args: {
   );
   const outstanding = Math.max(0, args.currentOutstanding ?? 0);
 
-  // Past due with nothing still owed on that closed cycle → track next bill/due.
-  const dueIsPast = !!nextDueDate && nextDueDate < todayKey;
-  if (dueIsPast && amountDue <= 0) {
-    nextDueDate = nextBillDate
-      ? dueDateForBill(nextBillDate, args.paymentDueDay)
-      : nextCycleDate(args.paymentDueDay, from);
-  }
-
-  // No (or incomplete) activity ledger: revolving outstanding is what to pay,
-  // minus charges already attributed to the open/next statement.
-  if (!hasChargeActivities && outstanding > 0) {
+  // Explicit bank statement amount: due = statement − payments; rest of
+  // revolving outstanding is next-bill open.
+  if (statementRaw != null) {
+    amountDue = Math.max(
+      0,
+      Math.round((statementRaw - paymentsAfterBill) * 100) / 100,
+    );
+    const leftover = Math.max(
+      0,
+      Math.round((outstanding - amountDue) * 100) / 100,
+    );
+    if (!hasChargeActivities) {
+      nextBillPending = leftover;
+    } else {
+      nextBillPending = Math.max(nextBillPending, leftover);
+    }
+  } else if (pin && outstanding > 0) {
+    // Whole outstanding counts on the current closed bill.
+    amountDue = Math.max(
+      0,
+      Math.round((outstanding - nextBillPending) * 100) / 100,
+    );
+  } else if (!hasChargeActivities && outstanding > 0) {
     amountDue = Math.max(
       0,
       Math.round((outstanding - nextBillPending) * 100) / 100,
     );
   } else if (hasChargeActivities && outstanding > 0) {
-    // Prefer the larger of activity-closed due vs outstanding not yet on next bill.
     const fromOutstanding = Math.max(
       0,
       Math.round((outstanding - nextBillPending) * 100) / 100,
     );
     amountDue = Math.max(amountDue, fromOutstanding);
+  }
+
+  // Only advance past this cycle when nothing is still owed on it.
+  const dueIsPast = !!nextDueDate && nextDueDate < todayKey;
+  const stillOwesCurrent =
+    amountDue > 0 || pin || (statementRaw != null && statementRaw > paymentsAfterBill);
+  if (dueIsPast && !stillOwesCurrent) {
+    nextDueDate = nextBillDate ? dueDateFromBill(nextBillDate, gap) : null;
   }
 
   return {

@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   computeFlatAnnualInterestPercent,
+  computeGstOnInterest,
   computeMonthlyEmi,
   computeMonthlyEmiFromInterestPercent,
   computeMonthlyInterest,
   computePaidTillNow,
+  computeReducingMonthlyEmi,
+  computeSuggestedEmiPi,
   computeTotalInterest,
+  rebuildFromSchedule,
   remainingBalance,
   remainingMonths,
+  suggestInstallmentSplit,
   validateDebtTenure,
 } from "@/lib/debt-account";
 
@@ -71,6 +76,70 @@ describe("interest helpers", () => {
         interestPercent: 10,
       }),
     ).toBe(11000);
+  });
+
+  it("builds reducing-balance EMI", () => {
+    const emi = computeReducingMonthlyEmi({
+      startingBalance: 100_000,
+      totalMonths: 12,
+      interestPercent: 18,
+    });
+    expect(emi).toBeGreaterThan(8000);
+    expect(emi).toBeLessThan(10_000);
+  });
+
+  it("routes suggested EMI by interest type", () => {
+    const fixed = computeSuggestedEmiPi({
+      startingBalance: 120000,
+      totalMonths: 12,
+      interestPercent: 10,
+      interestType: "fixed",
+    });
+    const reducing = computeSuggestedEmiPi({
+      startingBalance: 120000,
+      totalMonths: 12,
+      interestPercent: 10,
+      interestType: "reducing",
+    });
+    expect(fixed).toBe(11000);
+    expect(reducing).not.toBe(fixed);
+  });
+
+  it("applies 18% GST on interest", () => {
+    expect(computeGstOnInterest(180.63, 18)).toBe(32.51);
+    expect(computeGstOnInterest(451.43, 18)).toBe(81.26);
+  });
+
+  it("suggests installment split for reducing EMI", () => {
+    const split = suggestInstallmentSplit({
+      remainingPrincipal: 30_784.2,
+      interestPercent: 17.6,
+      interestType: "reducing",
+      emiPi: 2565.35,
+      gstPercent: 18,
+    });
+    expect(split.interest).toBeGreaterThan(400);
+    expect(split.interest).toBeLessThan(500);
+    expect(split.gst).toBeCloseTo(split.interest * 0.18, 1);
+    expect(split.principal + split.interest).toBeCloseTo(2565.35, 1);
+  });
+
+  it("rebuilds Axis-style schedule after 11 EMIs", () => {
+    const rebuilt = rebuildFromSchedule({
+      startingBalance: 51_384.88,
+      monthlyEmi: 2565.35,
+      interestPercent: 18,
+      interestType: "reducing",
+      monthsPaid: 11,
+      totalMonths: 24,
+      gstPercent: 18,
+    });
+    expect(rebuilt.remaining).toBeCloseTo(30_095.33, 1);
+    expect(rebuilt.next?.interest).toBeCloseTo(451.43, 1);
+    expect(rebuilt.next?.principal).toBeCloseTo(2113.92, 1);
+    expect(rebuilt.next?.gst).toBeCloseTo(81.26, 1);
+    expect(rebuilt.next?.total).toBeCloseTo(2646.61, 1);
+    expect(rebuilt.completed).toHaveLength(11);
   });
 });
 

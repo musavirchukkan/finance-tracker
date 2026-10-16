@@ -18,6 +18,7 @@ import {
 import {
   availableCreditForSharedLimit,
   clampBillingDay,
+  clampDueGapDays,
   formatCardLabel,
   normalizeLastFour,
   resolveLimitRootId,
@@ -30,6 +31,7 @@ import {
   isCreditCardEmiType,
   isCreditCardType,
 } from "@/lib/debt-kinds";
+import { suggestInstallmentSplit } from "@/lib/debt-account";
 import { parseAmount, toNumber } from "@/lib/money";
 import { requireUser } from "@/lib/session";
 
@@ -124,16 +126,23 @@ export async function migrateRollingCreditCards(userId: string) {
 function statementFromActivities(
   card: {
     billingDay: number | null;
-    paymentDueDay: number | null;
+    paymentDueGapDays: number | null;
     currentOutstanding: string;
+    statementAmount?: string | null;
+    pinToCurrentStatement?: boolean | null;
   },
   activities: { date: string; activityType: string; outstandingDelta: string }[],
 ) {
   const outstanding = toNumber(card.currentOutstanding);
   const summary = summarizeCardStatement({
     billingDay: card.billingDay,
-    paymentDueDay: card.paymentDueDay,
+    paymentDueGapDays: card.paymentDueGapDays,
     currentOutstanding: outstanding,
+    statementAmount:
+      card.statementAmount != null && card.statementAmount !== ""
+        ? toNumber(card.statementAmount)
+        : null,
+    pinToCurrentStatement: !!card.pinToCurrentStatement,
     activities: activities.map((a) => ({
       date: a.date,
       activityType: a.activityType,
@@ -184,7 +193,12 @@ async function linkedEmiByCard(userId: string) {
 
   const paymentsByAccount = new Map<
     string,
-    { amount: number; isPaid: boolean; paymentType: string }[]
+    {
+      amount: number;
+      isPaid: boolean;
+      paymentType: string;
+      principalAmount: number | null;
+    }[]
   >();
   for (const p of payments) {
     const list = paymentsByAccount.get(p.accountId) ?? [];
@@ -192,6 +206,8 @@ async function linkedEmiByCard(userId: string) {
       amount: toNumber(p.amount),
       isPaid: p.isPaid,
       paymentType: p.paymentType,
+      principalAmount:
+        p.principalAmount != null ? toNumber(p.principalAmount) : null,
     });
     paymentsByAccount.set(p.accountId, list);
   }
@@ -216,7 +232,18 @@ async function linkedEmiByCard(userId: string) {
       startingBalance: toNumber(a.startingBalance),
       payments: paymentsByAccount.get(a.id) ?? [],
     });
-    const monthly = toNumber(a.monthlyEmi);
+    const emiPi = toNumber(a.monthlyEmi);
+    // Due reminder: principal + interest + GST for this month; block = principal only.
+    const split = suggestInstallmentSplit({
+      remainingPrincipal: remaining,
+      interestPercent: toNumber(a.interestPercent),
+      interestType: a.interestType,
+      emiPi,
+      gstPercent: toNumber(a.gstPercent),
+      totalMonths: a.totalMonths,
+      startingBalance: toNumber(a.startingBalance),
+    });
+    const monthlyDue = split.total > 0 ? split.total : emiPi;
     const bucket = byCard.get(cardId) ?? {
       emiBlocked: 0,
       emiMonthly: 0,
@@ -224,11 +251,11 @@ async function linkedEmiByCard(userId: string) {
     };
     if (remaining > 0) {
       bucket.emiBlocked += remaining;
-      bucket.emiMonthly += monthly;
+      bucket.emiMonthly += monthlyDue;
       bucket.emis.push({
         id: a.id,
         name: a.name,
-        monthlyEmi: monthly,
+        monthlyEmi: monthlyDue,
         remaining,
       });
     }
@@ -246,7 +273,7 @@ function withEmiAggregates(
     creditLimit: string | null;
     sharesLimitWithId: string | null;
     billingDay: number | null;
-    paymentDueDay: number | null;
+    paymentDueGapDays: number | null;
   },
   summary: ReturnType<typeof statementFromActivities>,
   emi: {
@@ -461,9 +488,15 @@ export async function createCreditCard(formData: FormData) {
   const billingDay = clampBillingDay(
     Number(formData.get("billingDay") ?? "") || null,
   );
-  const paymentDueDay = clampBillingDay(
-    Number(formData.get("paymentDueDay") ?? "") || null,
+  const paymentDueGapDays = clampDueGapDays(
+    Number(formData.get("paymentDueGapDays") ?? "") || null,
   );
+  const statementRaw = String(formData.get("statementAmount") ?? "").trim();
+  const statementAmount =
+    statementRaw === "" ? null : parseAmount(statementRaw);
+  const pinToCurrentStatement =
+    formData.get("pinToCurrentStatement") === "on" ||
+    formData.get("pinToCurrentStatement") === "true";
   const status = String(formData.get("status") ?? "Active").trim() || "Active";
   const { lastFour, isRupay } = parseCardExtra(formData);
 
@@ -475,10 +508,13 @@ export async function createCreditCard(formData: FormData) {
       userId: user.id,
       name,
       currentOutstanding: Math.max(0, outstanding).toFixed(2),
+      statementAmount:
+        statementAmount != null ? Math.max(0, statementAmount).toFixed(2) : null,
+      pinToCurrentStatement,
       creditLimit: creditLimit != null ? creditLimit.toFixed(2) : null,
       sharesLimitWithId,
       billingDay,
-      paymentDueDay,
+      paymentDueGapDays,
       lastFour,
       isRupay,
       status,
@@ -503,9 +539,15 @@ export async function updateCreditCard(formData: FormData) {
   const billingDay = clampBillingDay(
     Number(formData.get("billingDay") ?? "") || null,
   );
-  const paymentDueDay = clampBillingDay(
-    Number(formData.get("paymentDueDay") ?? "") || null,
+  const paymentDueGapDays = clampDueGapDays(
+    Number(formData.get("paymentDueGapDays") ?? "") || null,
   );
+  const statementRaw = String(formData.get("statementAmount") ?? "").trim();
+  const statementAmount =
+    statementRaw === "" ? null : parseAmount(statementRaw);
+  const pinToCurrentStatement =
+    formData.get("pinToCurrentStatement") === "on" ||
+    formData.get("pinToCurrentStatement") === "true";
   const status = String(formData.get("status") ?? "Active").trim() || "Active";
   const { lastFour, isRupay } = parseCardExtra(formData);
 
@@ -529,10 +571,13 @@ export async function updateCreditCard(formData: FormData) {
     .set({
       name,
       currentOutstanding: Math.max(0, outstanding).toFixed(2),
+      statementAmount:
+        statementAmount != null ? Math.max(0, statementAmount).toFixed(2) : null,
+      pinToCurrentStatement,
       creditLimit: creditLimit != null ? creditLimit.toFixed(2) : null,
       sharesLimitWithId,
       billingDay,
-      paymentDueDay,
+      paymentDueGapDays,
       lastFour,
       isRupay,
       status,
@@ -700,7 +745,10 @@ export async function logCardBillPayment(formData: FormData) {
   if (!bankAccountId) throw new Error("Choose the account you paid from");
 
   const [card] = await db
-    .select({ name: creditCards.name })
+    .select({
+      name: creditCards.name,
+      statementAmount: creditCards.statementAmount,
+    })
     .from(creditCards)
     .where(and(eq(creditCards.id, cardId), eq(creditCards.userId, user.id)))
     .limit(1);
@@ -746,6 +794,19 @@ export async function logCardBillPayment(formData: FormData) {
     transactionId: tx?.id ?? null,
   });
   await adjustCardOutstanding(user.id, cardId, -amount);
+
+  // Reduce saved statement/bill amount so only unpaid remainder stays due.
+  if (card.statementAmount != null) {
+    const nextStatement = Math.max(0, toNumber(card.statementAmount) - amount);
+    await db
+      .update(creditCards)
+      .set({
+        statementAmount: nextStatement > 0 ? nextStatement.toFixed(2) : null,
+        pinToCurrentStatement: nextStatement > 0,
+      })
+      .where(and(eq(creditCards.id, cardId), eq(creditCards.userId, user.id)));
+  }
+
   revalidateCards(cardId);
   revalidatePath("/accounts");
   revalidatePath(`/accounts/${bankAccountId}`);

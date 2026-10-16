@@ -22,9 +22,13 @@ import { parseAmount, toNumber } from "@/lib/money";
 import { requireUser } from "@/lib/session";
 import { monthDateBounds, yearMonthFromDate } from "@/lib/months";
 import {
+  DEFAULT_GST_ON_INTEREST_PERCENT,
   PAID_TO_DATE_TYPE,
+  computeGstOnInterest,
   computeMonthlyInterest,
   computeTotalInterest,
+  normalizeInterestType,
+  suggestInstallmentSplit,
   validateDebtTenure,
 } from "@/lib/debt-account";
 import { isBudgetableCategoryName } from "@/lib/budget-categories";
@@ -295,6 +299,16 @@ export async function createDebtAccount(formData: FormData) {
     0,
     parseAmount(String(formData.get("interestPercent") ?? "0")),
   );
+  const interestType = normalizeInterestType(
+    String(formData.get("interestType") ?? "fixed"),
+  );
+  const gstRaw = String(formData.get("gstPercent") ?? "").trim();
+  const gstPercent = Math.max(
+    0,
+    gstRaw === ""
+      ? DEFAULT_GST_ON_INTEREST_PERCENT
+      : parseAmount(gstRaw),
+  );
   const totalMonths = Math.max(
     0,
     Math.floor(Number(formData.get("totalMonths") ?? 0) || 0),
@@ -351,6 +365,8 @@ export async function createDebtAccount(formData: FormData) {
       startingBalance: startingBalance.toFixed(2),
       monthlyEmi: monthlyEmi.toFixed(2),
       interestPercent: interestPercent.toFixed(2),
+      interestType,
+      gstPercent: gstPercent.toFixed(2),
       totalMonths,
       monthsPaid,
       status,
@@ -366,6 +382,9 @@ export async function createDebtAccount(formData: FormData) {
       dueDate: today,
       paymentType: PAID_TO_DATE_TYPE,
       amount: paidTillNow.toFixed(2),
+      principalAmount: paidTillNow.toFixed(2),
+      interestAmount: "0",
+      gstAmount: "0",
       isPaid: true,
     });
   }
@@ -408,6 +427,9 @@ async function upsertPaidToDatePayment(args: {
       .update(debtPayments)
       .set({
         amount: paidTillNow.toFixed(2),
+        principalAmount: paidTillNow.toFixed(2),
+        interestAmount: "0",
+        gstAmount: "0",
         isPaid: true,
       })
       .where(
@@ -425,6 +447,9 @@ async function upsertPaidToDatePayment(args: {
       dueDate: new Date().toISOString().slice(0, 10),
       paymentType: PAID_TO_DATE_TYPE,
       amount: paidTillNow.toFixed(2),
+      principalAmount: paidTillNow.toFixed(2),
+      interestAmount: "0",
+      gstAmount: "0",
       isPaid: true,
     })
     .returning();
@@ -443,6 +468,16 @@ export async function updateDebtAccount(formData: FormData) {
   const interestPercent = Math.max(
     0,
     parseAmount(String(formData.get("interestPercent") ?? "0")),
+  );
+  const interestType = normalizeInterestType(
+    String(formData.get("interestType") ?? "fixed"),
+  );
+  const gstRaw = String(formData.get("gstPercent") ?? "").trim();
+  const gstPercent = Math.max(
+    0,
+    gstRaw === ""
+      ? DEFAULT_GST_ON_INTEREST_PERCENT
+      : parseAmount(gstRaw),
   );
   const totalMonths = Math.max(
     0,
@@ -480,6 +515,8 @@ export async function updateDebtAccount(formData: FormData) {
       startingBalance: startingBalance.toFixed(2),
       monthlyEmi: monthlyEmi.toFixed(2),
       interestPercent: interestPercent.toFixed(2),
+      interestType,
+      gstPercent: gstPercent.toFixed(2),
       totalMonths,
       monthsPaid,
       status,
@@ -554,16 +591,34 @@ async function creditCardIdForDebtAccount(
   return row?.creditCardId ?? null;
 }
 
+function parseOptionalAmount(raw: FormDataEntryValue | null): number | null {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  return parseAmount(s);
+}
+
 export async function createDebtPayment(formData: FormData) {
   const user = await requireUser();
   const accountId = String(formData.get("accountId") ?? "");
   const dueDate = String(formData.get("dueDate") ?? "");
   const paymentType = String(formData.get("paymentType") ?? "EMI").trim();
-  const amount = parseAmount(String(formData.get("amount") ?? "0"));
   const isPaid =
     formData.get("isPaid") === "on" || formData.get("isPaid") === "true";
 
   if (!accountId || !dueDate) throw new Error("Missing fields");
+
+  const principalAmount = parseOptionalAmount(formData.get("principalAmount"));
+  const interestAmount = parseOptionalAmount(formData.get("interestAmount"));
+  const gstAmount = parseOptionalAmount(formData.get("gstAmount"));
+  const hasSplit =
+    principalAmount != null || interestAmount != null || gstAmount != null;
+  const splitTotal =
+    (principalAmount ?? 0) + (interestAmount ?? 0) + (gstAmount ?? 0);
+  const amountRaw = String(formData.get("amount") ?? "").trim();
+  const amount = hasSplit
+    ? Math.round(splitTotal * 100) / 100
+    : parseAmount(amountRaw || "0");
+  if (amount <= 0) throw new Error("Enter payment amount");
 
   const [payment] = await db
     .insert(debtPayments)
@@ -573,6 +628,10 @@ export async function createDebtPayment(formData: FormData) {
       dueDate,
       paymentType,
       amount: amount.toFixed(2),
+      principalAmount:
+        principalAmount != null ? principalAmount.toFixed(2) : null,
+      interestAmount: interestAmount != null ? interestAmount.toFixed(2) : null,
+      gstAmount: gstAmount != null ? gstAmount.toFixed(2) : null,
       isPaid,
     })
     .returning();
@@ -1106,6 +1165,9 @@ export async function getDebtDashboard(userId: string) {
       dueDate: debtPayments.dueDate,
       paymentType: debtPayments.paymentType,
       amount: debtPayments.amount,
+      principalAmount: debtPayments.principalAmount,
+      interestAmount: debtPayments.interestAmount,
+      gstAmount: debtPayments.gstAmount,
       isPaid: debtPayments.isPaid,
     })
     .from(debtPayments)
@@ -1124,25 +1186,35 @@ export async function getDebtDashboard(userId: string) {
   const paidToDateByAccount = new Map<string, number>();
   const paymentsByAccount = new Map<
     string,
-    { amount: number; isPaid: boolean; paymentType: string }[]
+    {
+      amount: number;
+      isPaid: boolean;
+      paymentType: string;
+      principalAmount: number | null;
+    }[]
   >();
 
   for (const p of payments) {
     const amount = toNumber(p.amount);
+    const principalAmount =
+      p.principalAmount != null ? toNumber(p.principalAmount) : null;
     const list = paymentsByAccount.get(p.accountId) ?? [];
     list.push({
       amount,
       isPaid: p.isPaid,
       paymentType: p.paymentType,
+      principalAmount,
     });
     paymentsByAccount.set(p.accountId, list);
 
     if (!p.isPaid) continue;
     const effect = paymentBalanceEffect(p.paymentType);
+    const paydownCredit =
+      principalAmount != null ? principalAmount : amount;
     if (effect === "paydown") {
       paydownByAccount.set(
         p.accountId,
-        (paydownByAccount.get(p.accountId) ?? 0) + amount,
+        (paydownByAccount.get(p.accountId) ?? 0) + paydownCredit,
       );
     } else if (effect === "charge") {
       chargeByAccount.set(
@@ -1153,7 +1225,7 @@ export async function getDebtDashboard(userId: string) {
     if (p.paymentType === PAID_TO_DATE_TYPE) {
       paidToDateByAccount.set(
         p.accountId,
-        (paidToDateByAccount.get(p.accountId) ?? 0) + amount,
+        (paidToDateByAccount.get(p.accountId) ?? 0) + paydownCredit,
       );
     }
   }
@@ -1166,10 +1238,51 @@ export async function getDebtDashboard(userId: string) {
       startingBalance: starting,
       payments: paymentsByAccount.get(a.id) ?? [],
     });
+    const monthlyEmiNum = toNumber(a.monthlyEmi);
+    const interestPercent = toNumber(a.interestPercent);
+    const gstPercent =
+      a.gstPercent != null
+        ? toNumber(a.gstPercent)
+        : DEFAULT_GST_ON_INTEREST_PERCENT;
+    const interestType = normalizeInterestType(a.interestType);
+    const split = suggestInstallmentSplit({
+      remainingPrincipal: pending,
+      interestPercent,
+      interestType,
+      emiPi: monthlyEmiNum,
+      gstPercent,
+      totalMonths: a.totalMonths,
+      startingBalance: starting,
+    });
+    const flatInterest = computeMonthlyInterest({
+      startingBalance: starting,
+      totalMonths: a.totalMonths,
+      monthlyEmi: monthlyEmiNum,
+    });
+    const monthlyInterest =
+      interestType === "reducing" ? split.interest : flatInterest;
+    const monthlyPrincipal =
+      interestType === "reducing"
+        ? split.principal
+        : Math.max(
+            0,
+            Math.round((monthlyEmiNum - flatInterest) * 100) / 100,
+          );
+    const monthlyGst =
+      interestType === "reducing"
+        ? split.gst
+        : computeGstOnInterest(monthlyInterest, gstPercent);
+    const monthlyToPay =
+      Math.round((monthlyPrincipal + monthlyInterest + monthlyGst) * 100) /
+      100;
     return {
       ...a,
       startingBalanceNum: starting,
-      monthlyEmiNum: toNumber(a.monthlyEmi),
+      monthlyEmiNum,
+      monthlyPrincipal,
+      monthlyInterest,
+      monthlyGst,
+      monthlyToPay,
       totalPaid: paid,
       totalCharges: charges,
       paidTillNow: paidToDateByAccount.get(a.id) ?? 0,
@@ -1212,11 +1325,40 @@ export async function getDebtAccountDetail(userId: string, accountId: string) {
   const payments = data.payments.filter((p) => p.accountId === accountId);
   const monthsLeft = Math.max(0, account.totalMonths - account.monthsPaid);
   const interestPercentNum = toNumber(account.interestPercent);
-  const monthlyInterest = computeMonthlyInterest({
+  const gstPercentNum =
+    account.gstPercent != null
+      ? toNumber(account.gstPercent)
+      : DEFAULT_GST_ON_INTEREST_PERCENT;
+  const interestType = normalizeInterestType(account.interestType);
+  const installment = suggestInstallmentSplit({
+    remainingPrincipal: account.pending,
+    interestPercent: interestPercentNum,
+    interestType,
+    emiPi: account.monthlyEmiNum,
+    gstPercent: gstPercentNum,
+    totalMonths: account.totalMonths,
+    startingBalance: account.startingBalanceNum,
+  });
+  const flatMonthlyInterest = computeMonthlyInterest({
     startingBalance: account.startingBalanceNum,
     totalMonths: account.totalMonths,
     monthlyEmi: account.monthlyEmiNum,
   });
+  const monthlyInterest =
+    interestType === "reducing" ? installment.interest : flatMonthlyInterest;
+  const monthlyPrincipal =
+    interestType === "reducing"
+      ? installment.principal
+      : Math.max(
+          0,
+          Math.round((account.monthlyEmiNum - flatMonthlyInterest) * 100) / 100,
+        );
+  const monthlyGst =
+    interestType === "reducing"
+      ? installment.gst
+      : computeGstOnInterest(monthlyInterest, gstPercentNum);
+  const monthlyToPay =
+    Math.round((monthlyPrincipal + monthlyInterest + monthlyGst) * 100) / 100;
   const totalInterest = computeTotalInterest({
     startingBalance: account.startingBalanceNum,
     totalMonths: account.totalMonths,
@@ -1242,8 +1384,12 @@ export async function getDebtAccountDetail(userId: string, accountId: string) {
     account: {
       ...account,
       interestPercentNum,
+      gstPercentNum,
       monthsLeft,
+      monthlyPrincipal,
       monthlyInterest,
+      monthlyGst,
+      monthlyToPay,
       totalInterest,
       creditCardName,
     },

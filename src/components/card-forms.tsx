@@ -25,10 +25,12 @@ type CardFormValues = {
   id?: string;
   name: string;
   currentOutstanding: string;
+  statementAmount: string;
+  pinToCurrentStatement: boolean;
   creditLimit: string;
   sharesLimitWithId: string;
   billingDay: string;
-  paymentDueDay: string;
+  paymentDueGapDays: string;
   lastFour: string;
   isRupay: boolean;
   status: string;
@@ -37,10 +39,12 @@ type CardFormValues = {
 const emptyCard: CardFormValues = {
   name: "",
   currentOutstanding: "0",
+  statementAmount: "",
+  pinToCurrentStatement: true,
   creditLimit: "",
   sharesLimitWithId: "",
   billingDay: "",
-  paymentDueDay: "",
+  paymentDueGapDays: "20",
   lastFour: "",
   isRupay: false,
   status: "Active",
@@ -103,7 +107,7 @@ function CardFields({
         </label>
       </div>
       <div className="field">
-        <label htmlFor="card-outstanding">Outstanding</label>
+        <label htmlFor="card-outstanding">Outstanding (revolving)</label>
         <input
           id="card-outstanding"
           name="currentOutstanding"
@@ -115,6 +119,41 @@ function CardFields({
           value={values.currentOutstanding}
           onChange={(e) => set("currentOutstanding", e.target.value)}
         />
+      </div>
+      <div className="field">
+        <label htmlFor="card-statement">Statement / bill amount</label>
+        <input
+          id="card-statement"
+          name="statementAmount"
+          type="number"
+          step="0.01"
+          min="0"
+          inputMode="decimal"
+          placeholder="Same as outstanding if blank"
+          value={values.statementAmount}
+          onChange={(e) => set("statementAmount", e.target.value)}
+        />
+        <p className="muted page-sub" style={{ margin: "0.35rem 0 0" }}>
+          Closed bill due this cycle. Anything above this in outstanding is
+          treated as next bill (open).
+        </p>
+      </div>
+      <div className="field">
+        <label className="debt-check-label" htmlFor="card-pin-statement">
+          <input
+            id="card-pin-statement"
+            name="pinToCurrentStatement"
+            type="checkbox"
+            value="true"
+            checked={values.pinToCurrentStatement}
+            onChange={(e) => set("pinToCurrentStatement", e.target.checked)}
+          />
+          Include on this month&apos;s bill (due this cycle)
+        </label>
+        <p className="muted page-sub" style={{ margin: "0.35rem 0 0" }}>
+          Use when the statement already closed (e.g. bill day 13, today 17)
+          but payment is still due next month — keeps outstanding on due-to-pay.
+        </p>
       </div>
       {shareOptions.length > 0 ? (
         <div className="field">
@@ -177,17 +216,17 @@ function CardFields({
         />
       </div>
       <div className="field">
-        <label htmlFor="card-due">Payment due day (1–31)</label>
+        <label htmlFor="card-due-gap">Due after (days from bill)</label>
         <input
-          id="card-due"
-          name="paymentDueDay"
+          id="card-due-gap"
+          name="paymentDueGapDays"
           type="number"
           min="1"
-          max="31"
+          max="60"
           inputMode="numeric"
-          placeholder="15"
-          value={values.paymentDueDay}
-          onChange={(e) => set("paymentDueDay", e.target.value)}
+          placeholder="20"
+          value={values.paymentDueGapDays}
+          onChange={(e) => set("paymentDueGapDays", e.target.value)}
         />
       </div>
       <div className="field">
@@ -261,11 +300,13 @@ export function EditCreditCardButton({
     id: string;
     name: string;
     currentOutstanding: string | number;
+    statementAmount?: string | number | null;
+    pinToCurrentStatement?: boolean | null;
     creditLimit?: string | number | null;
     ownCreditLimitNum?: number | null;
     sharesLimitWithId?: string | null;
     billingDay?: number | null;
-    paymentDueDay?: number | null;
+    paymentDueGapDays?: number | null;
     lastFour?: string | null;
     isRupay?: boolean;
     status: string;
@@ -279,6 +320,11 @@ export function EditCreditCardButton({
       id: card.id,
       name: card.name,
       currentOutstanding: String(card.currentOutstanding ?? "0"),
+      statementAmount:
+        card.statementAmount != null && card.statementAmount !== ""
+          ? String(card.statementAmount)
+          : "",
+      pinToCurrentStatement: card.pinToCurrentStatement !== false,
       creditLimit:
         card.sharesLimitWithId
           ? ""
@@ -289,8 +335,8 @@ export function EditCreditCardButton({
               : "",
       sharesLimitWithId: card.sharesLimitWithId ?? "",
       billingDay: card.billingDay != null ? String(card.billingDay) : "",
-      paymentDueDay:
-        card.paymentDueDay != null ? String(card.paymentDueDay) : "",
+      paymentDueGapDays:
+        card.paymentDueGapDays != null ? String(card.paymentDueGapDays) : "20",
       lastFour: card.lastFour ?? "",
       isRupay: !!card.isRupay,
       status: card.status,

@@ -7,6 +7,8 @@ import {
   dateForDayInMonth,
   daysInMonth,
   dueDateForBill,
+  dueDateFromBill,
+  estimateDueGapDays,
   formatCardLabel,
   nextCycleDate,
   normalizeLastFour,
@@ -100,7 +102,7 @@ describe("summarizeCardStatement", () => {
   it("puts post-bill charges on next bill and closed cycle as amount due", () => {
     const summary = summarizeCardStatement({
       billingDay: 15,
-      paymentDueDay: 5,
+      paymentDueGapDays: 21, // 15 Mar + 21 → 5 Apr
       from: new Date(2026, 2, 20), // 20 Mar → last bill 15 Mar
       activities: [
         { date: "2026-02-20", activityType: "spend", outstandingDelta: 1000 },
@@ -124,7 +126,7 @@ describe("summarizeCardStatement", () => {
   it("uses current outstanding when there are no charge activities", () => {
     const summary = summarizeCardStatement({
       billingDay: 25,
-      paymentDueDay: 10,
+      paymentDueGapDays: 15, // 25 Sep + 15 → 10 Oct
       from: new Date(2026, 9, 5), // 5 Oct — due for Sept bill is still ahead (10 Oct)
       currentOutstanding: 12_000,
       activities: [],
@@ -133,20 +135,60 @@ describe("summarizeCardStatement", () => {
     expect(summary.nextDueDate).toBe("2026-10-10");
   });
 
-  it("advances due to next cycle when payment due date already passed", () => {
-    // Bill day 25, due day 10: last bill 25 Sep → due 10 Oct. Today 12 Oct → past.
+  it("keeps outstanding on current bill when due is past but still unpaid", () => {
+    // Bill day 25, gap 15: last bill 25 Sep → due 10 Oct. Today 12 Oct → past,
+    // but outstanding remains due on that cycle (do not advance away).
     const summary = summarizeCardStatement({
       billingDay: 25,
-      paymentDueDay: 10,
+      paymentDueGapDays: 15,
       from: new Date(2026, 9, 12),
       currentOutstanding: 8_000,
       activities: [],
     });
     expect(summary.lastBillDate).toBe("2026-09-25");
-    expect(summary.nextBillDate).toBe("2026-10-25");
-    // Due for the upcoming 25 Oct bill → 10 Nov
-    expect(summary.nextDueDate).toBe("2026-11-10");
+    expect(summary.nextDueDate).toBe("2026-10-10");
     expect(summary.amountDue).toBe(8_000);
+  });
+
+  it("splits statement amount vs next-bill leftover", () => {
+    const summary = summarizeCardStatement({
+      billingDay: 13,
+      paymentDueGapDays: 20,
+      from: new Date(2026, 9, 17), // 17 Oct — after bill day 13
+      currentOutstanding: 20_000,
+      statementAmount: 16_000,
+      pinToCurrentStatement: true,
+      activities: [],
+    });
+    expect(summary.lastBillDate).toBe("2026-10-13");
+    expect(summary.nextDueDate).toBe("2026-11-02");
+    expect(summary.amountDue).toBe(16_000);
+    expect(summary.nextBillPending).toBe(4_000);
+  });
+
+  it("pins full outstanding to current bill mid-cycle", () => {
+    const summary = summarizeCardStatement({
+      billingDay: 13,
+      paymentDueGapDays: 20,
+      from: new Date(2026, 9, 17),
+      currentOutstanding: 12_500,
+      pinToCurrentStatement: true,
+      activities: [],
+    });
+    expect(summary.amountDue).toBe(12_500);
+    expect(summary.nextDueDate).toBe("2026-11-02");
+  });
+});
+
+describe("dueDateFromBill", () => {
+  it("adds calendar days across month ends", () => {
+    expect(dueDateFromBill("2026-09-20", 20)).toBe("2026-10-10");
+    expect(dueDateFromBill("2026-01-31", 20)).toBe("2026-02-20");
+  });
+
+  it("estimates gap from legacy due day-of-month", () => {
+    expect(estimateDueGapDays(20, 8)).toBeGreaterThanOrEqual(18);
+    expect(estimateDueGapDays(20, 8)).toBeLessThanOrEqual(20);
   });
 });
 

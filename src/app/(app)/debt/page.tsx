@@ -98,6 +98,13 @@ export default async function DebtPage() {
     id: a.id,
     name: a.name,
     type: a.type,
+    pending: a.pending,
+    monthlyEmiNum: a.monthlyEmiNum,
+    interestPercent: Number(a.interestPercent) || 0,
+    interestType: a.interestType,
+    gstPercent: Number(a.gstPercent) || 18,
+    startingBalanceNum: a.startingBalanceNum,
+    totalMonths: a.totalMonths,
   }));
   const creditCardOptions = cards.map((c) => ({
     id: c.id,
@@ -239,7 +246,7 @@ export default async function DebtPage() {
                     <tr>
                       <th>Account</th>
                       <th>Type</th>
-                      <th className="num">Monthly EMI</th>
+                      <th className="num">To pay / mo</th>
                       <th className="num">Pending</th>
                       <th>Tenure</th>
                       <th>Status</th>
@@ -258,9 +265,21 @@ export default async function DebtPage() {
                         </td>
                         <td>{a.type}</td>
                         <td className="num">
-                          {a.monthlyEmiNum > 0
-                            ? formatINR(a.monthlyEmiNum)
-                            : "—"}
+                          {a.monthlyEmiNum > 0 ? (
+                            <>
+                              {formatINR(a.monthlyToPay)}
+                              <div
+                                className="muted"
+                                style={{ fontSize: "0.75rem" }}
+                              >
+                                P {formatINR(a.monthlyPrincipal ?? 0)} · I{" "}
+                                {formatINR(a.monthlyInterest ?? 0)} · Tax{" "}
+                                {formatINR(a.monthlyGst ?? 0)}
+                              </div>
+                            </>
+                          ) : (
+                            "—"
+                          )}
                         </td>
                         <td className="num">{formatINR(a.pending)}</td>
                         <td className="nowrap">
@@ -287,6 +306,8 @@ export default async function DebtPage() {
                                 startingBalance: a.startingBalance,
                                 monthlyEmi: a.monthlyEmi,
                                 interestPercent: a.interestPercent,
+                                interestType: a.interestType,
+                                gstPercent: a.gstPercent,
                                 totalMonths: a.totalMonths,
                                 monthsPaid: a.monthsPaid,
                                 paidTillNow: a.paidTillNow,
@@ -317,7 +338,10 @@ export default async function DebtPage() {
                       <td colSpan={2}>Total</td>
                       <td className="num">
                         {formatINR(
-                          data.accounts.reduce((s, a) => s + a.monthlyEmiNum, 0),
+                          data.accounts.reduce(
+                            (s, a) => s + (a.monthlyToPay ?? a.monthlyEmiNum),
+                            0,
+                          ),
                         )}
                       </td>
                       <td className="num">{formatINR(data.totals.pending)}</td>

@@ -117,15 +117,17 @@ export default async function CardDetailPage({
           <h2>Bill cycle</h2>
           <InfoTip title="Due & available" label="How due and available work">
             <p>
-              <strong>Due to pay</strong> = statement due + linked EMI for the
-              month.
+              <strong>Due to pay</strong> = statement / bill amount (or pinned
+              outstanding) + linked EMI for the month. Leftover revolving above
+              the bill amount sits on next bill (open).
             </p>
             <p>
               <strong>Available</strong> = credit limit − revolving outstanding −
-              EMI remaining (blocked)
+              EMI principal remaining (blocked)
               {card.sharesLimit
                 ? ", pooled across every card that shares this limit."
-                : "."}
+                : "."}{" "}
+              Interest and GST on EMI do not block the limit.
             </p>
             <p>
               Spends after the bill date go on the next statement (next bill
@@ -139,8 +141,12 @@ export default async function CardDetailPage({
             <dd>{card.billingDay ?? "—"}</dd>
           </div>
           <div>
-            <dt>Payment due day</dt>
-            <dd>{card.paymentDueDay ?? "—"}</dd>
+            <dt>Due after (days)</dt>
+            <dd>
+              {card.paymentDueGapDays != null
+                ? `${card.paymentDueGapDays} days`
+                : "—"}
+            </dd>
           </div>
           <div>
             <dt>Last statement</dt>
@@ -186,6 +192,16 @@ export default async function CardDetailPage({
             <dt>Statement due</dt>
             <dd>{formatINR(card.statementDueNum)}</dd>
           </div>
+          {card.statementAmount != null ? (
+            <div>
+              <dt>Bank bill amount</dt>
+              <dd>{formatINR(card.statementAmount)}</dd>
+            </div>
+          ) : null}
+          <div>
+            <dt>On current bill</dt>
+            <dd>{card.pinToCurrentStatement ? "Yes" : "No"}</dd>
+          </div>
           <div>
             <dt>EMI this month</dt>
             <dd>{formatINR(card.emiMonthlyNum)}</dd>
@@ -208,7 +224,8 @@ export default async function CardDetailPage({
             <InfoTip title="Linked EMI" label="About linked EMI">
               <p>
                 Debts of type credit-card EMI linked to this card. Monthly EMI
-                adds to due to pay; remaining principal blocks available credit.
+                (principal + interest + GST) adds to due to pay; only remaining
+                principal blocks available credit.
               </p>
             </InfoTip>
           </div>

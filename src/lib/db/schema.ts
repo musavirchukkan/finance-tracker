@@ -99,6 +99,19 @@ export const creditCards = pgTable("credit_cards", {
   })
     .notNull()
     .default("0"),
+  /**
+   * Closed statement amount still due this cycle (from the bank bill).
+   * When set, due-to-pay uses this; leftover revolving goes to next bill.
+   */
+  statementAmount: numeric("statement_amount", { precision: 14, scale: 2 }),
+  /**
+   * Keep revolving outstanding on the current (last) statement for due-to-pay,
+   * even mid-cycle / after bill day — useful when adding a card with this
+   * month's bill already generated (pay by due date next month).
+   */
+  pinToCurrentStatement: boolean("pin_to_current_statement")
+    .notNull()
+    .default(false),
   creditLimit: numeric("credit_limit", { precision: 14, scale: 2 }),
   /**
    * When set, this card shares the linked card's credit limit pool
@@ -109,10 +122,10 @@ export const creditCards = pgTable("credit_cards", {
     (): AnyPgColumn => creditCards.id,
     { onDelete: "set null" },
   ),
-  /** Day of month statement closes (1–28). */
+  /** Day of month statement closes (1–31). */
   billingDay: integer("billing_day"),
-  /** Day of month payment is due (1–28). */
-  paymentDueDay: integer("payment_due_day"),
+  /** Calendar days after statement date until payment is due (e.g. 20). */
+  paymentDueGapDays: integer("payment_due_gap_days"),
   /** Last 4 digits of the card number (for identification). */
   lastFour: text("last_four"),
   /** RuPay cards can be used for UPI. */
@@ -212,10 +225,16 @@ export const debtAccounts = pgTable("debt_accounts", {
   monthlyEmi: numeric("monthly_emi", { precision: 12, scale: 2 })
     .notNull()
     .default("0"),
-  /** Flat annual interest % used in the debt form (EMI remains source of cashflow). */
+  /** Annual interest % (flat or reducing — see interestType). */
   interestPercent: numeric("interest_percent", { precision: 8, scale: 2 })
     .notNull()
     .default("0"),
+  /** fixed = flat annual (default); reducing = declining-balance like Axis EMI. */
+  interestType: text("interest_type").notNull().default("fixed"),
+  /** GST % applied on the interest portion of an installment (India default 18). */
+  gstPercent: numeric("gst_percent", { precision: 8, scale: 2 })
+    .notNull()
+    .default("18"),
   totalMonths: integer("total_months").notNull().default(0),
   monthsPaid: integer("months_paid").notNull().default(0),
   status: text("status").notNull().default("Active Paydown"),
@@ -246,6 +265,10 @@ export const debtPayments = pgTable(
     dueDate: date("due_date").notNull(),
     paymentType: text("payment_type").notNull().default("EMI"),
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    /** Principal portion — only this reduces outstanding / unblocks CC limit. */
+    principalAmount: numeric("principal_amount", { precision: 12, scale: 2 }),
+    interestAmount: numeric("interest_amount", { precision: 12, scale: 2 }),
+    gstAmount: numeric("gst_amount", { precision: 12, scale: 2 }),
     isPaid: boolean("is_paid").notNull().default(false),
     /** Linked expense transaction when this payment hits monthly cashflow. */
     transactionId: uuid("transaction_id").references(() => transactions.id, {

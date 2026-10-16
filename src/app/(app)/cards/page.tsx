@@ -46,8 +46,8 @@ export default async function CardsPage() {
             </p>
             <p>
               <strong>Available</strong> = shared limit − revolving − EMI
-              blocked across every card in a shared-limit group (e.g. Axis add-on
-              cards).
+              principal blocked across every card in a shared-limit group (e.g.
+              Axis add-on cards). Interest/GST on EMI do not block the limit.
             </p>
             <p>
               Available can go negative if the ledger is over limit — spends are

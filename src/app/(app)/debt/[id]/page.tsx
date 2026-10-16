@@ -38,7 +38,18 @@ export default async function DebtDetailPage({
     (p) => p.paymentType !== PAID_TO_DATE_TYPE,
   );
   const accountOptions = [
-    { id: account.id, name: account.name, type: account.type },
+    {
+      id: account.id,
+      name: account.name,
+      type: account.type,
+      pending: account.pending,
+      monthlyEmiNum: account.monthlyEmiNum,
+      interestPercent: Number(account.interestPercent) || 0,
+      interestType: account.interestType,
+      gstPercent: Number(account.gstPercent) || 18,
+      startingBalanceNum: account.startingBalanceNum,
+      totalMonths: account.totalMonths,
+    },
   ];
 
   return (
@@ -66,6 +77,8 @@ export default async function DebtDetailPage({
               startingBalance: account.startingBalance,
               monthlyEmi: account.monthlyEmi,
               interestPercent: account.interestPercent,
+              interestType: account.interestType,
+              gstPercent: account.gstPercent,
               totalMonths: account.totalMonths,
               monthsPaid: account.monthsPaid,
               paidTillNow: account.paidTillNow,
@@ -101,19 +114,40 @@ export default async function DebtDetailPage({
           <strong>{formatINR(account.pending)}</strong>
         </div>
       </div>
+      {account.monthlyEmiNum > 0 ? (
+        <div className="stat-grid cols-4">
+          <div className="stat-card tall">
+            <span>Principal</span>
+            <strong>{formatINR(account.monthlyPrincipal)}</strong>
+          </div>
+          <div className="stat-card tall">
+            <span>Interest</span>
+            <strong>{formatINR(account.monthlyInterest)}</strong>
+          </div>
+          <div className="stat-card tall">
+            <span>Tax (GST)</span>
+            <strong>{formatINR(account.monthlyGst)}</strong>
+          </div>
+          <div className="stat-card tall left">
+            <span>To pay</span>
+            <strong>{formatINR(account.monthlyToPay)}</strong>
+          </div>
+        </div>
+      ) : null}
 
       <section className="panel">
         <div className="panel-head">
           <h2>Details</h2>
           <InfoTip title="Debt details" label="About debt details">
             <p>
-              <strong>Remaining</strong> is starting balance minus payments
-              logged. Monthly interest is estimated from the interest % on the
-              remaining principal.
+              <strong>Remaining</strong> is starting principal minus principal
+              portions of payments logged. Interest and GST do not reduce
+              outstanding or unblock card limit.
             </p>
             <p>
-              If this is a credit-card EMI, it is linked to a card so the EMI
-              counts toward that card&apos;s due and blocks available credit.
+              <strong>To pay</strong> = principal + interest + tax (GST on
+              interest). On a linked card, that full amount adds to due; only
+              remaining principal blocks available credit.
             </p>
           </InfoTip>
         </div>
@@ -137,16 +171,38 @@ export default async function DebtDetailPage({
             <dd>{account.status}</dd>
           </div>
           <div>
-            <dt>Monthly EMI</dt>
+            <dt>Principal (this month)</dt>
+            <dd>{formatINR(account.monthlyPrincipal)}</dd>
+          </div>
+          <div>
+            <dt>Interest (this month)</dt>
+            <dd>{formatINR(account.monthlyInterest)}</dd>
+          </div>
+          <div>
+            <dt>Tax / GST (this month)</dt>
+            <dd>{formatINR(account.monthlyGst)}</dd>
+          </div>
+          <div>
+            <dt>To pay (this month)</dt>
+            <dd>{formatINR(account.monthlyToPay)}</dd>
+          </div>
+          <div>
+            <dt>EMI stored (P+I)</dt>
             <dd>{formatINR(account.monthlyEmiNum)}</dd>
+          </div>
+          <div>
+            <dt>Interest type</dt>
+            <dd>
+              {account.interestType === "reducing" ? "Reducing" : "Fixed"}
+            </dd>
           </div>
           <div>
             <dt>Interest %</dt>
             <dd>{account.interestPercentNum}%</dd>
           </div>
           <div>
-            <dt>Monthly interest</dt>
-            <dd>{formatINR(account.monthlyInterest)}</dd>
+            <dt>GST %</dt>
+            <dd>{account.gstPercentNum}%</dd>
           </div>
           <div>
             <dt>Total interest</dt>

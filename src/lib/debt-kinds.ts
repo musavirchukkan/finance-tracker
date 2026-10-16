@@ -155,18 +155,32 @@ export function defaultPaymentTypeForAccount(accountType: string) {
 /**
  * Outstanding = starting + charges − paydowns.
  * Payouts (kuri pot, wallet→bank) do not change outstanding.
+ * When principalAmount is set on a paydown, only that portion reduces
+ * principal (interest/GST do not unlock CC limit).
  */
 export function computeOutstanding(args: {
   startingBalance: number;
-  payments: { amount: number; isPaid: boolean; paymentType: string }[];
+  payments: {
+    amount: number;
+    isPaid: boolean;
+    paymentType: string;
+    principalAmount?: number | null;
+  }[];
 }): number {
   let charges = 0;
   let paydowns = 0;
   for (const p of args.payments) {
     if (!p.isPaid) continue;
     const effect = paymentBalanceEffect(p.paymentType);
-    if (effect === "charge") charges += Math.max(0, p.amount);
-    else if (effect === "paydown") paydowns += Math.max(0, p.amount);
+    if (effect === "charge") {
+      charges += Math.max(0, p.amount);
+    } else if (effect === "paydown") {
+      const principal =
+        p.principalAmount != null && Number.isFinite(p.principalAmount)
+          ? Math.max(0, p.principalAmount)
+          : Math.max(0, p.amount);
+      paydowns += principal;
+    }
   }
   return Math.max(0, args.startingBalance + charges - paydowns);
 }
