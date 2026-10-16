@@ -59,6 +59,7 @@ describe("paymentBalanceEffect", () => {
     expect(paymentBalanceEffect("EMI")).toBe("paydown");
     expect(paymentBalanceEffect("Bill payment")).toBe("paydown");
     expect(paymentBalanceEffect("Contribution")).toBe("paydown");
+    expect(paymentBalanceEffect("EMI posted to card")).toBe("paydown");
   });
 });
 

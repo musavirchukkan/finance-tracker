@@ -196,6 +196,10 @@ describe("activityLabel", () => {
   it("labels wallet recharge", () => {
     expect(activityLabel("wallet_recharge")).toBe("Card → wallet");
   });
+
+  it("labels EMI posted", () => {
+    expect(activityLabel("emi_posted")).toBe("EMI posted");
+  });
 });
 
 describe("formatCardLabel / normalizeLastFour", () => {

@@ -9,13 +9,17 @@ import {
   EditDebtAccountButton,
 } from "@/components/debt-forms";
 import { InfoTip } from "@/components/info-tip";
+import { ReviewCallout } from "@/components/review-callout";
 import {
   deleteDebtAccount,
   deleteDebtPayment,
   getDebtDashboard,
   toggleDebtPaymentPaid,
 } from "@/lib/actions";
-import { listCreditCards } from "@/lib/card-actions";
+import {
+  listCreditCards,
+  listLedgerPaymentWarnings,
+} from "@/lib/card-actions";
 import {
   buildPayoffCurve,
   defaultGoalDate,
@@ -83,6 +87,7 @@ export default async function DebtPage() {
   const user = await requireUser();
   const data = await getDebtDashboard(user.id);
   const cards = await listCreditCards(user.id);
+  const paymentWarnings = await listLedgerPaymentWarnings(user.id, cards);
   const cardsDue = cards.reduce((s, c) => s + c.amountDue, 0);
   const goal = data.settings?.goalPayoffDate ?? defaultGoalDate(19);
   const baselineMonth = currentYearMonth();
@@ -135,13 +140,38 @@ export default async function DebtPage() {
             </p>
             <p>
               Credit card revolving balances live under{" "}
-              <strong>Cards</strong> — link a CC EMI debt to a card so it counts
-              toward that card&apos;s due and available credit.
+              <strong>Cards</strong> — link a CC EMI debt to a card so on each
+              statement date the installment (P+I+GST) posts to outstanding and
+              unlocks principal from the limit.
             </p>
           </InfoTip>
           <AddDebtAccountButton creditCards={creditCardOptions} />
         </div>
       </div>
+
+      {paymentWarnings.length > 0 ? (
+        <ReviewCallout
+          title={
+            paymentWarnings.some((w) => w.severity === "urgent")
+              ? "Overdue payments"
+              : "Unpaid payments — reminder"
+          }
+        >
+          <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+            {paymentWarnings.map((w) => (
+              <li key={w.message}>
+                {w.href ? (
+                  <Link className="linkish" href={w.href}>
+                    {w.message}
+                  </Link>
+                ) : (
+                  w.message
+                )}
+              </li>
+            ))}
+          </ul>
+        </ReviewCallout>
+      ) : null}
 
       <div className="insight-grid">
         <article className="insight-card">

@@ -4,6 +4,7 @@ export const CARD_ACTIVITY_TYPES = [
   "wallet_cashout",
   "fee",
   "bill_payment",
+  "emi_posted",
 ] as const;
 
 export type CardActivityType = (typeof CARD_ACTIVITY_TYPES)[number];
@@ -330,6 +331,8 @@ export function activityLabel(type: string): string {
       return "Fee / charge";
     case "bill_payment":
       return "Bill payment";
+    case "emi_posted":
+      return "EMI posted";
     default:
       return type;
   }

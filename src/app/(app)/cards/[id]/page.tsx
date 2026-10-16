@@ -36,7 +36,7 @@ export default async function CardDetailPage({
   const shareOptions = allCards
     .filter((c) => !c.sharesLimitWithId && c.id !== id)
     .map((c) => ({ id: c.id, label: c.label }));
-  const { card, activities } = data;
+  const { card, activities, warnings } = data;
 
   return (
     <div className="page-stack">
@@ -94,6 +94,22 @@ export default async function CardDetailPage({
         </div>
       </div>
 
+      {warnings.length > 0 ? (
+        <ReviewCallout
+          title={
+            warnings.some((w) => w.severity === "urgent")
+              ? "Overdue bill — pay now"
+              : "Unpaid bill — reminder"
+          }
+        >
+          <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+            {warnings.map((w) => (
+              <li key={w.message}>{w.message}</li>
+            ))}
+          </ul>
+        </ReviewCallout>
+      ) : null}
+
       {card.availableNum != null && card.availableNum < 0 ? (
         <ReviewCallout title="Negative available — review ledger">
           <p>
@@ -118,8 +134,8 @@ export default async function CardDetailPage({
           <InfoTip title="Due & available" label="How due and available work">
             <p>
               <strong>Due to pay</strong> = statement / bill amount (or pinned
-              outstanding) + linked EMI for the month. Leftover revolving above
-              the bill amount sits on next bill (open).
+              outstanding). Linked EMI posts onto outstanding on the statement
+              date (P+I+GST), so it is included there — not added twice.
             </p>
             <p>
               <strong>Available</strong> = credit limit − revolving outstanding −
@@ -127,7 +143,8 @@ export default async function CardDetailPage({
               {card.sharesLimit
                 ? ", pooled across every card that shares this limit."
                 : "."}{" "}
-              Interest and GST on EMI do not block the limit.
+              When an EMI posts, its principal unlocks from the limit;
+              interest and GST never blocked it.
             </p>
             <p>
               Spends after the bill date go on the next statement (next bill
@@ -223,9 +240,9 @@ export default async function CardDetailPage({
             <h2>Linked EMI</h2>
             <InfoTip title="Linked EMI" label="About linked EMI">
               <p>
-                Debts of type credit-card EMI linked to this card. Monthly EMI
-                (principal + interest + GST) adds to due to pay; only remaining
-                principal blocks available credit.
+                On each statement date, the installment (principal + interest +
+                GST) posts to this card&apos;s outstanding and unlocks principal
+                from the limit. Pay it with the rest of the bill.
               </p>
             </InfoTip>
           </div>
@@ -236,6 +253,7 @@ export default async function CardDetailPage({
                   <th>Debt</th>
                   <th className="num">Monthly EMI</th>
                   <th className="num">Remaining</th>
+                  <th>This statement</th>
                 </tr>
               </thead>
               <tbody>
@@ -248,6 +266,7 @@ export default async function CardDetailPage({
                     </td>
                     <td className="num">{formatINR(e.monthlyEmi)}</td>
                     <td className="num">{formatINR(e.remaining)}</td>
+                    <td>{e.postedThisCycle ? "Posted" : "Pending"}</td>
                   </tr>
                 ))}
               </tbody>

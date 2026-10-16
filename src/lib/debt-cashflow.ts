@@ -1,7 +1,10 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { categories, debtAccounts, debtPayments, transactions } from "@/lib/db/schema";
-import { PAID_TO_DATE_TYPE } from "@/lib/debt-account";
+import {
+  EMI_POSTED_TO_CARD_TYPE,
+  PAID_TO_DATE_TYPE,
+} from "@/lib/debt-account";
 import { defaultIconForCategoryName } from "@/lib/category-icons";
 import {
   isBorrowedType,
@@ -151,8 +154,11 @@ export async function syncDebtPaymentTransaction(paymentId: string, userId: stri
 
   if (!payment) return;
 
-  // Historical backfill must not hit this month's cashflow.
-  if (payment.paymentType === PAID_TO_DATE_TYPE) {
+  // Historical backfill / card-statement EMI must not hit bank cashflow.
+  if (
+    payment.paymentType === PAID_TO_DATE_TYPE ||
+    payment.paymentType === EMI_POSTED_TO_CARD_TYPE
+  ) {
     if (payment.transactionId) {
       await db
         .update(debtPayments)

@@ -1,7 +1,20 @@
 export const PAID_TO_DATE_TYPE = "Paid to date";
 
+/**
+ * Auto-posted when a linked CC EMI hits the card statement date.
+ * Unlocks principal from limit; full P+I+GST goes onto card outstanding.
+ * No bank cashflow (pay the card bill separately).
+ */
+export const EMI_POSTED_TO_CARD_TYPE = "EMI posted to card";
+
 /** India GST on credit-card / loan interest (user-editable per debt). */
 export const DEFAULT_GST_ON_INTEREST_PERCENT = 18;
+
+export function isEmiPostedToCardType(paymentType: string): boolean {
+  return (
+    paymentType.trim().toLowerCase() === EMI_POSTED_TO_CARD_TYPE.toLowerCase()
+  );
+}
 
 export type InterestType = "fixed" | "reducing";
 

@@ -6,13 +6,21 @@ import {
 } from "@/components/card-forms";
 import { InfoTip } from "@/components/info-tip";
 import { ReviewCallout } from "@/components/review-callout";
-import { deleteCreditCard, listCreditCards } from "@/lib/card-actions";
+import {
+  deleteCreditCard,
+  listCreditCards,
+  listLedgerPaymentWarnings,
+} from "@/lib/card-actions";
 import { formatINR } from "@/lib/money";
 import { requireUser } from "@/lib/session";
 
 export default async function CardsPage() {
   const user = await requireUser();
   const cards = await listCreditCards(user.id);
+  const paymentWarnings = await listLedgerPaymentWarnings(user.id, cards);
+  const billWarnings = paymentWarnings.filter(
+    (w) => w.href?.startsWith("/cards"),
+  );
   const totalOutstanding = cards.reduce((s, c) => s + c.outstandingNum, 0);
   const totalDue = cards.reduce((s, c) => s + c.amountDue, 0);
   const totalEmi = cards.reduce((s, c) => s + c.emiMonthlyNum, 0);
@@ -41,8 +49,13 @@ export default async function CardsPage() {
               card.
             </p>
             <p>
-              <strong>Due to pay</strong> = closed statement due + linked EMI
-              this month.
+              <strong>Due to pay</strong> = closed statement due (including EMI
+              posted on the bill date) + any linked EMI not yet posted.
+            </p>
+            <p>
+              On each statement date, linked CC EMI (principal + interest + GST)
+              posts onto outstanding and unlocks principal from the limit. Pay
+              via <strong>Pay bill</strong> when the bank due date arrives.
             </p>
             <p>
               <strong>Available</strong> = shared limit − revolving − EMI
@@ -73,6 +86,30 @@ export default async function CardsPage() {
           <strong>{formatINR(totalOutstanding)}</strong>
         </div>
       </div>
+
+      {billWarnings.length > 0 ? (
+        <ReviewCallout
+          title={
+            billWarnings.some((w) => w.severity === "urgent")
+              ? "Overdue bill — pay now"
+              : "Unpaid bill — reminder"
+          }
+        >
+          <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+            {billWarnings.map((w) => (
+              <li key={w.message}>
+                {w.href ? (
+                  <Link className="linkish" href={w.href}>
+                    {w.message}
+                  </Link>
+                ) : (
+                  w.message
+                )}
+              </li>
+            ))}
+          </ul>
+        </ReviewCallout>
+      ) : null}
 
       {overLimitCards.length > 0 ? (
         <ReviewCallout title="Negative available — review">

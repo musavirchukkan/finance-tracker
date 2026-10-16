@@ -42,7 +42,7 @@ Set:
 
 - `AUTH_SECRET` — `openssl rand -base64 32`
 - `DATABASE_URL` — Neon **pooled** URL (app runtime) **or** local Docker
-- `DATABASE_MIGRATION_URL` — Neon **direct** URL (drizzle `db:push` / seeds). For Docker, same as `DATABASE_URL`
+- `DATABASE_MIGRATION_URL` — Neon **direct** URL (drizzle migrate / seeds). For Docker, same as `DATABASE_URL`
 - Optional `SEED_EMAIL` / `SEED_PASSWORD` / `SEED_NAME` for the first user
 
 ### 2. Database
@@ -64,11 +64,15 @@ npm run db:up
 ### 3. Schema + seed user
 
 ```bash
-npm run db:push
+npm run db:migrate
 npm run db:seed
 ```
 
+Schema changes: edit `src/lib/db/schema.ts` → `npm run db:generate` → commit the new files under `drizzle/` → deploy (build runs migrate).
+
 `db:seed` creates the login user (if missing) and default categories.
+
+`db:push` is emergency local-only — prefer migrations for anything shared.
 
 ### 4. Run
 
@@ -93,12 +97,56 @@ Open [http://localhost:3000](http://localhost:3000) and sign in with the seeded 
 
 ### Auto schema on deploy
 
-`npm run build` runs `drizzle-kit push --force` first (uses `DATABASE_MIGRATION_URL`), then builds Next.js.  
+`npm run build` runs `npm run db:migrate` first (committed SQL in `drizzle/`, via `DATABASE_MIGRATION_URL`), then builds Next.js.  
 **Seeding is not automatic** — after the first deploy, from your machine with Neon URLs in `.env`:
 
 ```bash
 npm run db:seed
 ```
+
+## Fresh DB cutover (dump → migrate → import)
+
+Use this when resetting schema history while keeping live data. Dumps stay in `backups/` (gitignored).
+
+### 1. Dump current Neon (or any source)
+
+Needs Docker (uses `postgres:18-alpine` — Neon is PG 18). No local `pg_dump` required.
+
+```bash
+node --env-file=.env.prod scripts/dump-db.mjs
+# → backups/neon-<stamp>.dump + backups/neon-<stamp>-counts.json
+```
+
+### 2. Local dry-run
+
+```bash
+npm run db:up
+
+# Restore dump into a separate legacy DB (keeps raw columns)
+docker compose exec -T db psql -U finance -d postgres -c "CREATE DATABASE finance_legacy;"
+docker run --rm --network finance-tracker_default \
+  -e PGPASSWORD=finance \
+  -v "$(pwd)/backups:/backups" \
+  postgres:18-alpine \
+  pg_restore -h db -U finance -d finance_legacy --no-owner --no-acl \
+  /backups/$(basename $(cut -d= -f2 backups/.latest-dump))
+
+# Empty target already has DB "finance" — apply clean migrations
+DATABASE_URL=postgresql://finance:finance@localhost:5432/finance \
+DATABASE_MIGRATION_URL=postgresql://finance:finance@localhost:5432/finance \
+  npm run db:migrate
+
+# Map + copy (same UUIDs)
+SOURCE_DATABASE_URL=postgresql://finance:finance@localhost:5432/finance_legacy \
+TARGET_DATABASE_URL=postgresql://finance:finance@localhost:5432/finance \
+  npm run db:import-legacy
+```
+
+Point local `.env` at `postgresql://finance:finance@localhost:5432/finance`, run `npm run dev`, verify login + counts.
+
+### 3. Neon branch, then prod
+
+Repeat migrate + import against a Neon branch URL. After spot-checks, point Vercel `DATABASE_URL` / `DATABASE_MIGRATION_URL` at the new DB (or promote the branch).
 
 ### Steps
 

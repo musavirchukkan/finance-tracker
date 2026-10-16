@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/migrate-on-deploy.mjs && next build",
+    "build": "node scripts/db-migrate.mjs && next build",
     "build:app": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -13,10 +13,12 @@
     "test:watch": "vitest",
     "ci": "npm run lint && npm run typecheck && npm test && npm run build:app",
     "db:generate": "drizzle-kit generate",
+    "db:migrate": "node scripts/db-migrate.mjs",
     "db:push": "drizzle-kit push",
-    "db:migrate:deploy": "drizzle-kit push --force",
     "db:seed": "tsx src/lib/db/seed.ts",
-    "db:up": "docker compose up -d"
+    "db:up": "docker compose up -d",
+    "db:dump": "node scripts/dump-db.mjs",
+    "db:import-legacy": "tsx scripts/import-legacy-data.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     ports:
       - "5432:5432"
@@ -9,7 +9,8 @@ services:
       POSTGRES_PASSWORD: finance
       POSTGRES_DB: finance
     volumes:
-      - finance_pg:/var/lib/postgresql/data
+      # Postgres 18+ images expect the mount at /var/lib/postgresql (not .../data).
+      - finance_pg:/var/lib/postgresql
 
 volumes:
   finance_pg:

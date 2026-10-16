@@ -21,6 +21,7 @@ import {
   clampDueGapDays,
   formatCardLabel,
   normalizeLastFour,
+  previousCycleDate,
   resolveLimitRootId,
   sharedLimitMemberIds,
   summarizeCardStatement,
@@ -32,6 +33,13 @@ import {
   isCreditCardType,
 } from "@/lib/debt-kinds";
 import { suggestInstallmentSplit } from "@/lib/debt-account";
+import {
+  cardBillWarnings,
+  emiPostedForBillDate,
+  postLinkedEmisForUser,
+  unpaidDebtPaymentWarnings,
+  type LedgerWarning,
+} from "@/lib/emi-statement-post";
 import { parseAmount, toNumber } from "@/lib/money";
 import { requireUser } from "@/lib/session";
 
@@ -161,7 +169,28 @@ function statementFromActivities(
   return summary;
 }
 
-async function linkedEmiByCard(userId: string) {
+type LinkedEmiBucket = {
+  emiBlocked: number;
+  /** Installment total (P+I+GST) for display this cycle. */
+  emiMonthly: number;
+  /**
+   * Amount still to add on top of statement due. Zero when this cycle’s EMI
+   * was already posted onto card outstanding (avoid double-count).
+   */
+  emiForDue: number;
+  emis: {
+    id: string;
+    name: string;
+    monthlyEmi: number;
+    remaining: number;
+    postedThisCycle: boolean;
+  }[];
+};
+
+async function linkedEmiByCard(
+  userId: string,
+  lastBillByCard: Map<string, string | null>,
+) {
   const accounts = await db
     .select()
     .from(debtAccounts)
@@ -171,25 +200,20 @@ async function linkedEmiByCard(userId: string) {
     (a) => a.creditCardId && isCreditCardEmiType(a.type),
   );
   if (ccEmiAccounts.length === 0) {
-    return new Map<
-      string,
-      {
-        emiBlocked: number;
-        emiMonthly: number;
-        emis: {
-          id: string;
-          name: string;
-          monthlyEmi: number;
-          remaining: number;
-        }[];
-      }
-    >();
+    return new Map<string, LinkedEmiBucket>();
   }
 
   const payments = await db
     .select()
     .from(debtPayments)
     .where(eq(debtPayments.userId, userId));
+
+  const paymentMeta = payments.map((p) => ({
+    accountId: p.accountId,
+    paymentType: p.paymentType,
+    dueDate: p.dueDate,
+    isPaid: p.isPaid,
+  }));
 
   const paymentsByAccount = new Map<
     string,
@@ -212,19 +236,7 @@ async function linkedEmiByCard(userId: string) {
     paymentsByAccount.set(p.accountId, list);
   }
 
-  const byCard = new Map<
-    string,
-    {
-      emiBlocked: number;
-      emiMonthly: number;
-      emis: {
-        id: string;
-        name: string;
-        monthlyEmi: number;
-        remaining: number;
-      }[];
-    }
-  >();
+  const byCard = new Map<string, LinkedEmiBucket>();
 
   for (const a of ccEmiAccounts) {
     const cardId = a.creditCardId!;
@@ -233,30 +245,53 @@ async function linkedEmiByCard(userId: string) {
       payments: paymentsByAccount.get(a.id) ?? [],
     });
     const emiPi = toNumber(a.monthlyEmi);
-    // Due reminder: principal + interest + GST for this month; block = principal only.
-    const split = suggestInstallmentSplit({
-      remainingPrincipal: remaining,
-      interestPercent: toNumber(a.interestPercent),
-      interestType: a.interestType,
-      emiPi,
-      gstPercent: toNumber(a.gstPercent),
-      totalMonths: a.totalMonths,
-      startingBalance: toNumber(a.startingBalance),
-    });
-    const monthlyDue = split.total > 0 ? split.total : emiPi;
+    const lastBill = lastBillByCard.get(cardId) ?? null;
+    const postedThisCycle =
+      !!lastBill && emiPostedForBillDate(paymentMeta, a.id, lastBill);
+
+    // Prefer the amount actually posted on this statement when present.
+    let monthlyDue = 0;
+    if (postedThisCycle && lastBill) {
+      const postedPay = payments.find(
+        (p) =>
+          p.accountId === a.id &&
+          p.dueDate === lastBill &&
+          p.paymentType.toLowerCase() === "emi posted to card",
+      );
+      if (postedPay) monthlyDue = toNumber(postedPay.amount);
+    }
+    if (monthlyDue <= 0 && remaining > 0) {
+      const split = suggestInstallmentSplit({
+        remainingPrincipal: remaining,
+        interestPercent: toNumber(a.interestPercent),
+        interestType: a.interestType,
+        emiPi,
+        gstPercent: toNumber(a.gstPercent),
+        totalMonths: a.totalMonths,
+        startingBalance: toNumber(a.startingBalance),
+      });
+      monthlyDue = split.total > 0 ? split.total : emiPi;
+    }
+
     const bucket = byCard.get(cardId) ?? {
       emiBlocked: 0,
       emiMonthly: 0,
+      emiForDue: 0,
       emis: [],
     };
-    if (remaining > 0) {
-      bucket.emiBlocked += remaining;
-      bucket.emiMonthly += monthlyDue;
+    if (remaining > 0 || postedThisCycle) {
+      if (remaining > 0) bucket.emiBlocked += remaining;
+      if (monthlyDue > 0) {
+        bucket.emiMonthly += monthlyDue;
+        // Already on statement outstanding — don't add again to due.
+        if (!postedThisCycle) bucket.emiForDue += monthlyDue;
+      }
       bucket.emis.push({
         id: a.id,
         name: a.name,
         monthlyEmi: monthlyDue,
         remaining,
+        postedThisCycle,
       });
     }
     byCard.set(cardId, bucket);
@@ -276,16 +311,7 @@ function withEmiAggregates(
     paymentDueGapDays: number | null;
   },
   summary: ReturnType<typeof statementFromActivities>,
-  emi: {
-    emiBlocked: number;
-    emiMonthly: number;
-    emis: {
-      id: string;
-      name: string;
-      monthlyEmi: number;
-      remaining: number;
-    }[];
-  } | undefined,
+  emi: LinkedEmiBucket | undefined,
   allCards: {
     id: string;
     name: string;
@@ -299,6 +325,7 @@ function withEmiAggregates(
   const outstandingNum = toNumber(card.currentOutstanding);
   const emiBlockedNum = emi?.emiBlocked ?? 0;
   const emiMonthlyNum = emi?.emiMonthly ?? 0;
+  const emiForDueNum = emi?.emiForDue ?? 0;
   const statementDueNum = summary.amountDue;
 
   const rootId = resolveLimitRootId(card.id, allCards);
@@ -354,9 +381,10 @@ function withEmiAggregates(
     statementDueNum,
     emiBlockedNum,
     emiMonthlyNum,
+    emiForDueNum,
     amountDue: totalDueThisCycle({
       statementDue: statementDueNum,
-      linkedMonthlyEmi: emiMonthlyNum,
+      linkedMonthlyEmi: emiForDueNum,
     }),
     nextBillPending: summary.nextBillPending,
     availableNum,
@@ -389,6 +417,8 @@ async function parseSharesLimitWithId(
 
 export async function listCreditCards(userId: string) {
   await migrateRollingCreditCards(userId);
+  await postLinkedEmisForUser(userId);
+
   const rows = await db
     .select()
     .from(creditCards)
@@ -412,7 +442,13 @@ export async function listCreditCards(userId: string) {
     byCard.set(a.cardId, list);
   }
 
-  const emiByCard = await linkedEmiByCard(userId);
+  const lastBillByCard = new Map<string, string | null>();
+  for (const c of rows) {
+    const summary = statementFromActivities(c, byCard.get(c.id) ?? []);
+    lastBillByCard.set(c.id, summary.lastBillDate);
+  }
+
+  const emiByCard = await linkedEmiByCard(userId, lastBillByCard);
 
   return rows.map((c) => {
     const summary = statementFromActivities(c, byCard.get(c.id) ?? []);
@@ -424,8 +460,43 @@ export async function listCreditCards(userId: string) {
   });
 }
 
+/** Payment / bill reminders for Cards + Debt pages. */
+export async function listLedgerPaymentWarnings(
+  userId: string,
+  cards?: Awaited<ReturnType<typeof listCreditCards>>,
+): Promise<LedgerWarning[]> {
+  const cardRows = cards ?? (await listCreditCards(userId));
+  const bill = cardBillWarnings(
+    cardRows.map((c) => ({
+      id: c.id,
+      label: c.label,
+      amountDue: c.amountDue,
+      nextDueDate: c.nextDueDate,
+    })),
+  );
+
+  const debtPays = await db
+    .select({
+      id: debtPayments.id,
+      accountId: debtPayments.accountId,
+      accountName: debtAccounts.name,
+      dueDate: debtPayments.dueDate,
+      paymentType: debtPayments.paymentType,
+      amount: debtPayments.amount,
+      isPaid: debtPayments.isPaid,
+    })
+    .from(debtPayments)
+    .innerJoin(debtAccounts, eq(debtPayments.accountId, debtAccounts.id))
+    .where(eq(debtPayments.userId, userId));
+
+  const unpaid = unpaidDebtPaymentWarnings(debtPays);
+  return [...bill, ...unpaid];
+}
+
 export async function getCreditCardDetail(userId: string, cardId: string) {
   await migrateRollingCreditCards(userId);
+  await postLinkedEmisForUser(userId);
+
   const allCards = await db
     .select()
     .from(creditCards)
@@ -442,15 +513,34 @@ export async function getCreditCardDetail(userId: string, cardId: string) {
     .orderBy(desc(cardActivities.date), desc(cardActivities.createdAt));
 
   const summary = statementFromActivities(card, activities);
-  const emiByCard = await linkedEmiByCard(userId);
+  const lastBillByCard = new Map<string, string | null>();
+  for (const c of allCards) {
+    lastBillByCard.set(
+      c.id,
+      c.id === cardId
+        ? summary.lastBillDate
+        : previousCycleDate(c.billingDay),
+    );
+  }
+  const emiByCard = await linkedEmiByCard(userId, lastBillByCard);
   const emi = emiByCard.get(cardId);
 
+  const cardRow = {
+    ...card,
+    label: formatCardLabel(card.name, card.lastFour),
+    ...withEmiAggregates(card, summary, emi, allCards, emiByCard),
+  };
+
   return {
-    card: {
-      ...card,
-      label: formatCardLabel(card.name, card.lastFour),
-      ...withEmiAggregates(card, summary, emi, allCards, emiByCard),
-    },
+    card: cardRow,
+    warnings: cardBillWarnings([
+      {
+        id: cardRow.id,
+        label: cardRow.label,
+        amountDue: cardRow.amountDue,
+        nextDueDate: cardRow.nextDueDate,
+      },
+    ]),
     activities: activities.map((a) => ({
       ...a,
       amountNum: toNumber(a.amount),
