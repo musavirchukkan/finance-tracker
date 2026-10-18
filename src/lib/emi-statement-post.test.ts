@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   calendarDaysBetween,
+  canPostEmiForCycle,
   cardBillWarnings,
+  emiApplyModeFromChoice,
   emiPostedForBillDate,
+  isPrematureEmiPost,
+  parseEmiOutstandingChoice,
+  shouldAutoPostEmiForCard,
   unpaidDebtPaymentWarnings,
 } from "@/lib/emi-statement-post";
 
@@ -26,6 +31,78 @@ describe("emiPostedForBillDate", () => {
     expect(emiPostedForBillDate(payments, "d1", "2026-09-20")).toBe(true);
     expect(emiPostedForBillDate(payments, "d1", "2026-10-20")).toBe(false);
     expect(emiPostedForBillDate(payments, "d2", "2026-09-20")).toBe(false);
+  });
+});
+
+describe("isPrematureEmiPost / canPostEmiForCycle", () => {
+  it("flags backfill after the cycle due date", () => {
+    // Bill 20 Sep, gap 19 → due 9 Oct; recorded 17 Oct = premature.
+    expect(
+      isPrematureEmiPost({
+        billDate: "2026-09-20",
+        paymentDueGapDays: 19,
+        recordedOn: "2026-10-17",
+      }),
+    ).toBe(true);
+    expect(
+      isPrematureEmiPost({
+        billDate: "2026-10-20",
+        paymentDueGapDays: 19,
+        recordedOn: "2026-10-20",
+      }),
+    ).toBe(false);
+  });
+
+  it("only posts between bill date and cycle due", () => {
+    expect(
+      canPostEmiForCycle({
+        billDate: "2026-10-20",
+        paymentDueGapDays: 19,
+        todayKey: "2026-10-17",
+      }),
+    ).toBe(false);
+    expect(
+      canPostEmiForCycle({
+        billDate: "2026-10-20",
+        paymentDueGapDays: 19,
+        todayKey: "2026-10-20",
+      }),
+    ).toBe(true);
+    expect(
+      canPostEmiForCycle({
+        billDate: "2026-09-20",
+        paymentDueGapDays: 19,
+        todayKey: "2026-10-17",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("shouldAutoPostEmiForCard", () => {
+  it("auto-posts only when card existed on bill day", () => {
+    expect(
+      shouldAutoPostEmiForCard({
+        cardCreatedAt: new Date(2026, 8, 1),
+        lastBillDate: "2026-10-01",
+      }),
+    ).toBe(true);
+    expect(
+      shouldAutoPostEmiForCard({
+        cardCreatedAt: new Date(2026, 9, 15),
+        lastBillDate: "2026-10-01",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("emi outstanding choice", () => {
+  it("maps form values to apply modes", () => {
+    expect(parseEmiOutstandingChoice("wait")).toBe("wait");
+    expect(parseEmiOutstandingChoice("already")).toBe("already");
+    expect(parseEmiOutstandingChoice("add")).toBe("add");
+    expect(emiApplyModeFromChoice("wait")).toBeNull();
+    expect(emiApplyModeFromChoice("already")).toBe("already_in_outstanding");
+    expect(emiApplyModeFromChoice("add")).toBe("add_to_outstanding");
   });
 });
 
@@ -85,6 +162,23 @@ describe("cardBillWarnings", () => {
           },
         ],
         new Date(2026, 9, 10),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("skips when the bank bill was not included yet", () => {
+    expect(
+      cardBillWarnings(
+        [
+          {
+            id: "c1",
+            label: "MyZone",
+            amountDue: 5000,
+            nextDueDate: "2026-10-09",
+            billIncluded: false,
+          },
+        ],
+        new Date(2026, 9, 17),
       ),
     ).toHaveLength(0);
   });

@@ -283,8 +283,9 @@ async function linkedEmiByCard(
       if (remaining > 0) bucket.emiBlocked += remaining;
       if (monthlyDue > 0) {
         bucket.emiMonthly += monthlyDue;
-        // Already on statement outstanding — don't add again to due.
-        if (!postedThisCycle) bucket.emiForDue += monthlyDue;
+        // EMI hits due only after it posts onto the statement on bill date —
+        // never add a display-only installment on top (avoids false overdue
+        // before the statement day, e.g. Axis bill day 20).
       }
       bucket.emis.push({
         id: a.id,
@@ -472,6 +473,9 @@ export async function listLedgerPaymentWarnings(
       label: c.label,
       amountDue: c.amountDue,
       nextDueDate: c.nextDueDate,
+      billIncluded:
+        !!c.pinToCurrentStatement ||
+        (c.statementAmount != null && toNumber(c.statementAmount) > 0),
     })),
   );
 
@@ -539,6 +543,10 @@ export async function getCreditCardDetail(userId: string, cardId: string) {
         label: cardRow.label,
         amountDue: cardRow.amountDue,
         nextDueDate: cardRow.nextDueDate,
+        billIncluded:
+          !!card.pinToCurrentStatement ||
+          (card.statementAmount != null &&
+            toNumber(card.statementAmount) > 0),
       },
     ]),
     activities: activities.map((a) => ({

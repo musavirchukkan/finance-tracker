@@ -5,6 +5,11 @@ Deferred ideas and follow-ups. **Not in scope for the current bill-date EMI post
 ## Shipped (current)
 
 - On statement / bill date: post linked CC EMI (principal + interest + GST) onto card outstanding; unlock principal from limit; debt schedule advances.
+- Due / overdue only after the bank bill is included (statement amount or pin).
+- Mid-cycle card add: no auto-post (card created after bill day). On the CC EMI debt form, choose:
+  - **Already in outstanding** — unlock principal only (no double-count)
+  - **Add EMI now** — post onto outstanding + unlock
+  - **Wait for bill day** — leave for auto-post next cycle
 - Warnings when bill/EMI unpaid or due date is 2+ days past.
 
 ## Deferred

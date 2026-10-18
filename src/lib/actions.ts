@@ -47,6 +47,11 @@ import {
   isCreditCardEmiType,
   paymentBalanceEffect,
 } from "@/lib/debt-kinds";
+import {
+  applyLinkedEmiForCycle,
+  emiApplyModeFromChoice,
+  parseEmiOutstandingChoice,
+} from "@/lib/emi-statement-post";
 
 function parsePaymentSource(formData: FormData, type: "expense" | "income") {
   const creditCardId =
@@ -389,6 +394,19 @@ export async function createDebtAccount(formData: FormData) {
     });
   }
 
+  if (account && creditCardId) {
+    const emiMode = emiApplyModeFromChoice(
+      parseEmiOutstandingChoice(formData.get("emiOutstandingChoice")),
+    );
+    if (emiMode) {
+      await applyLinkedEmiForCycle({
+        userId: user.id,
+        debtId: account.id,
+        mode: emiMode,
+      });
+    }
+  }
+
   revalidateDebtCashflow(account?.id, creditCardId);
 }
 
@@ -529,6 +547,19 @@ export async function updateDebtAccount(formData: FormData) {
     accountId: id,
     paidTillNow,
   });
+
+  if (creditCardId) {
+    const emiMode = emiApplyModeFromChoice(
+      parseEmiOutstandingChoice(formData.get("emiOutstandingChoice")),
+    );
+    if (emiMode) {
+      await applyLinkedEmiForCycle({
+        userId: user.id,
+        debtId: id,
+        mode: emiMode,
+      });
+    }
+  }
 
   revalidateDebtCashflow(id, creditCardId);
   if (prev?.creditCardId && prev.creditCardId !== creditCardId) {

@@ -43,11 +43,16 @@ export type CreditCardOption = {
   label?: string;
 };
 
+/** Mid-cycle: how this statement’s EMI relates to card outstanding. */
+export type EmiOutstandingChoice = "wait" | "already" | "add";
+
 type DebtAccountFormValues = {
   id?: string;
   name: string;
   type: string;
   creditCardId: string;
+  /** wait | already (in outstanding) | add (to outstanding now) */
+  emiOutstandingChoice: EmiOutstandingChoice;
   startingBalance: string;
   monthlyEmi: string;
   interestPercent: string;
@@ -64,6 +69,7 @@ const emptyValues: DebtAccountFormValues = {
   name: "",
   type: "",
   creditCardId: "",
+  emiOutstandingChoice: "wait",
   startingBalance: "0",
   monthlyEmi: "0",
   interestPercent: "0",
@@ -134,6 +140,9 @@ function DebtAccountFields({
       ...values,
       type: nextType,
       creditCardId: isCreditCardEmiType(nextType) ? values.creditCardId : "",
+      emiOutstandingChoice: isCreditCardEmiType(nextType)
+        ? values.emiOutstandingChoice
+        : "wait",
       logAsIncome: mode === "create" ? borrowed || lent : values.logAsIncome,
       interestPercent: noInterest ? "0" : values.interestPercent,
       status: isKuriType(nextType)
@@ -330,27 +339,61 @@ function DebtAccountFields({
         </select>
       </div>
       {isCcEmi ? (
-        <div className="field">
-          <label htmlFor="debt-card">Credit card</label>
-          <select
-            id="debt-card"
-            name="creditCardId"
-            required
-            value={values.creditCardId}
-            onChange={(e) => setField("creditCardId", e.target.value)}
-          >
-            <option value="" disabled>
-              {creditCards.length === 0
-                ? "Add a card under Cards first…"
-                : "Choose a card…"}
-            </option>
-            {creditCards.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.label ?? c.name}
+        <>
+          <div className="field">
+            <label htmlFor="debt-card">Credit card</label>
+            <select
+              id="debt-card"
+              name="creditCardId"
+              required
+              value={values.creditCardId}
+              onChange={(e) => setField("creditCardId", e.target.value)}
+            >
+              <option value="" disabled>
+                {creditCards.length === 0
+                  ? "Add a card under Cards first…"
+                  : "Choose a card…"}
               </option>
-            ))}
-          </select>
-        </div>
+              {creditCards.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label ?? c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="debt-emi-outstanding">
+              This statement&apos;s EMI vs card outstanding
+            </label>
+            <select
+              id="debt-emi-outstanding"
+              name="emiOutstandingChoice"
+              value={values.emiOutstandingChoice}
+              onChange={(e) =>
+                setField(
+                  "emiOutstandingChoice",
+                  e.target.value as EmiOutstandingChoice,
+                )
+              }
+            >
+              <option value="wait">
+                Wait for bill day (auto-post if card existed then)
+              </option>
+              <option value="already">
+                Already in outstanding — unlock principal only
+              </option>
+              <option value="add">
+                Not in outstanding — add EMI now + unlock
+              </option>
+            </select>
+            <p className="muted page-sub" style={{ margin: "0.35rem 0 0" }}>
+              Mid-cycle or last-day setup: if the bank outstanding you entered
+              already includes this EMI, pick unlock only so principal leaves
+              the blocked limit without doubling outstanding. If EMI is not on
+              the card yet, add it now. Otherwise leave for bill day.
+            </p>
+          </div>
+        </>
       ) : null}
       <div className="field">
         <label htmlFor="debt-name">Name</label>
@@ -763,6 +806,7 @@ export function EditDebtAccountButton({
       name: account.name,
       type: account.type,
       creditCardId: account.creditCardId ?? "",
+      emiOutstandingChoice: "wait",
       startingBalance: String(account.startingBalance),
       monthlyEmi: String(account.monthlyEmi),
       interestPercent,

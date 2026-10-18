@@ -266,8 +266,12 @@ export function summarizeCardStatement(args: {
   );
   const outstanding = Math.max(0, args.currentOutstanding ?? 0);
 
-  // Explicit bank statement amount: due = statement − payments; rest of
-  // revolving outstanding is next-bill open.
+  // Outstanding only counts as “due this cycle” when the user included the
+  // bank bill (statement amount and/or pin). Otherwise leave revolving as
+  // open until the next statement — do not invent an overdue previous bill.
+  const billIncluded =
+    pin || (statementRaw != null && statementRaw > 0);
+
   if (statementRaw != null) {
     amountDue = Math.max(
       0,
@@ -288,23 +292,29 @@ export function summarizeCardStatement(args: {
       0,
       Math.round((outstanding - nextBillPending) * 100) / 100,
     );
-  } else if (!hasChargeActivities && outstanding > 0) {
+  } else if (billIncluded && !hasChargeActivities && outstanding > 0) {
     amountDue = Math.max(
       0,
       Math.round((outstanding - nextBillPending) * 100) / 100,
     );
-  } else if (hasChargeActivities && outstanding > 0) {
+  } else if (billIncluded && hasChargeActivities && outstanding > 0) {
     const fromOutstanding = Math.max(
       0,
       Math.round((outstanding - nextBillPending) * 100) / 100,
     );
     amountDue = Math.max(amountDue, fromOutstanding);
+  } else if (!billIncluded && outstanding > 0 && !hasChargeActivities) {
+    // No included bill yet — outstanding waits on the next statement.
+    nextBillPending = Math.max(nextBillPending, outstanding);
   }
 
-  // Only advance past this cycle when nothing is still owed on it.
+  // Advance past a closed cycle when nothing is owed on it, or when the user
+  // never included that bill (so a past due date must not look “overdue”).
   const dueIsPast = !!nextDueDate && nextDueDate < todayKey;
   const stillOwesCurrent =
-    amountDue > 0 || pin || (statementRaw != null && statementRaw > paymentsAfterBill);
+    amountDue > 0 ||
+    (billIncluded &&
+      (pin || (statementRaw != null && statementRaw > paymentsAfterBill)));
   if (dueIsPast && !stillOwesCurrent) {
     nextDueDate = nextBillDate ? dueDateFromBill(nextBillDate, gap) : null;
   }

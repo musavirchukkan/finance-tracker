@@ -123,26 +123,43 @@ describe("summarizeCardStatement", () => {
     expect(summary.nextBillPending).toBe(500);
   });
 
-  it("uses current outstanding when there are no charge activities", () => {
+  it("does not treat outstanding as due until the bill is included", () => {
+    const summary = summarizeCardStatement({
+      billingDay: 20,
+      paymentDueGapDays: 19, // 20 Sep + 19 → 9 Oct
+      from: new Date(2026, 9, 17), // 17 Oct — before Oct 20 bill
+      currentOutstanding: 12_000,
+      pinToCurrentStatement: false,
+      activities: [],
+    });
+    expect(summary.amountDue).toBe(0);
+    expect(summary.nextBillPending).toBe(12_000);
+    // Past Sep due with no included bill → roll to next cycle due (Nov 8).
+    expect(summary.nextDueDate).toBe("2026-11-08");
+  });
+
+  it("uses outstanding as due when pin includes the bill", () => {
     const summary = summarizeCardStatement({
       billingDay: 25,
       paymentDueGapDays: 15, // 25 Sep + 15 → 10 Oct
-      from: new Date(2026, 9, 5), // 5 Oct — due for Sept bill is still ahead (10 Oct)
+      from: new Date(2026, 9, 5),
       currentOutstanding: 12_000,
+      pinToCurrentStatement: true,
       activities: [],
     });
     expect(summary.amountDue).toBe(12_000);
     expect(summary.nextDueDate).toBe("2026-10-10");
   });
 
-  it("keeps outstanding on current bill when due is past but still unpaid", () => {
+  it("keeps outstanding on current bill when pinned and due is past", () => {
     // Bill day 25, gap 15: last bill 25 Sep → due 10 Oct. Today 12 Oct → past,
-    // but outstanding remains due on that cycle (do not advance away).
+    // pin keeps outstanding due on that cycle.
     const summary = summarizeCardStatement({
       billingDay: 25,
       paymentDueGapDays: 15,
       from: new Date(2026, 9, 12),
       currentOutstanding: 8_000,
+      pinToCurrentStatement: true,
       activities: [],
     });
     expect(summary.lastBillDate).toBe("2026-09-25");

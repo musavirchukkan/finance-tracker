@@ -49,8 +49,10 @@ export default async function CardsPage() {
               card.
             </p>
             <p>
-              <strong>Due to pay</strong> = closed statement due (including EMI
-              posted on the bill date) + any linked EMI not yet posted.
+              <strong>Due to pay</strong> only after you include the bank bill
+              (statement amount or &quot;Include on this month&apos;s bill&quot;).
+              Until then, revolving balance waits on the next statement — no
+              overdue nag for a bill that has not been generated yet.
             </p>
             <p>
               On each statement date, linked CC EMI (principal + interest + GST)
