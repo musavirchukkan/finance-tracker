@@ -27,6 +27,7 @@ import {
   computeGstOnInterest,
   computeMonthlyInterest,
   computeTotalInterest,
+  isEmiPostedToCardType,
   normalizeInterestType,
   suggestInstallmentSplit,
   validateDebtTenure,
@@ -1261,6 +1262,16 @@ export async function getDebtDashboard(userId: string) {
     }
   }
 
+  const nextUnpaidDueByAccount = new Map<string, string>();
+  for (const p of payments) {
+    if (p.isPaid) continue;
+    if (isEmiPostedToCardType(p.paymentType)) continue;
+    const cur = nextUnpaidDueByAccount.get(p.accountId);
+    if (!cur || p.dueDate < cur) {
+      nextUnpaidDueByAccount.set(p.accountId, p.dueDate);
+    }
+  }
+
   const accountRows = accounts.map((a) => {
     const starting = toNumber(a.startingBalance);
     const paid = paydownByAccount.get(a.id) ?? 0;
@@ -1318,7 +1329,19 @@ export async function getDebtDashboard(userId: string) {
       totalCharges: charges,
       paidTillNow: paidToDateByAccount.get(a.id) ?? 0,
       pending,
+      nextDueDate: nextUnpaidDueByAccount.get(a.id) ?? null,
     };
+  });
+
+  // Soonest unpaid due first; paid-off / no due last.
+  accountRows.sort((a, b) => {
+    const aDue = a.nextDueDate;
+    const bDue = b.nextDueDate;
+    if (aDue && bDue && aDue !== bDue) return aDue < bDue ? -1 : 1;
+    if (aDue && !bDue) return -1;
+    if (!aDue && bDue) return 1;
+    if (a.pending > 0 !== b.pending > 0) return a.pending > 0 ? -1 : 1;
+    return a.name.localeCompare(b.name);
   });
 
   const totals = accountRows.reduce(
@@ -1339,9 +1362,24 @@ export async function getDebtDashboard(userId: string) {
     paymentsByMonth[ym] = (paymentsByMonth[ym] ?? 0) + toNumber(p.amount);
   }
 
+  // Unpaid soonest-first, then paid (newest due first).
+  const sortedPayments = [...payments].sort((a, b) => {
+    if (a.isPaid !== b.isPaid) return a.isPaid ? 1 : -1;
+    if (a.dueDate !== b.dueDate) {
+      return a.isPaid
+        ? a.dueDate > b.dueDate
+          ? -1
+          : 1
+        : a.dueDate < b.dueDate
+          ? -1
+          : 1;
+    }
+    return a.accountName.localeCompare(b.accountName);
+  });
+
   return {
     accounts: accountRows,
-    payments,
+    payments: sortedPayments,
     settings,
     totals,
     paymentsByMonth,

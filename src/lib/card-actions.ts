@@ -20,6 +20,8 @@ import {
   clampBillingDay,
   clampDueGapDays,
   formatCardLabel,
+  isActiveCardStatus,
+  normalizeCardStatus,
   normalizeLastFour,
   previousCycleDate,
   resolveLimitRootId,
@@ -451,7 +453,7 @@ export async function listCreditCards(userId: string) {
 
   const emiByCard = await linkedEmiByCard(userId, lastBillByCard);
 
-  return rows.map((c) => {
+  const listed = rows.map((c) => {
     const summary = statementFromActivities(c, byCard.get(c.id) ?? []);
     return {
       ...c,
@@ -459,6 +461,24 @@ export async function listCreditCards(userId: string) {
       ...withEmiAggregates(c, summary, emiByCard.get(c.id), rows, emiByCard),
     };
   });
+
+  // Active first; soonest due; amount-due before zero; inactive last.
+  listed.sort((a, b) => {
+    const aActive = isActiveCardStatus(a.status);
+    const bActive = isActiveCardStatus(b.status);
+    if (aActive !== bActive) return aActive ? -1 : 1;
+    const aDue = a.nextDueDate;
+    const bDue = b.nextDueDate;
+    if (aDue && bDue && aDue !== bDue) return aDue < bDue ? -1 : 1;
+    if (aDue && !bDue) return -1;
+    if (!aDue && bDue) return 1;
+    if (a.amountDue > 0 !== b.amountDue > 0) {
+      return a.amountDue > 0 ? -1 : 1;
+    }
+    return a.label.localeCompare(b.label);
+  });
+
+  return listed;
 }
 
 /** Payment / bill reminders for Cards + Debt pages. */
@@ -595,7 +615,7 @@ export async function createCreditCard(formData: FormData) {
   const pinToCurrentStatement =
     formData.get("pinToCurrentStatement") === "on" ||
     formData.get("pinToCurrentStatement") === "true";
-  const status = String(formData.get("status") ?? "Active").trim() || "Active";
+  const status = normalizeCardStatus(String(formData.get("status") ?? "Active"));
   const { lastFour, isRupay } = parseCardExtra(formData);
 
   if (!name) throw new Error("Name is required");
@@ -646,7 +666,7 @@ export async function updateCreditCard(formData: FormData) {
   const pinToCurrentStatement =
     formData.get("pinToCurrentStatement") === "on" ||
     formData.get("pinToCurrentStatement") === "true";
-  const status = String(formData.get("status") ?? "Active").trim() || "Active";
+  const status = normalizeCardStatus(String(formData.get("status") ?? "Active"));
   const { lastFour, isRupay } = parseCardExtra(formData);
 
   if (!id || !name) throw new Error("Missing fields");

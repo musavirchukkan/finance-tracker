@@ -202,7 +202,13 @@ export default async function CardsPage() {
                     </td>
                     <td className="num">{formatINR(c.nextBillPending)}</td>
                     <td className="nowrap">{c.nextDueDate ?? "—"}</td>
-                    <td>{c.status}</td>
+                    <td>
+                      {c.status === "Inactive" ? (
+                        <span className="muted">Inactive</span>
+                      ) : (
+                        "Active"
+                      )}
+                    </td>
                     <td>
                       <div className="row-actions">
                         <Link

@@ -2,6 +2,7 @@ import { TransactionForm } from "@/components/transaction-form";
 import { listCategories } from "@/lib/actions";
 import { listBankAccounts } from "@/lib/bank-actions";
 import { listCreditCards } from "@/lib/card-actions";
+import { isActiveCardStatus } from "@/lib/credit-cards";
 import { requireUser } from "@/lib/session";
 
 export default async function QuickAddPage() {
@@ -21,12 +22,14 @@ export default async function QuickAddPage() {
             kind: c.kind,
             icon: c.icon,
           }))}
-          creditCards={cards.map((c) => ({
-            id: c.id,
-            name: c.name,
-            label: c.label,
-            isRupay: c.isRupay,
-          }))}
+          creditCards={cards
+            .filter((c) => isActiveCardStatus(c.status))
+            .map((c) => ({
+              id: c.id,
+              name: c.name,
+              label: c.label,
+              isRupay: c.isRupay,
+            }))}
           bankAccounts={banks.map((a) => ({
             id: a.id,
             name: a.name,

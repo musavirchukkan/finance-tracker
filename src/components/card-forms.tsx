@@ -231,13 +231,19 @@ function CardFields({
       </div>
       <div className="field">
         <label htmlFor="card-status">Status</label>
-        <input
+        <select
           id="card-status"
           name="status"
-          placeholder="Status"
-          value={values.status}
+          value={values.status === "Inactive" ? "Inactive" : "Active"}
           onChange={(e) => set("status", e.target.value)}
-        />
+        >
+          <option value="Active">Active</option>
+          <option value="Inactive">Inactive</option>
+        </select>
+        <p className="muted page-sub" style={{ margin: "0.35rem 0 0" }}>
+          Inactive cards stay on Cards for history but are hidden from new
+          transaction payment pickers.
+        </p>
       </div>
     </>
   );
@@ -339,7 +345,7 @@ export function EditCreditCardButton({
         card.paymentDueGapDays != null ? String(card.paymentDueGapDays) : "20",
       lastFour: card.lastFour ?? "",
       isRupay: !!card.isRupay,
-      status: card.status,
+      status: card.status === "Inactive" ? "Inactive" : "Active",
     }),
     [card],
   );

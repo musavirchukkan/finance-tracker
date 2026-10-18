@@ -6,6 +6,7 @@ import { InfoTip } from "@/components/info-tip";
 import { deleteTransaction, listCategories, listTransactions } from "@/lib/actions";
 import { listBankAccounts } from "@/lib/bank-actions";
 import { listCreditCards } from "@/lib/card-actions";
+import { isActiveCardStatus } from "@/lib/credit-cards";
 import { formatINR } from "@/lib/money";
 import {
   currentYearMonth,
@@ -72,12 +73,14 @@ export default async function TransactionsPage({
     kind: c.kind,
     icon: c.icon,
   }));
-  const creditCards = cards.map((c) => ({
-    id: c.id,
-    name: c.name,
-    label: c.label,
-    isRupay: c.isRupay,
-  }));
+  const creditCards = cards
+    .filter((c) => isActiveCardStatus(c.status))
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      label: c.label,
+      isRupay: c.isRupay,
+    }));
   const bankAccounts = banks.map((a) => ({
     id: a.id,
     name: a.name,

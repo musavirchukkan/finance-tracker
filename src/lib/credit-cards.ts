@@ -9,6 +9,23 @@ export const CARD_ACTIVITY_TYPES = [
 
 export type CardActivityType = (typeof CARD_ACTIVITY_TYPES)[number];
 
+export const CARD_STATUS_OPTIONS = ["Active", "Inactive"] as const;
+export type CardStatus = (typeof CARD_STATUS_OPTIONS)[number];
+
+export function normalizeCardStatus(
+  raw: string | null | undefined,
+): CardStatus {
+  return String(raw ?? "")
+    .trim()
+    .toLowerCase() === "inactive"
+    ? "Inactive"
+    : "Active";
+}
+
+export function isActiveCardStatus(status: string | null | undefined): boolean {
+  return normalizeCardStatus(status) === "Active";
+}
+
 /** Preferred day of month 1–31 (resolved per-month to last day when needed). */
 export function clampBillingDay(day: number | null | undefined): number | null {
   if (day == null || !Number.isFinite(day)) return null;

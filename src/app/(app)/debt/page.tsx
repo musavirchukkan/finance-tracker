@@ -89,6 +89,26 @@ export default async function DebtPage() {
   const cards = await listCreditCards(user.id);
   const paymentWarnings = await listLedgerPaymentWarnings(user.id, cards);
   const cardsDue = cards.reduce((s, c) => s + c.amountDue, 0);
+  const cardDueById = new Map(
+    cards.map((c) => [c.id, c.nextDueDate] as const),
+  );
+  // Prefer unpaid payment due; for CC EMI fall back to linked card due date.
+  const accountsByDue = [...data.accounts]
+    .map((a) => ({
+      ...a,
+      displayDueDate:
+        a.nextDueDate ??
+        (a.creditCardId ? (cardDueById.get(a.creditCardId) ?? null) : null),
+    }))
+    .sort((a, b) => {
+      const aDue = a.displayDueDate;
+      const bDue = b.displayDueDate;
+      if (aDue && bDue && aDue !== bDue) return aDue < bDue ? -1 : 1;
+      if (aDue && !bDue) return -1;
+      if (!aDue && bDue) return 1;
+      if (a.pending > 0 !== b.pending > 0) return a.pending > 0 ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
   const goal = data.settings?.goalPayoffDate ?? defaultGoalDate(19);
   const baselineMonth = currentYearMonth();
 
@@ -257,132 +277,133 @@ export default async function DebtPage() {
         </article>
       </div>
 
+      <section className="panel">
+        <div className="panel-head">
+          <h2>Debt accounts</h2>
+        </div>
+
+        {accountsByDue.length === 0 ? (
+          <div className="empty">
+            No debt accounts yet. Tap <strong>+ Add debt</strong> to create one.
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>Account</th>
+                  <th>Type</th>
+                  <th>Next due</th>
+                  <th className="num">To pay / mo</th>
+                  <th className="num">Pending</th>
+                  <th>Tenure</th>
+                  <th>Status</th>
+                  <th>
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {accountsByDue.map((a) => (
+                  <tr key={a.id}>
+                    <td className="tx-main">
+                      <Link className="linkish" href={`/debt/${a.id}`}>
+                        {a.name}
+                      </Link>
+                    </td>
+                    <td>{a.type}</td>
+                    <td className="nowrap">{a.displayDueDate ?? "—"}</td>
+                    <td className="num">
+                      {a.monthlyEmiNum > 0 ? (
+                        <>
+                          {formatINR(a.monthlyToPay)}
+                          <div
+                            className="muted"
+                            style={{ fontSize: "0.75rem" }}
+                          >
+                            P {formatINR(a.monthlyPrincipal ?? 0)} · I{" "}
+                            {formatINR(a.monthlyInterest ?? 0)} · Tax{" "}
+                            {formatINR(a.monthlyGst ?? 0)}
+                          </div>
+                        </>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="num">{formatINR(a.pending)}</td>
+                    <td className="nowrap">
+                      {a.totalMonths > 0
+                        ? `${a.monthsPaid} / ${a.totalMonths} mo`
+                        : "—"}
+                    </td>
+                    <td>{a.status}</td>
+                    <td>
+                      <div className="row-actions">
+                        <Link
+                          className="btn btn-ghost btn-xs"
+                          href={`/debt/${a.id}`}
+                        >
+                          View
+                        </Link>
+                        <EditDebtAccountButton
+                          creditCards={creditCardOptions}
+                          account={{
+                            id: a.id,
+                            name: a.name,
+                            type: a.type,
+                            creditCardId: a.creditCardId,
+                            startingBalance: a.startingBalance,
+                            monthlyEmi: a.monthlyEmi,
+                            interestPercent: a.interestPercent,
+                            interestType: a.interestType,
+                            gstPercent: a.gstPercent,
+                            totalMonths: a.totalMonths,
+                            monthsPaid: a.monthsPaid,
+                            paidTillNow: a.paidTillNow,
+                            status: a.status,
+                          }}
+                        />
+                        <ActionForm
+                          action={deleteDebtAccount}
+                          successMessage="Account deleted"
+                          errorMessage="Could not delete account"
+                          confirmMessage={`Delete “${a.name}”?`}
+                        >
+                          <input type="hidden" name="id" value={a.id} />
+                          <button
+                            className="btn btn-danger btn-xs"
+                            type="submit"
+                          >
+                            Del
+                          </button>
+                        </ActionForm>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={3}>Total</td>
+                  <td className="num">
+                    {formatINR(
+                      accountsByDue.reduce(
+                        (s, a) => s + (a.monthlyToPay ?? a.monthlyEmiNum),
+                        0,
+                      ),
+                    )}
+                  </td>
+                  <td className="num">{formatINR(data.totals.pending)}</td>
+                  <td colSpan={3}></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </section>
+
       <div className="split-board">
         <div className="split-col">
-          <section className="panel">
-            <div className="panel-head">
-              <h2>Debt accounts</h2>
-            </div>
-
-            {data.accounts.length === 0 ? (
-              <div className="empty">
-                No debt accounts yet. Tap <strong>+ Add debt</strong> to create
-                one.
-              </div>
-            ) : (
-              <div className="table-wrap">
-                <table className="data">
-                  <thead>
-                    <tr>
-                      <th>Account</th>
-                      <th>Type</th>
-                      <th className="num">To pay / mo</th>
-                      <th className="num">Pending</th>
-                      <th>Tenure</th>
-                      <th>Status</th>
-                      <th>
-                        <span className="sr-only">Actions</span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.accounts.map((a) => (
-                      <tr key={a.id}>
-                        <td className="tx-main">
-                          <Link className="linkish" href={`/debt/${a.id}`}>
-                            {a.name}
-                          </Link>
-                        </td>
-                        <td>{a.type}</td>
-                        <td className="num">
-                          {a.monthlyEmiNum > 0 ? (
-                            <>
-                              {formatINR(a.monthlyToPay)}
-                              <div
-                                className="muted"
-                                style={{ fontSize: "0.75rem" }}
-                              >
-                                P {formatINR(a.monthlyPrincipal ?? 0)} · I{" "}
-                                {formatINR(a.monthlyInterest ?? 0)} · Tax{" "}
-                                {formatINR(a.monthlyGst ?? 0)}
-                              </div>
-                            </>
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-                        <td className="num">{formatINR(a.pending)}</td>
-                        <td className="nowrap">
-                          {a.totalMonths > 0
-                            ? `${a.monthsPaid} / ${a.totalMonths} mo`
-                            : "—"}
-                        </td>
-                        <td>{a.status}</td>
-                        <td>
-                          <div className="row-actions">
-                            <Link
-                              className="btn btn-ghost btn-xs"
-                              href={`/debt/${a.id}`}
-                            >
-                              View
-                            </Link>
-                            <EditDebtAccountButton
-                              creditCards={creditCardOptions}
-                              account={{
-                                id: a.id,
-                                name: a.name,
-                                type: a.type,
-                                creditCardId: a.creditCardId,
-                                startingBalance: a.startingBalance,
-                                monthlyEmi: a.monthlyEmi,
-                                interestPercent: a.interestPercent,
-                                interestType: a.interestType,
-                                gstPercent: a.gstPercent,
-                                totalMonths: a.totalMonths,
-                                monthsPaid: a.monthsPaid,
-                                paidTillNow: a.paidTillNow,
-                                status: a.status,
-                              }}
-                            />
-                            <ActionForm
-                              action={deleteDebtAccount}
-                              successMessage="Account deleted"
-                              errorMessage="Could not delete account"
-                              confirmMessage={`Delete “${a.name}”?`}
-                            >
-                              <input type="hidden" name="id" value={a.id} />
-                              <button
-                                className="btn btn-danger btn-xs"
-                                type="submit"
-                              >
-                                Del
-                              </button>
-                            </ActionForm>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <td colSpan={2}>Total</td>
-                      <td className="num">
-                        {formatINR(
-                          data.accounts.reduce(
-                            (s, a) => s + (a.monthlyToPay ?? a.monthlyEmiNum),
-                            0,
-                          ),
-                        )}
-                      </td>
-                      <td className="num">{formatINR(data.totals.pending)}</td>
-                      <td colSpan={3}></td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
-          </section>
-
           <section className="panel">
             <div className="panel-head">
               <h2>Payment log</h2>
@@ -524,6 +545,7 @@ export default async function DebtPage() {
           </section>
         </div>
       </div>
+
     </div>
   );
 }
