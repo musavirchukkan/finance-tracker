@@ -101,6 +101,10 @@ export default async function DebtPage() {
         (a.creditCardId ? (cardDueById.get(a.creditCardId) ?? null) : null),
     }))
     .sort((a, b) => {
+      // Has something to pay (pending / next due) before paid-off / nothing due.
+      const aOwes = a.pending > 0 || !!a.displayDueDate;
+      const bOwes = b.pending > 0 || !!b.displayDueDate;
+      if (aOwes !== bOwes) return aOwes ? -1 : 1;
       const aDue = a.displayDueDate;
       const bDue = b.displayDueDate;
       if (aDue && bDue && aDue !== bDue) return aDue < bDue ? -1 : 1;

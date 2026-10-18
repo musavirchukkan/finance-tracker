@@ -462,19 +462,19 @@ export async function listCreditCards(userId: string) {
     };
   });
 
-  // Active first; soonest due; amount-due before zero; inactive last.
+  // Active first; anything to pay before ₹0 due; then soonest due; inactive last.
   listed.sort((a, b) => {
     const aActive = isActiveCardStatus(a.status);
     const bActive = isActiveCardStatus(b.status);
     if (aActive !== bActive) return aActive ? -1 : 1;
+    const aOwes = a.amountDue > 0;
+    const bOwes = b.amountDue > 0;
+    if (aOwes !== bOwes) return aOwes ? -1 : 1;
     const aDue = a.nextDueDate;
     const bDue = b.nextDueDate;
     if (aDue && bDue && aDue !== bDue) return aDue < bDue ? -1 : 1;
     if (aDue && !bDue) return -1;
     if (!aDue && bDue) return 1;
-    if (a.amountDue > 0 !== b.amountDue > 0) {
-      return a.amountDue > 0 ? -1 : 1;
-    }
     return a.label.localeCompare(b.label);
   });
 

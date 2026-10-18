@@ -1333,8 +1333,11 @@ export async function getDebtDashboard(userId: string) {
     };
   });
 
-  // Soonest unpaid due first; paid-off / no due last.
+  // Owes something first; then soonest unpaid due; paid-off last.
   accountRows.sort((a, b) => {
+    const aOwes = a.pending > 0 || !!a.nextDueDate;
+    const bOwes = b.pending > 0 || !!b.nextDueDate;
+    if (aOwes !== bOwes) return aOwes ? -1 : 1;
     const aDue = a.nextDueDate;
     const bDue = b.nextDueDate;
     if (aDue && bDue && aDue !== bDue) return aDue < bDue ? -1 : 1;
