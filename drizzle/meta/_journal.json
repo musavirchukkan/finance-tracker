@@ -8,6 +8,13 @@
       "when": 1792182713773,
       "tag": "0000_majestic_iron_lad",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793700000000,
+      "tag": "0001_investments",
+      "breakpoints": true
     }
   ]
 }

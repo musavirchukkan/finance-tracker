@@ -80,6 +80,16 @@ export function NavIcon({ name }: { name: string }) {
       </svg>
     );
   }
+  if (name === "wealth") {
+    return (
+      <svg {...common}>
+        <path d="M3 3v18h18" />
+        <path d="M7 14v4" />
+        <path d="M12 10v8" />
+        <path d="M17 6v12" />
+      </svg>
+    );
+  }
   return (
     <svg {...common}>
       <circle cx="12" cy="12" r="3" />

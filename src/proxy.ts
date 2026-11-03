@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 
-const publicPaths = ["/login", "/health"];
+const publicPaths = ["/login", "/signup", "/health"];
 
 /**
  * Next.js 16+: `proxy` replaces the deprecated `middleware` file convention.
@@ -23,7 +23,7 @@ export const proxy = auth((request) => {
   const isPublic = publicPaths.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`),
   );
-  const isLoggedIn = !!request.auth;
+  const isLoggedIn = !!request.auth?.user?.id;
 
   if (!isLoggedIn && !isPublic) {
     const url = request.nextUrl.clone();
@@ -33,6 +33,7 @@ export const proxy = auth((request) => {
       "/debt",
       "/cards",
       "/accounts",
+      "/wealth",
       "/transactions",
       "/budget",
       "/analytics",
@@ -52,7 +53,7 @@ export const proxy = auth((request) => {
     return NextResponse.redirect(url);
   }
 
-  if (isLoggedIn && pathname === "/login") {
+  if (isLoggedIn && (pathname === "/login" || pathname === "/signup")) {
     const url = request.nextUrl.clone();
     url.pathname = "/overview";
     return NextResponse.redirect(url);

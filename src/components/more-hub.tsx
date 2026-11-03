@@ -18,6 +18,12 @@ const moreLinks = [
     icon: "bank",
   },
   {
+    href: "/wealth",
+    label: "Wealth",
+    description: "Net worth, investments, assets & liabilities",
+    icon: "wealth",
+  },
+  {
     href: "/transactions",
     label: "Transactions",
     description: "Browse and edit spending history",

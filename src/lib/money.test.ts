@@ -16,9 +16,13 @@ describe("parseAmount", () => {
     expect(parseAmount(" 100 ")).toBe(100);
   });
 
-  it("rejects invalid or negative amounts", () => {
+  it("rejects invalid or negative amounts by default", () => {
     expect(() => parseAmount("abc")).toThrow("Invalid amount");
     expect(() => parseAmount("-5")).toThrow("Invalid amount");
+  });
+
+  it("allows negative when opted in", () => {
+    expect(parseAmount("-43.5", { allowNegative: true })).toBe(-43.5);
   });
 });
 

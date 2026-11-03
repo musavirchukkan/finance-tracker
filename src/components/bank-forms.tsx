@@ -77,12 +77,14 @@ function BankFields({
           name="currentBalance"
           type="number"
           step="0.01"
-          min="0"
           inputMode="decimal"
           placeholder="0"
           value={values.currentBalance}
           onChange={(e) => set("currentBalance", e.target.value)}
         />
+        <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.8rem" }}>
+          Negative is allowed if the ledger is overdrawn or still catching up.
+        </p>
       </div>
       <div className="field">
         <label htmlFor="bank-min">Minimum balance</label>

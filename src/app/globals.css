@@ -1337,6 +1337,39 @@ button:disabled {
   align-items: center;
 }
 
+.wealth-breakdown {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.wealth-breakdown li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.wealth-breakdown .wealth-sub {
+  padding-left: 0.85rem;
+  font-size: var(--text-xs);
+}
+
+.wealth-breakdown .wealth-total {
+  margin-top: 0.35rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--line);
+  font-weight: 700;
+}
+
+.wealth-breakdown strong {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .overview-reminders {
   display: flex;
   align-items: flex-start;
@@ -3613,7 +3646,7 @@ button:disabled {
   }
 
   .kpi-grid {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
   }
 
   .dash-grid,

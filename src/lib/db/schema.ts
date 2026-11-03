@@ -306,6 +306,38 @@ export const savingsGoals = pgTable("savings_goals", {
     .notNull(),
 });
 
+/**
+ * Manual investment holdings. Value = quantity × current_price.
+ * `symbol` is reserved for a future live-price sync.
+ */
+export const investments = pgTable("investments", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  /** stock | mutual_fund | fd | gold | other */
+  type: text("type").notNull().default("stock"),
+  /** Optional ticker / ISIN for later live quotes. */
+  symbol: text("symbol"),
+  quantity: numeric("quantity", { precision: 18, scale: 6 })
+    .notNull()
+    .default("1"),
+  avgBuyPrice: numeric("avg_buy_price", { precision: 14, scale: 4 }),
+  currentPrice: numeric("current_price", { precision: 14, scale: 4 })
+    .notNull()
+    .default("0"),
+  /** Broker / app used to buy (Zerodha, Groww, bank FD, …). */
+  platform: text("platform"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
 export const usersRelations = relations(users, ({ many, one }) => ({
   categories: many(categories),
   budgets: many(budgets),
@@ -317,6 +349,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   debtPayments: many(debtPayments),
   debtSettings: one(debtSettings),
   savingsGoals: many(savingsGoals),
+  investments: many(investments),
 }));
 
 export const categoriesRelations = relations(categories, ({ one, many }) => ({
@@ -399,3 +432,8 @@ export type Transaction = typeof transactions.$inferSelect;
 export type DebtAccount = typeof debtAccounts.$inferSelect;
 export type DebtPayment = typeof debtPayments.$inferSelect;
 export type SavingsGoal = typeof savingsGoals.$inferSelect;
+export type Investment = typeof investments.$inferSelect;
+
+export const investmentsRelations = relations(investments, ({ one }) => ({
+  user: one(users, { fields: [investments.userId], references: [users.id] }),
+}));

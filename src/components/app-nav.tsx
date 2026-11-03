@@ -28,6 +28,7 @@ const menuLinks = [
   { href: "/debt", label: "Debt", short: "Debt", icon: "debt" },
   { href: "/cards", label: "Cards", short: "Cards", icon: "cards" },
   { href: "/accounts", label: "Accounts", short: "Banks", icon: "bank" },
+  { href: "/wealth", label: "Wealth", short: "Wealth", icon: "wealth" },
   {
     href: "/transactions",
     label: "Transactions",

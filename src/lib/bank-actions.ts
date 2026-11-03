@@ -87,6 +87,7 @@ export async function createBankAccount(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const currentBalance = parseAmount(
     String(formData.get("currentBalance") ?? "0"),
+    { allowNegative: true },
   );
   const accountType =
     String(formData.get("accountType") ?? "Savings").trim() || "Savings";
@@ -118,6 +119,7 @@ export async function updateBankAccount(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const currentBalance = parseAmount(
     String(formData.get("currentBalance") ?? "0"),
+    { allowNegative: true },
   );
   const accountType =
     String(formData.get("accountType") ?? "Savings").trim() || "Savings";

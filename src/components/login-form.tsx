@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { loginAction } from "@/lib/login-action";
@@ -86,6 +87,15 @@ export function LoginForm() {
       <button className="btn btn-primary" type="submit" disabled={pending}>
         {pending ? "Signing in…" : "Sign in"}
       </button>
+      <p className="muted" style={{ margin: 0, fontSize: "0.9rem" }}>
+        New here?{" "}
+        <Link
+          className="linkish"
+          href={`/signup?callbackUrl=${encodeURIComponent(callbackUrl)}`}
+        >
+          Create an account
+        </Link>
+      </p>
     </form>
   );
 }

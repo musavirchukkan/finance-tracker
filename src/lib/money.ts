@@ -17,10 +17,13 @@ export function toNumber(value: number | string | null | undefined): number {
   return Number.isNaN(n) ? 0 : n;
 }
 
-export function parseAmount(raw: string): number {
+export function parseAmount(
+  raw: string,
+  opts?: { allowNegative?: boolean },
+): number {
   const cleaned = raw.replace(/[₹,\s]/g, "");
   const n = Number(cleaned);
-  if (Number.isNaN(n) || n < 0) {
+  if (Number.isNaN(n) || (!opts?.allowNegative && n < 0)) {
     throw new Error("Invalid amount");
   }
   return Math.round(n * 100) / 100;

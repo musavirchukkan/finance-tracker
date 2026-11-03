@@ -12,6 +12,7 @@ const STATIC_PRECACHE = [
 const PROTECTED_PREFIXES = [
   "/overview",
   "/debt",
+  "/wealth",
   "/transactions",
   "/budget",
   "/analytics",

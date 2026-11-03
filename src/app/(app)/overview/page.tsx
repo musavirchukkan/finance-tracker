@@ -18,6 +18,7 @@ import {
   listCreditCards,
   listLedgerPaymentWarnings,
 } from "@/lib/card-actions";
+import { getNetWorth } from "@/lib/investment-actions";
 import { formatINR, toNumber } from "@/lib/money";
 import {
   currentYearMonth,
@@ -77,13 +78,14 @@ export default async function OverviewPage({
       ? params.month
       : currentYearMonth();
 
-  const [{ rows, cashflow }, { rows: txs }, debt, goals, cards] =
+  const [{ rows, cashflow }, { rows: txs }, debt, goals, cards, wealth] =
     await Promise.all([
       getBudgetSummary(user.id, month),
       listTransactions(user.id, month),
       getDebtDashboard(user.id),
       listSavingsGoals(user.id),
       listCreditCards(user.id),
+      getNetWorth(user.id),
     ]);
   const reminders = await listLedgerPaymentWarnings(user.id, cards);
 
@@ -165,6 +167,9 @@ export default async function OverviewPage({
               →
             </Link>
           </div>
+          <Link className="btn btn-ghost btn-xs" href="/wealth">
+            Wealth
+          </Link>
           <Link className="btn btn-ghost btn-xs" href="/debt">
             Manage debt
           </Link>
@@ -217,6 +222,26 @@ export default async function OverviewPage({
           </span>
           <div className="kpi-chart">
             <MiniBars values={barValues} />
+          </div>
+        </div>
+        <div className="kpi-card">
+          <label>Net worth</label>
+          <p className="kpi-value">{formatINR(wealth.netWorth)}</p>
+          <span
+            className={`kpi-delta ${wealth.netWorth >= 0 ? "up" : "down"}`}
+          >
+            Assets {formatINR(wealth.assets.total)} · Debt{" "}
+            {formatINR(wealth.liabilities.total)}
+          </span>
+          <div className="kpi-chart">
+            <Sparkline
+              values={[
+                wealth.assets.total,
+                Math.max(wealth.liabilities.total, 0),
+                Math.max(wealth.netWorth, 0),
+              ]}
+              color="#3b82f6"
+            />
           </div>
         </div>
       </div>
