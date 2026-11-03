@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
 import {
   AddDebtPaymentButton,
+  DebtPaidToggle,
   EditDebtAccountButton,
 } from "@/components/debt-forms";
 import { InfoTip } from "@/components/info-tip";
@@ -10,7 +11,6 @@ import {
   deleteDebtAccount,
   deleteDebtPayment,
   getDebtAccountDetail,
-  toggleDebtPaymentPaid,
 } from "@/lib/actions";
 import { listCreditCards } from "@/lib/card-actions";
 import { PAID_TO_DATE_TYPE } from "@/lib/debt-account";
@@ -259,27 +259,7 @@ export default async function DebtDetailPage({
                     <td>{p.paymentType}</td>
                     <td className="num">{formatINR(p.amount)}</td>
                     <td>
-                      <ActionForm
-                        action={toggleDebtPaymentPaid}
-                        successMessage={
-                          p.isPaid ? "Marked unpaid" : "Marked paid"
-                        }
-                        errorMessage="Could not update payment"
-                      >
-                        <input type="hidden" name="id" value={p.id} />
-                        <input
-                          type="hidden"
-                          name="isPaid"
-                          value={String(p.isPaid)}
-                        />
-                        <button
-                          className="btn btn-ghost btn-xs"
-                          type="submit"
-                          aria-pressed={p.isPaid}
-                        >
-                          {p.isPaid ? "Paid" : "Unpaid"}
-                        </button>
-                      </ActionForm>
+                      <DebtPaidToggle id={p.id} isPaid={p.isPaid} />
                     </td>
                     <td>
                       <ActionForm

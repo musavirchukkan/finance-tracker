@@ -21,6 +21,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { parseAmount, toNumber } from "@/lib/money";
 import { requireUser } from "@/lib/session";
 import { monthDateBounds, yearMonthFromDate } from "@/lib/months";
+import { parseUtcInstant } from "@/lib/utc-time";
 import {
   DEFAULT_GST_ON_INTEREST_PERCENT,
   PAID_TO_DATE_TYPE,
@@ -119,6 +120,7 @@ export async function updateTransaction(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get("id") ?? "");
   const date = String(formData.get("date") ?? "");
+  const occurredAt = parseUtcInstant(String(formData.get("occurredAt") ?? ""));
   const description = String(formData.get("description") ?? "").trim();
   const categoryId = String(formData.get("categoryId") ?? "");
   const type = String(formData.get("type") ?? "expense") === "income"
@@ -129,6 +131,10 @@ export async function updateTransaction(formData: FormData) {
     formData,
     type,
   );
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(occurredAt.getTime())) {
+    throw new Error("Enter a valid date and time");
+  }
 
   const {
     reverseActivitiesForTransaction,
@@ -147,6 +153,7 @@ export async function updateTransaction(formData: FormData) {
     .update(transactions)
     .set({
       date,
+      occurredAt,
       description,
       categoryId,
       type,
@@ -999,6 +1006,7 @@ export async function listTransactions(
       creditCardLastFour: spendCard.lastFour,
       bankAccountId: transactions.bankAccountId,
       bankAccountName: bankAccounts.name,
+      billPayCardId: billCard.id,
       billPayCardName: billCard.name,
       billPayCardLastFour: billCard.lastFour,
     })
@@ -1085,14 +1093,17 @@ export async function insertTransactionForUser(
     }
   }
 
-  const occurredAt = input.occurredAt
-    ? new Date(input.occurredAt)
-    : new Date(`${input.date}T12:00:00`);
-  const dateOnly =
-    input.date ||
-    (Number.isNaN(occurredAt.getTime())
-      ? new Date().toISOString().slice(0, 10)
-      : occurredAt.toISOString().slice(0, 10));
+  const parsedInstant = input.occurredAt
+    ? parseUtcInstant(input.occurredAt)
+    : new Date();
+  // `occurredAt` is the UTC instant. `date` is the calendar day the user
+  // picked in their own timezone, so month filters match what they see.
+  const occurredAt = Number.isNaN(parsedInstant.getTime())
+    ? new Date()
+    : parsedInstant;
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(input.date)
+    ? input.date
+    : occurredAt.toISOString().slice(0, 10);
 
   const cardBillPayId =
     input.type === "expense" && input.cardBillPayId

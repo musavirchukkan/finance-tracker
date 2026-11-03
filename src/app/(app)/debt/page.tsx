@@ -6,6 +6,7 @@ import { DebtReductionChart } from "@/components/charts";
 import {
   AddDebtAccountButton,
   AddDebtPaymentButton,
+  DebtPaidToggle,
   EditDebtAccountButton,
 } from "@/components/debt-forms";
 import { InfoTip } from "@/components/info-tip";
@@ -14,7 +15,6 @@ import {
   deleteDebtAccount,
   deleteDebtPayment,
   getDebtDashboard,
-  toggleDebtPaymentPaid,
 } from "@/lib/actions";
 import {
   listCreditCards,
@@ -438,27 +438,7 @@ export default async function DebtPage() {
                         <td>{p.paymentType}</td>
                         <td className="num">{formatINR(p.amount)}</td>
                         <td>
-                          <ActionForm
-                            action={toggleDebtPaymentPaid}
-                            successMessage={
-                              p.isPaid ? "Marked unpaid" : "Marked paid"
-                            }
-                            errorMessage="Could not update payment"
-                          >
-                            <input type="hidden" name="id" value={p.id} />
-                            <input
-                              type="hidden"
-                              name="isPaid"
-                              value={String(p.isPaid)}
-                            />
-                            <button
-                              className="btn btn-ghost btn-xs"
-                              type="submit"
-                              aria-pressed={p.isPaid}
-                            >
-                              {p.isPaid ? "Paid" : "Unpaid"}
-                            </button>
-                          </ActionForm>
+                          <DebtPaidToggle id={p.id} isPaid={p.isPaid} />
                         </td>
                         <td>
                           <ActionForm

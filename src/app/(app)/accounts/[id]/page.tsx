@@ -3,9 +3,11 @@ import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
 import { EditBankAccountButton } from "@/components/bank-forms";
 import { InfoTip } from "@/components/info-tip";
+import { LocalDateTime } from "@/components/local-datetime";
 import { ReviewCallout } from "@/components/review-callout";
 import { deleteBankAccount, getBankAccountDetail } from "@/lib/bank-actions";
 import { formatINR } from "@/lib/money";
+import { toUtcIso } from "@/lib/utc-time";
 import { requireUser } from "@/lib/session";
 
 export default async function BankAccountDetailPage({
@@ -124,9 +126,17 @@ export default async function BankAccountDetailPage({
                 </tr>
               </thead>
               <tbody>
-                {txs.map((t) => (
+                {txs.map((t) => {
+                  const occurredAtIso = toUtcIso(t.occurredAt);
+                  return (
                   <tr key={t.id}>
-                    <td className="nowrap">{t.date}</td>
+                    <td className="nowrap">
+                      {occurredAtIso ? (
+                        <LocalDateTime iso={occurredAtIso} />
+                      ) : (
+                        t.date
+                      )}
+                    </td>
                     <td>{t.description || "—"}</td>
                     <td>{t.type}</td>
                     <td
@@ -138,7 +148,8 @@ export default async function BankAccountDetailPage({
                       {formatINR(Number(t.amount))}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

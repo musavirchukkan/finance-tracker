@@ -124,7 +124,7 @@ describe("cardBillWarnings", () => {
     expect(warnings[0]?.severity).toBe("warn");
   });
 
-  it("marks urgent when due was 2+ days ago", () => {
+  it("marks overdue the day after due", () => {
     const warnings = cardBillWarnings(
       [
         {
@@ -134,11 +134,12 @@ describe("cardBillWarnings", () => {
           nextDueDate: "2026-10-10",
         },
       ],
-      new Date(2026, 9, 12, 12, 0, 0),
+      new Date(2026, 9, 11, 12, 0, 0),
     );
     expect(warnings).toHaveLength(1);
     expect(warnings[0]?.kind).toBe("overdue");
     expect(warnings[0]?.severity).toBe("urgent");
+    expect(warnings[0]?.message).toContain("yesterday");
   });
 
   it("skips when nothing is due", () => {
@@ -204,7 +205,7 @@ describe("unpaidDebtPaymentWarnings", () => {
     expect(warnings[0]?.kind).toBe("unpaid");
   });
 
-  it("marks urgent when unpaid EMI is 2+ days late", () => {
+  it("marks overdue the day after unpaid EMI due", () => {
     const warnings = unpaidDebtPaymentWarnings(
       [
         {
@@ -217,7 +218,7 @@ describe("unpaidDebtPaymentWarnings", () => {
           isPaid: false,
         },
       ],
-      new Date(2026, 9, 5, 12, 0, 0),
+      new Date(2026, 9, 2, 12, 0, 0),
     );
     expect(warnings[0]?.kind).toBe("overdue");
     expect(warnings[0]?.severity).toBe("urgent");

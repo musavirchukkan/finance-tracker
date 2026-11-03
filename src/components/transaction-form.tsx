@@ -17,6 +17,13 @@ import {
 } from "@/lib/offline-queue";
 import { formatINR } from "@/lib/money";
 import { resolveCategoryIcon } from "@/lib/category-icons";
+import { updateTransaction } from "@/lib/actions";
+import {
+  localWallClockToUtcIso,
+  nowTimeLocal,
+  todayLocal,
+  utcIsoToLocalFields,
+} from "@/lib/utc-time";
 
 export type CategoryOption = {
   id: string;
@@ -40,11 +47,28 @@ export type BankAccountOption = {
   label?: string;
 };
 
+export type TransactionEditValues = {
+  id: string;
+  /** UTC ISO instant. */
+  occurredAt: string;
+  /** Calendar day stored for this row (YYYY-MM-DD). */
+  date: string;
+  description: string;
+  categoryId: string;
+  type: "expense" | "income";
+  amount: string;
+  creditCardId: string | null;
+  bankAccountId: string | null;
+  cardBillPayId: string | null;
+};
+
 type Props = {
   categories: CategoryOption[];
   creditCards?: CreditCardOption[];
   bankAccounts?: BankAccountOption[];
   defaultDate?: string;
+  /** Existing transaction. Date and time are shown in the user's local zone. */
+  editing?: TransactionEditValues;
   /** Polished quick-add layout (modal + /quick-add) */
   variant?: "classic" | "quick";
   /** @deprecated use variant="quick" */
@@ -54,34 +78,24 @@ type Props = {
   title?: string;
 };
 
-function pad(n: number) {
-  return String(n).padStart(2, "0");
-}
-
-function todayLocal(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-function nowTimeLocal(): string {
-  const d = new Date();
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 function formatTimeLabel(date: string, time: string, isToday: boolean) {
   const [h, m] = time.split(":").map(Number);
   const d = new Date();
   d.setHours(h || 0, m || 0, 0, 0);
-  const clock = d.toLocaleTimeString("en-IN", {
+  const clock = d.toLocaleTimeString(undefined, {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
   });
   if (isToday && date === todayLocal()) return `Today, ${clock}`;
-  const day = new Date(`${date}T12:00:00`).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-  });
+  const [year, month, dayOfMonth] = date.split("-").map(Number);
+  const day = new Date(year, (month || 1) - 1, dayOfMonth || 1).toLocaleDateString(
+    undefined,
+    {
+      day: "numeric",
+      month: "short",
+    },
+  );
   return `${day}, ${clock}`;
 }
 
@@ -182,11 +196,46 @@ function QuickCategoryPicker({
 
 type PaymentMethod = "cash" | "upi" | "bank" | "card" | "pay";
 
+function paymentFromEdit(editing?: TransactionEditValues): {
+  paymentMethod: PaymentMethod;
+  bankAccountId: string;
+  cardId: string;
+} {
+  if (editing?.cardBillPayId) {
+    return {
+      paymentMethod: "pay",
+      bankAccountId: editing.bankAccountId ?? "",
+      cardId: editing.cardBillPayId,
+    };
+  }
+  if (editing?.creditCardId) {
+    return {
+      paymentMethod: "card",
+      bankAccountId: "",
+      cardId: editing.creditCardId,
+    };
+  }
+  if (editing?.bankAccountId) {
+    return {
+      paymentMethod: "bank",
+      bankAccountId: editing.bankAccountId,
+      cardId: "",
+    };
+  }
+  return { paymentMethod: "cash", bankAccountId: "", cardId: "" };
+}
+
+function amountInputValue(amount: string) {
+  const n = Number(amount);
+  return Number.isFinite(n) ? String(n) : amount;
+}
+
 export function TransactionForm({
   categories,
   creditCards = [],
   bankAccounts = [],
   defaultDate,
+  editing,
   variant,
   compact,
   onSaved,
@@ -195,23 +244,46 @@ export function TransactionForm({
   const mode = variant ?? (compact ? "quick" : "classic");
   const router = useRouter();
   const toast = useToast();
-  const [type, setType] = useState<"expense" | "income">("expense");
-  const [amount, setAmount] = useState("");
-  const [description, setDescription] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
-  const [bankAccountId, setBankAccountId] = useState("");
-  const [cardId, setCardId] = useState("");
+  const initialPayment = paymentFromEdit(editing);
+  const initialWhen = editing
+    ? utcIsoToLocalFields(editing.occurredAt) ?? {
+        date: editing.date,
+        time: "12:00",
+      }
+    : null;
+  const [type, setType] = useState<"expense" | "income">(
+    editing?.type ?? "expense",
+  );
+  const [amount, setAmount] = useState(
+    editing ? amountInputValue(editing.amount) : "",
+  );
+  const [description, setDescription] = useState(editing?.description ?? "");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
+    initialPayment.paymentMethod,
+  );
+  const [bankAccountId, setBankAccountId] = useState(initialPayment.bankAccountId);
+  const [cardId, setCardId] = useState(initialPayment.cardId);
   const [categoryId, setCategoryId] = useState(
-    () => categories.find((c) => c.kind === "expense")?.id ?? "",
+    () =>
+      editing?.categoryId ??
+      categories.find((c) => c.kind === "expense")?.id ??
+      "",
   );
   const [pendingCount, setPendingCount] = useState(0);
   const [online, setOnline] = useState(() =>
     typeof window !== "undefined" ? navigator.onLine : true,
   );
   const [isPending, startTransition] = useTransition();
-  const [editWhen, setEditWhen] = useState(false);
-  const [dateValue, setDateValue] = useState(defaultDate ?? todayLocal());
-  const [timeValue, setTimeValue] = useState(nowTimeLocal());
+  const [editWhen, setEditWhen] = useState(Boolean(editing));
+  const [dateValue, setDateValue] = useState(
+    initialWhen?.date ?? defaultDate ?? "",
+  );
+  const [timeValue, setTimeValue] = useState(initialWhen?.time ?? "");
+  const [clockReady, setClockReady] = useState(Boolean(editing));
+
+  useEffect(() => {
+    setClockReady(true);
+  }, []);
 
   const filtered = useMemo(
     () => categories.filter((c) => c.kind === type),
@@ -335,9 +407,13 @@ export function TransactionForm({
   }
 
   async function save() {
-    const date = editWhen ? dateValue : todayLocal();
-    const time = editWhen ? timeValue : nowTimeLocal();
-    const occurredAt = new Date(`${date}T${time}:00`).toISOString();
+    const date = editing || editWhen ? dateValue : todayLocal();
+    const time = editing || editWhen ? timeValue : nowTimeLocal();
+    const occurredAt = localWallClockToUtcIso(date, time);
+    if (!occurredAt) {
+      toast.error("Enter a valid date and time");
+      return;
+    }
     const clientId = crypto.randomUUID();
     const amountNum = Number(amount);
 
@@ -375,6 +451,49 @@ export function TransactionForm({
         ? cardId
         : null;
 
+    const cardBillPayId =
+      type === "expense" && paymentMethod === "pay" && cardId ? cardId : null;
+    const linkedBankAccountId =
+      (needsBankAccount ||
+        (paymentMethod === "upi" && bankAccountId) ||
+        (paymentMethod === "card" && bankAccountId)) &&
+      bankAccountId
+        ? bankAccountId
+        : null;
+
+    if (editing) {
+      if (!navigator.onLine) {
+        toast.error("You're offline — connect to save changes");
+        return;
+      }
+      const fd = new FormData();
+      fd.set("id", editing.id);
+      fd.set("date", date);
+      fd.set("occurredAt", occurredAt);
+      fd.set("description", description.trim());
+      fd.set("categoryId", selectedCategoryId);
+      fd.set("type", type);
+      fd.set("amount", String(amountNum));
+      fd.set("creditCardId", cardSpendId ?? "");
+      fd.set("cardBillPayId", cardBillPayId ?? "");
+      fd.set("bankAccountId", linkedBankAccountId ?? "");
+      startTransition(async () => {
+        try {
+          await updateTransaction(fd);
+          toast.success("Transaction updated");
+          router.refresh();
+          onSaved?.();
+        } catch (err) {
+          toast.error(
+            err instanceof Error && err.message.trim()
+              ? err.message
+              : "Could not update transaction",
+          );
+        }
+      });
+      return;
+    }
+
     const payload = {
       clientId,
       date,
@@ -384,15 +503,8 @@ export function TransactionForm({
       type,
       amount: amountNum,
       creditCardId: cardSpendId,
-      cardBillPayId:
-        type === "expense" && paymentMethod === "pay" && cardId ? cardId : null,
-      bankAccountId:
-        (needsBankAccount ||
-          (paymentMethod === "upi" && bankAccountId) ||
-          (paymentMethod === "card" && bankAccountId)) &&
-        bankAccountId
-          ? bankAccountId
-          : null,
+      cardBillPayId,
+      bankAccountId: linkedBankAccountId,
     };
 
     if (!navigator.onLine) {
@@ -431,11 +543,14 @@ export function TransactionForm({
   }
 
   const amountNum = Number(amount) || 0;
-  const timeLabel = formatTimeLabel(
-    editWhen ? dateValue : todayLocal(),
-    editWhen ? timeValue : nowTimeLocal(),
-    !editWhen,
-  );
+  const timeLabel =
+    !editing && !clockReady
+      ? "Now"
+      : formatTimeLabel(
+          editing || editWhen ? dateValue : todayLocal(),
+          editing || editWhen ? timeValue : nowTimeLocal(),
+          !editing && !editWhen,
+        );
 
   if (mode === "quick") {
     return (
@@ -714,21 +829,28 @@ export function TransactionForm({
         <div className="qa-meta">
           <div className="qa-meta-card">
             <span className="qa-label">Time</span>
-            <button
-              type="button"
-              className="qa-time-btn"
-              onClick={() => {
-                if (!editWhen) {
-                  setDateValue(todayLocal());
-                  setTimeValue(nowTimeLocal());
-                }
-                setEditWhen((v) => !v);
-              }}
-            >
-              <span aria-hidden>🕒</span>
-              <span>{timeLabel}</span>
-            </button>
-            {editWhen ? (
+            {editing ? (
+              <span className="qa-time-btn">
+                <span aria-hidden>🕒</span>
+                <span>{timeLabel}</span>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="qa-time-btn"
+                onClick={() => {
+                  if (!editWhen) {
+                    setDateValue(todayLocal());
+                    setTimeValue(nowTimeLocal());
+                  }
+                  setEditWhen((v) => !v);
+                }}
+              >
+                <span aria-hidden>🕒</span>
+                <span>{timeLabel}</span>
+              </button>
+            )}
+            {editing || editWhen ? (
               <div className="when-fields" style={{ marginTop: "0.5rem" }}>
                 <input
                   type="date"
@@ -759,9 +881,11 @@ export function TransactionForm({
           <span className="qa-submit-label">
             {isPending
               ? "Saving…"
-              : type === "income"
-                ? "Add Income"
-                : "Add Expense"}
+              : editing
+                ? "Save changes"
+                : type === "income"
+                  ? "Add Income"
+                  : "Add Expense"}
           </span>
           <span className="qa-submit-amt">
             {amountNum > 0 ? formatINR(amountNum) : "₹0"}

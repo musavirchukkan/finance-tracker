@@ -133,7 +133,7 @@ export type LedgerWarning = {
   href?: string;
 };
 
-/** Card bill still unpaid; urgent when due date was 2+ days ago.
+/** Card bill still unpaid; overdue the day after due.
  *  Only when the user included the bank bill (statement amount / pin). */
 export function cardBillWarnings(
   cards: {
@@ -152,18 +152,20 @@ export function cardBillWarnings(
     if (c.billIncluded === false) continue;
     if (c.amountDue <= 0 || !c.nextDueDate) continue;
     const daysPast = calendarDaysBetween(c.nextDueDate, todayKey);
-    if (daysPast >= 2) {
+    if (daysPast >= 1) {
+      const ago =
+        daysPast === 1 ? "yesterday" : `${daysPast} days ago`;
       out.push({
         kind: "overdue",
         severity: "urgent",
-        message: `${c.label}: ₹${c.amountDue.toFixed(0)} was due ${c.nextDueDate} (${daysPast} days ago) — pay the bill`,
+        message: `${c.label}: ₹${c.amountDue.toFixed(0)} was due ${c.nextDueDate} (${ago}) — pay the bill`,
         href: `/cards/${c.id}`,
       });
-    } else if (daysPast >= 0) {
+    } else if (daysPast === 0) {
       out.push({
         kind: "unpaid",
         severity: "warn",
-        message: `${c.label}: ₹${c.amountDue.toFixed(0)} due ${c.nextDueDate} — not marked paid yet`,
+        message: `${c.label}: ₹${c.amountDue.toFixed(0)} due today — not marked paid yet`,
         href: `/cards/${c.id}`,
       });
     }
@@ -192,18 +194,20 @@ export function unpaidDebtPaymentWarnings(
     if (p.dueDate > todayKey) continue;
     const amount = toNumber(String(p.amount));
     const daysPast = calendarDaysBetween(p.dueDate, todayKey);
-    if (daysPast >= 2) {
+    if (daysPast >= 1) {
+      const ago =
+        daysPast === 1 ? "yesterday" : `${daysPast} days ago`;
       out.push({
         kind: "overdue",
         severity: "urgent",
-        message: `${p.accountName}: ${p.paymentType} ₹${amount.toFixed(0)} was due ${p.dueDate} (${daysPast} days ago)`,
+        message: `${p.accountName}: ${p.paymentType} ₹${amount.toFixed(0)} was due ${p.dueDate} (${ago})`,
         href: `/debt/${p.accountId}`,
       });
     } else {
       out.push({
         kind: "unpaid",
         severity: "warn",
-        message: `${p.accountName}: ${p.paymentType} ₹${amount.toFixed(0)} due ${p.dueDate} — not marked paid`,
+        message: `${p.accountName}: ${p.paymentType} ₹${amount.toFixed(0)} due today — not marked paid`,
         href: `/debt/${p.accountId}`,
       });
     }

@@ -391,8 +391,11 @@ export default async function BudgetPage({
                 {spendRows.length === 1 ? "y" : "ies"}
               </span>
             </div>
+            {spendRows.length === 0 ? (
+              <div className="empty">No spending this month yet.</div>
+            ) : (
             <div className="category-layout">
-              <div style={{ position: "relative" }}>
+              <div className="donut-wrap">
                 <ActualDonut
                   rows={rows}
                   showLegend={false}
@@ -400,25 +403,13 @@ export default async function BudgetPage({
                   inner={58}
                   outer={88}
                 />
-                <div
-                  className="donut-center-label"
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    display: "grid",
-                    placeContent: "center",
-                    pointerEvents: "none",
-                  }}
-                >
+                <div className="donut-center-label">
                   <strong>{formatINR(spendTotal)}</strong>
                   <span>Total spent</span>
                 </div>
               </div>
               <ul className="category-legend">
-                {spendRows.length === 0 ? (
-                  <li className="muted">No spending yet</li>
-                ) : (
-                  spendRows.map((r, i) => {
+                  {spendRows.map((r, i) => {
                     const pct =
                       spendTotal > 0
                         ? Math.round((r.actual / spendTotal) * 100)
@@ -447,10 +438,10 @@ export default async function BudgetPage({
                         </span>
                       </li>
                     );
-                  })
-                )}
+                  })}
               </ul>
             </div>
+            )}
           </section>
         </div>
 
@@ -463,34 +454,25 @@ export default async function BudgetPage({
                 {incomeRows.length === 1 ? "" : "s"}
               </span>
             </div>
-            <div className="category-layout">
-              <div style={{ position: "relative" }}>
-                <IncomeDonut
-                  rows={cashflow.incomeBreakdown}
-                  showLegend={false}
-                  height={200}
-                  inner={58}
-                  outer={88}
-                />
-                <div
-                  className="donut-center-label"
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    display: "grid",
-                    placeContent: "center",
-                    pointerEvents: "none",
-                  }}
-                >
-                  <strong>{formatINR(incomeTotal)}</strong>
-                  <span>Total income</span>
+            {incomeRows.length === 0 ? (
+              <div className="empty">No income this month yet.</div>
+            ) : (
+              <div className="category-layout">
+                <div className="donut-wrap">
+                  <IncomeDonut
+                    rows={cashflow.incomeBreakdown}
+                    showLegend={false}
+                    height={200}
+                    inner={58}
+                    outer={88}
+                  />
+                  <div className="donut-center-label">
+                    <strong>{formatINR(incomeTotal)}</strong>
+                    <span>Total income</span>
+                  </div>
                 </div>
-              </div>
-              <ul className="category-legend">
-                {incomeRows.length === 0 ? (
-                  <li className="muted">No income yet</li>
-                ) : (
-                  incomeRows.map((r, i) => {
+                <ul className="category-legend">
+                  {incomeRows.map((r, i) => {
                     const pct =
                       incomeTotal > 0
                         ? Math.round((r.value / incomeTotal) * 100)
@@ -511,10 +493,10 @@ export default async function BudgetPage({
                         <span className="pct">{pct}%</span>
                       </li>
                     );
-                  })
-                )}
-              </ul>
-            </div>
+                  })}
+                </ul>
+              </div>
+            )}
           </section>
 
           <section className="panel">

@@ -11,10 +11,8 @@ import {
   logWalletRecharge,
   updateCreditCard,
 } from "@/lib/card-actions";
-
-function todayLocal() {
-  return new Date().toISOString().slice(0, 10);
-}
+import { formatINR } from "@/lib/money";
+import { todayLocal } from "@/lib/utc-time";
 
 type ShareLimitOption = {
   id: string;
@@ -580,29 +578,84 @@ export function CardFeeButton({ cardId }: { cardId: string }) {
 export function PayBillButton({
   cardId,
   bankAccounts = [],
+  dueAmount = 0,
+  outstandingAmount = 0,
+  buttonLabel = "Pay",
 }: {
   cardId: string;
   bankAccounts?: { id: string; name: string }[];
+  /** Statement / due-to-pay amount for a one-tap full due payment. */
+  dueAmount?: number;
+  /** Revolving outstanding for a one-tap full balance payment. */
+  outstandingAmount?: number;
+  buttonLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const due = Math.max(0, Math.round(dueAmount * 100) / 100);
+  const outstanding = Math.max(
+    0,
+    Math.round(outstandingAmount * 100) / 100,
+  );
+  const defaultAmount =
+    due > 0 ? String(due) : outstanding > 0 ? String(outstanding) : "";
+  const [amount, setAmount] = useState(defaultAmount);
+
+  function openModal() {
+    setAmount(
+      due > 0 ? String(due) : outstanding > 0 ? String(outstanding) : "",
+    );
+    setOpen(true);
+  }
+
+  function closeModal() {
+    setOpen(false);
+  }
+
   return (
     <>
       <button
         type="button"
         className="btn btn-primary btn-xs"
-        onClick={() => setOpen(true)}
+        onClick={openModal}
       >
-        Pay bill
+        {buttonLabel}
       </button>
       <DateAmountShell
         open={open}
-        title="Pay bill"
-        onClose={() => setOpen(false)}
+        title="Pay card bill"
+        onClose={closeModal}
         action={logCardBillPayment}
-        successMessage="Bill payment logged — also added to transactions"
+        successMessage="Payment logged — transaction added and outstanding updated"
         cardId={cardId}
       >
         <div className="field">
+          <div className="pay-presets" role="group" aria-label="Payment size">
+            {due > 0 ? (
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs"
+                onClick={() => setAmount(String(due))}
+              >
+                Full due · {formatINR(due)}
+              </button>
+            ) : null}
+            {outstanding > 0 && outstanding !== due ? (
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs"
+                onClick={() => setAmount(String(outstanding))}
+              >
+                Full outstanding · {formatINR(outstanding)}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn btn-ghost btn-xs"
+              onClick={() => setAmount("")}
+            >
+              Partial
+            </button>
+          </div>
           <label htmlFor="bill-amount">Amount</label>
           <input
             id="bill-amount"
@@ -613,7 +666,13 @@ export function PayBillButton({
             required
             inputMode="decimal"
             placeholder="0"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
           />
+          <p className="muted" style={{ fontSize: "0.8rem", margin: "0.35rem 0 0" }}>
+            Creates an expense on the date you pick and reduces this card&apos;s
+            outstanding.
+          </p>
         </div>
         <div className="field">
           <label htmlFor="bill-bank">Pay from account</label>

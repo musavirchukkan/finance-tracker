@@ -31,7 +31,7 @@ export default async function CardDetailPage({
   if (!data) notFound();
 
   const banks = await listBankAccounts(user.id);
-  const bankOptions = banks.map((a) => ({ id: a.id, name: a.name }));
+  const bankOptions = banks.map((a) => ({ id: a.id, name: a.label ?? a.name }));
   const allCards = await listCreditCards(user.id);
   const shareOptions = allCards
     .filter((c) => !c.sharesLimitWithId && c.id !== id)
@@ -55,6 +55,13 @@ export default async function CardDetailPage({
           </p>
         </div>
         <div className="dash-actions">
+          <PayBillButton
+            cardId={card.id}
+            bankAccounts={bankOptions}
+            dueAmount={card.amountDue}
+            outstandingAmount={card.outstandingNum}
+            buttonLabel="Pay bill"
+          />
           <EditCreditCardButton card={card} shareOptions={shareOptions} />
           <ActionForm
             action={deleteCreditCard}
@@ -281,7 +288,13 @@ export default async function CardDetailPage({
           <div className="dash-actions">
             <WalletRechargeButton cardId={card.id} />
             <CardFeeButton cardId={card.id} />
-            <PayBillButton cardId={card.id} bankAccounts={bankOptions} />
+            <PayBillButton
+              cardId={card.id}
+              bankAccounts={bankOptions}
+              dueAmount={card.amountDue}
+              outstandingAmount={card.outstandingNum}
+              buttonLabel="Pay bill"
+            />
           </div>
         </div>
       </section>

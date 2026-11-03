@@ -3,6 +3,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { insertTransactionForUser } from "@/lib/actions";
 import { parseAmount } from "@/lib/money";
+import { parseUtcInstant } from "@/lib/utc-time";
 import { revalidatePath } from "next/cache";
 
 const bodySchema = z.object({
@@ -36,12 +37,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
-  const occurredAt =
-    parsed.data.occurredAt ??
-    (parsed.data.date
-      ? `${parsed.data.date}T${new Date().toISOString().slice(11, 19)}`
-      : new Date().toISOString());
-  const date = parsed.data.date ?? occurredAt.slice(0, 10);
+  const parsedInstant = parsed.data.occurredAt
+    ? parseUtcInstant(parsed.data.occurredAt)
+    : new Date();
+  if (Number.isNaN(parsedInstant.getTime())) {
+    return NextResponse.json({ error: "Invalid time" }, { status: 400 });
+  }
+  const occurredAt = parsedInstant.toISOString();
+  const date =
+    parsed.data.date && /^\d{4}-\d{2}-\d{2}$/.test(parsed.data.date)
+      ? parsed.data.date
+      : occurredAt.slice(0, 10);
 
   try {
     const amount = parseAmount(String(parsed.data.amount));

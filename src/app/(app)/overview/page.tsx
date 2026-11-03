@@ -6,12 +6,18 @@ import {
   Sparkline,
   WeeklyCashflowBars,
 } from "@/components/charts";
+import { LocalDateTime } from "@/components/local-datetime";
+import { OverviewReminders } from "@/components/overview-reminders";
 import {
   getBudgetSummary,
   getDebtDashboard,
   listSavingsGoals,
   listTransactions,
 } from "@/lib/actions";
+import {
+  listCreditCards,
+  listLedgerPaymentWarnings,
+} from "@/lib/card-actions";
 import { formatINR, toNumber } from "@/lib/money";
 import {
   currentYearMonth,
@@ -20,6 +26,7 @@ import {
   shiftYearMonth,
 } from "@/lib/months";
 import { requireUser } from "@/lib/session";
+import { toUtcIso } from "@/lib/utc-time";
 
 function greetingForHour(hour: number) {
   if (hour < 12) return "Good morning";
@@ -70,12 +77,15 @@ export default async function OverviewPage({
       ? params.month
       : currentYearMonth();
 
-  const [{ rows, cashflow }, { rows: txs }, debt, goals] = await Promise.all([
-    getBudgetSummary(user.id, month),
-    listTransactions(user.id, month),
-    getDebtDashboard(user.id),
-    listSavingsGoals(user.id),
-  ]);
+  const [{ rows, cashflow }, { rows: txs }, debt, goals, cards] =
+    await Promise.all([
+      getBudgetSummary(user.id, month),
+      listTransactions(user.id, month),
+      getDebtDashboard(user.id),
+      listSavingsGoals(user.id),
+      listCreditCards(user.id),
+    ]);
+  const reminders = await listLedgerPaymentWarnings(user.id, cards);
 
   const prev = shiftYearMonth(month, -1);
   const next = shiftYearMonth(month, 1);
@@ -116,8 +126,6 @@ export default async function OverviewPage({
       ? sparkIncome
       : [0.3, 0.5, 0.45, 0.7, 0.55, 0.85, savingRate / 100 || 0.4];
 
-  const accountChips = debt.accounts.slice(0, 3);
-  const chipColors = ["#ff5c00", "#3b82f6", "#f59e0b", "#a855f7"];
   const overviewGoals = goals.slice(0, 2);
   const paidPct =
     debt.totals.starting > 0
@@ -163,27 +171,7 @@ export default async function OverviewPage({
         </div>
       </div>
 
-      <div className="account-chips">
-        <Link href="/debt" className="chip chip-add">
-          + Add debt
-        </Link>
-        {accountChips.length === 0 ? (
-          <span className="chip">
-            <span className="chip-dot" style={{ background: "#ff5c00" }} />
-            All accounts
-          </span>
-        ) : (
-          accountChips.map((a, i) => (
-            <span key={a.id} className="chip">
-              <span
-                className="chip-dot"
-                style={{ background: chipColors[i % chipColors.length] }}
-              />
-              {a.name}
-            </span>
-          ))
-        )}
-      </div>
+      <OverviewReminders reminders={reminders} />
 
       <div className="kpi-grid">
         <div className="kpi-card">
@@ -294,6 +282,7 @@ export default async function OverviewPage({
                     {recent.map((t) => {
                       const amt = toNumber(t.amount);
                       const isIncome = t.type === "income";
+                      const occurredAtIso = toUtcIso(t.occurredAt);
                       return (
                         <tr key={t.id}>
                           <td>
@@ -306,7 +295,13 @@ export default async function OverviewPage({
                               {t.categoryName}
                             </span>
                           </td>
-                          <td className="nowrap muted">{t.date}</td>
+                          <td className="nowrap muted">
+                            {occurredAtIso ? (
+                              <LocalDateTime iso={occurredAtIso} />
+                            ) : (
+                              t.date
+                            )}
+                          </td>
                           <td
                             className={`num ${isIncome ? "amount-pos" : "amount-neg"}`}
                           >
@@ -331,34 +326,25 @@ export default async function OverviewPage({
                 →
               </Link>
             </div>
-            <div className="category-layout">
-              <div style={{ position: "relative" }}>
-                <ActualDonut
-                  rows={rows}
-                  showLegend={false}
-                  height={200}
-                  inner={58}
-                  outer={88}
-                />
-                <div
-                  className="donut-center-label"
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    display: "grid",
-                    placeContent: "center",
-                    pointerEvents: "none",
-                  }}
-                >
-                  <strong>{formatINR(spendTotal)}</strong>
-                  <span>Total spent</span>
+            {catRows.length === 0 ? (
+              <div className="empty">No spending this month yet.</div>
+            ) : (
+              <div className="category-layout">
+                <div className="donut-wrap">
+                  <ActualDonut
+                    rows={rows}
+                    showLegend={false}
+                    height={200}
+                    inner={58}
+                    outer={88}
+                  />
+                  <div className="donut-center-label">
+                    <strong>{formatINR(spendTotal)}</strong>
+                    <span>Total spent</span>
+                  </div>
                 </div>
-              </div>
-              <ul className="category-legend">
-                {catRows.length === 0 ? (
-                  <li className="muted">No spending yet</li>
-                ) : (
-                  catRows.map((r, i) => {
+                <ul className="category-legend">
+                  {catRows.map((r, i) => {
                     const pct =
                       spendTotal > 0
                         ? Math.round((r.actual / spendTotal) * 100)
@@ -379,10 +365,10 @@ export default async function OverviewPage({
                         <span className="pct">{pct}%</span>
                       </li>
                     );
-                  })
-                )}
-              </ul>
-            </div>
+                  })}
+                </ul>
+              </div>
+            )}
           </section>
 
           <section className="panel">

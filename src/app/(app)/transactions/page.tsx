@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
-import { AddTransactionButton } from "@/components/add-modals";
+import {
+  AddTransactionButton,
+  EditTransactionButton,
+} from "@/components/add-modals";
+import { LocalDateTime } from "@/components/local-datetime";
 import { CategoryFilterSelect } from "@/components/category-filter-select";
 import { InfoTip } from "@/components/info-tip";
 import { deleteTransaction, listCategories, listTransactions } from "@/lib/actions";
@@ -8,6 +12,7 @@ import { listBankAccounts } from "@/lib/bank-actions";
 import { listCreditCards } from "@/lib/card-actions";
 import { isActiveCardStatus } from "@/lib/credit-cards";
 import { formatINR } from "@/lib/money";
+import { toUtcIso } from "@/lib/utc-time";
 import {
   currentYearMonth,
   formatYearMonthLabel,
@@ -208,18 +213,7 @@ export default async function TransactionsPage({
                 </thead>
                 <tbody>
                   {rows.map((row) => {
-                    const when = row.occurredAt
-                      ? new Date(row.occurredAt)
-                      : new Date(`${row.date}T12:00:00`);
-                    const whenLabel = Number.isNaN(when.getTime())
-                      ? row.date
-                      : when.toLocaleString("en-IN", {
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        });
+                    const occurredAtIso = toUtcIso(row.occurredAt);
                     const paidFrom = row.billPayCardName
                       ? row.bankAccountName
                         ? `Pay bill · ${row.billPayCardName} ← ${row.bankAccountName}`
@@ -231,7 +225,13 @@ export default async function TransactionsPage({
                           : "—";
                     return (
                       <tr key={row.id}>
-                        <td className="nowrap">{whenLabel}</td>
+                        <td className="nowrap">
+                          {occurredAtIso ? (
+                            <LocalDateTime iso={occurredAtIso} />
+                          ) : (
+                            row.date
+                          )}
+                        </td>
                         <td>
                           <div className="tx-main">
                             {row.description?.trim()
@@ -251,20 +251,42 @@ export default async function TransactionsPage({
                           {formatINR(row.amount)}
                         </td>
                         <td>
-                          <ActionForm
-                            action={deleteTransaction}
-                            successMessage="Transaction deleted"
-                            errorMessage="Could not delete"
-                            confirmMessage="Delete this transaction?"
-                          >
-                            <input type="hidden" name="id" value={row.id} />
-                            <button
-                              className="btn btn-danger btn-xs"
-                              type="submit"
+                          <div className="row-actions">
+                            {occurredAtIso ? (
+                              <EditTransactionButton
+                                categories={categories}
+                                creditCards={creditCards}
+                                bankAccounts={bankAccounts}
+                                transaction={{
+                                  id: row.id,
+                                  occurredAt: occurredAtIso,
+                                  date: row.date,
+                                  description: row.description ?? "",
+                                  categoryId: row.categoryId,
+                                  type:
+                                    row.type === "income" ? "income" : "expense",
+                                  amount: String(row.amount),
+                                  creditCardId: row.creditCardId,
+                                  bankAccountId: row.bankAccountId,
+                                  cardBillPayId: row.billPayCardId,
+                                }}
+                              />
+                            ) : null}
+                            <ActionForm
+                              action={deleteTransaction}
+                              successMessage="Transaction deleted"
+                              errorMessage="Could not delete"
+                              confirmMessage="Delete this transaction?"
                             >
-                              Del
-                            </button>
-                          </ActionForm>
+                              <input type="hidden" name="id" value={row.id} />
+                              <button
+                                className="btn btn-danger btn-xs"
+                                type="submit"
+                              >
+                                Del
+                              </button>
+                            </ActionForm>
+                          </div>
                         </td>
                       </tr>
                     );

@@ -6,6 +6,7 @@ import { Modal } from "@/components/modal";
 import {
   createDebtAccount,
   createDebtPayment,
+  toggleDebtPaymentPaid,
   updateDebtAccount,
 } from "@/lib/actions";
 import {
@@ -1131,5 +1132,34 @@ export function AddDebtPaymentButton({
         </ActionForm>
       </Modal>
     </>
+  );
+}
+
+/** Compact tick control — less confusing than a "Paid" / "Unpaid" text button. */
+export function DebtPaidToggle({
+  id,
+  isPaid,
+}: {
+  id: string;
+  isPaid: boolean;
+}) {
+  return (
+    <ActionForm
+      action={toggleDebtPaymentPaid}
+      successMessage={isPaid ? "Marked unpaid" : "Marked paid"}
+      errorMessage="Could not update payment"
+    >
+      <input type="hidden" name="id" value={id} />
+      <input type="hidden" name="isPaid" value={String(isPaid)} />
+      <button
+        type="submit"
+        className={isPaid ? "paid-toggle is-paid" : "paid-toggle"}
+        aria-pressed={isPaid}
+        aria-label={isPaid ? "Paid — click to mark unpaid" : "Mark as paid"}
+        title={isPaid ? "Paid — click to undo" : "Mark as paid"}
+      >
+        <span aria-hidden>{isPaid ? "✓" : ""}</span>
+      </button>
+    </ActionForm>
   );
 }

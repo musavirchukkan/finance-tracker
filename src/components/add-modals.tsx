@@ -9,6 +9,7 @@ import {
   type BankAccountOption,
   type CategoryOption,
   type CreditCardOption,
+  type TransactionEditValues,
 } from "@/components/transaction-form";
 import { createCategory, updateDebtGoal } from "@/lib/actions";
 
@@ -112,6 +113,52 @@ export function AddTransactionButton({
           onCancel={() => setOpen(false)}
         />
       </Modal>
+    </>
+  );
+}
+
+export function EditTransactionButton({
+  categories,
+  creditCards = [],
+  bankAccounts = [],
+  transaction,
+}: {
+  categories: CategoryOption[];
+  creditCards?: CreditCardOption[];
+  bankAccounts?: BankAccountOption[];
+  transaction: TransactionEditValues;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button
+        type="button"
+        className="btn btn-ghost btn-xs"
+        onClick={() => setOpen(true)}
+      >
+        Edit
+      </button>
+      {open ? (
+        <Modal
+          open
+          title="Edit transaction"
+          onClose={() => setOpen(false)}
+          size="lg"
+          bare
+        >
+          <TransactionForm
+            key={transaction.id}
+            variant="quick"
+            categories={categories}
+            creditCards={creditCards}
+            bankAccounts={bankAccounts}
+            editing={transaction}
+            onSaved={() => setOpen(false)}
+            onCancel={() => setOpen(false)}
+          />
+        </Modal>
+      ) : null}
     </>
   );
 }

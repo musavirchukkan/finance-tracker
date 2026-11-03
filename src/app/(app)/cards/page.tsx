@@ -3,9 +3,11 @@ import { ActionForm } from "@/components/action-form";
 import {
   AddCreditCardButton,
   EditCreditCardButton,
+  PayBillButton,
 } from "@/components/card-forms";
 import { InfoTip } from "@/components/info-tip";
 import { ReviewCallout } from "@/components/review-callout";
+import { listBankAccounts } from "@/lib/bank-actions";
 import {
   deleteCreditCard,
   listCreditCards,
@@ -17,6 +19,8 @@ import { requireUser } from "@/lib/session";
 export default async function CardsPage() {
   const user = await requireUser();
   const cards = await listCreditCards(user.id);
+  const banks = await listBankAccounts(user.id);
+  const bankOptions = banks.map((a) => ({ id: a.id, name: a.label ?? a.name }));
   const paymentWarnings = await listLedgerPaymentWarnings(user.id, cards);
   const billWarnings = paymentWarnings.filter(
     (w) => w.href?.startsWith("/cards"),
@@ -211,6 +215,12 @@ export default async function CardsPage() {
                     </td>
                     <td>
                       <div className="row-actions">
+                        <PayBillButton
+                          cardId={c.id}
+                          bankAccounts={bankOptions}
+                          dueAmount={c.amountDue}
+                          outstandingAmount={c.outstandingNum}
+                        />
                         <Link
                           className="btn btn-ghost btn-xs"
                           href={`/cards/${c.id}`}
