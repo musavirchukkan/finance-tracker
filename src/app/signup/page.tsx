@@ -2,12 +2,18 @@ import Image from "next/image";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { SignupForm } from "@/components/signup-form";
+import { getEnv } from "@/lib/env";
 
 export default async function SignupPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const env = getEnv();
+  if (!env.allowPublicSignup) {
+    redirect("/login");
+  }
+
   const params = await searchParams;
   if ("password" in params || "email" in params) {
     const callback = params.callbackUrl;
@@ -39,7 +45,7 @@ export default async function SignupPage({
         <section className="login-panel" aria-label="Create account">
           <h2 className="login-heading">Create account</h2>
           <Suspense fallback={<p className="muted">Loading…</p>}>
-            <SignupForm />
+            <SignupForm requireInvite={Boolean(env.signupInviteCode)} />
           </Suspense>
         </section>
       </div>

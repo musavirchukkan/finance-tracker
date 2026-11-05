@@ -4,32 +4,27 @@ import Credentials from "next-auth/providers/credentials";
 import { compare } from "bcryptjs";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { PASSWORD_MIN_LENGTH, SESSION_USER_RECHECK_MS } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
+import { getDatabaseFingerprintMaterial } from "@/lib/env";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(6),
+  password: z.string().min(PASSWORD_MIN_LENGTH),
 });
 
 /**
- * Opaque hash of DB host+name. Computed only on the server from DATABASE_URL
+ * Opaque hash of DB host+name. Computed only on the server from env
  * (never NEXT_PUBLIC_*). Stored in the JWT so a URL swap invalidates sessions
  * without putting the connection string — or even the host — in the client.
  */
 function dbFingerprint(): string {
-  const raw = process.env.DATABASE_URL ?? "";
-  let material = "unknown";
-  try {
-    const u = new URL(raw);
-    material = `${u.host}${u.pathname}`;
-  } catch {
-    /* keep unknown */
-  }
-  return createHash("sha256").update(material).digest("hex").slice(0, 16);
+  return createHash("sha256")
+    .update(getDatabaseFingerprintMaterial())
+    .digest("hex")
+    .slice(0, 16);
 }
-
-const USER_RECHECK_MS = 60_000;
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -91,7 +86,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       const checkedAt =
         typeof token.checkedAt === "number" ? token.checkedAt : 0;
-      if (Date.now() - checkedAt < USER_RECHECK_MS) {
+      if (Date.now() - checkedAt < SESSION_USER_RECHECK_MS) {
         return token;
       }
 

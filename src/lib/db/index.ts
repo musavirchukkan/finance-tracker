@@ -2,6 +2,7 @@ import { neon } from "@neondatabase/serverless";
 import { drizzle as drizzleNeon } from "drizzle-orm/neon-http";
 import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { getEnv } from "@/lib/env";
 import * as schema from "./schema";
 
 type Db =
@@ -21,12 +22,7 @@ function isLocalPostgres(url: string) {
 }
 
 function createDb(): Db {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error(
-      "DATABASE_URL is not set. Copy .env.example to .env.local — use Neon pooled URL (or local Docker).",
-    );
-  }
+  const { databaseUrl: connectionString, nodeEnv } = getEnv();
 
   // Local Docker / self-hosted: node postgres driver
   if (isLocalPostgres(connectionString)) {
@@ -42,7 +38,7 @@ function createDb(): Db {
 export const db: Db = new Proxy({} as Db, {
   get(_target, prop, receiver) {
     const instance = globalForDb.__financeDb ?? createDb();
-    if (process.env.NODE_ENV !== "production") {
+    if (getEnv().nodeEnv !== "production") {
       globalForDb.__financeDb = instance;
     }
     const value = Reflect.get(instance as object, prop, receiver);

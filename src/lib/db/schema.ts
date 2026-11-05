@@ -2,6 +2,7 @@ import {
   type AnyPgColumn,
   boolean,
   date,
+  index,
   integer,
   numeric,
   pgTable,
@@ -60,81 +61,89 @@ export const budgets = pgTable(
 );
 
 /** Cash / savings bank accounts. */
-export const bankAccounts = pgTable("bank_accounts", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  currentBalance: numeric("current_balance", { precision: 14, scale: 2 })
-    .notNull()
-    .default("0"),
-  /** Minimum balance to maintain (AMB / quarterly / etc.). */
-  minBalance: numeric("min_balance", { precision: 14, scale: 2 }),
-  /**
-   * Free-text account rules, e.g. "AMB ₹10,000", "Quarterly average",
-   * "Max 30 free transactions / day".
-   */
-  balanceRules: text("balance_rules"),
-  /** Last 4 digits of the account number (for identification). */
-  lastFour: text("last_four"),
-  /** e.g. Savings, Current, Wallet */
-  accountType: text("account_type").notNull().default("Savings"),
-  status: text("status").notNull().default("Active"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-});
+export const bankAccounts = pgTable(
+  "bank_accounts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    currentBalance: numeric("current_balance", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    /** Minimum balance to maintain (AMB / quarterly / etc.). */
+    minBalance: numeric("min_balance", { precision: 14, scale: 2 }),
+    /**
+     * Free-text account rules, e.g. "AMB ₹10,000", "Quarterly average",
+     * "Max 30 free transactions / day".
+     */
+    balanceRules: text("balance_rules"),
+    /** Last 4 digits of the account number (for identification). */
+    lastFour: text("last_four"),
+    /** e.g. Savings, Current, Wallet */
+    accountType: text("account_type").notNull().default("Savings"),
+    status: text("status").notNull().default("Active"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [index("bank_accounts_user").on(t.userId)],
+);
 
 /** Rolling credit cards (not EMI loans). */
-export const creditCards = pgTable("credit_cards", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  currentOutstanding: numeric("current_outstanding", {
-    precision: 14,
-    scale: 2,
-  })
-    .notNull()
-    .default("0"),
-  /**
-   * Closed statement amount still due this cycle (from the bank bill).
-   * When set, due-to-pay uses this; leftover revolving goes to next bill.
-   */
-  statementAmount: numeric("statement_amount", { precision: 14, scale: 2 }),
-  /**
-   * Keep revolving outstanding on the current (last) statement for due-to-pay,
-   * even mid-cycle / after bill day — useful when adding a card with this
-   * month's bill already generated (pay by due date next month).
-   */
-  pinToCurrentStatement: boolean("pin_to_current_statement")
-    .notNull()
-    .default(false),
-  creditLimit: numeric("credit_limit", { precision: 14, scale: 2 }),
-  /**
-   * When set, this card shares the linked card's credit limit pool
-   * (e.g. Axis My Zone / IndianOil / Value Plus). Available = shared
-   * limit − sum(revolving + EMI blocked) across the whole group.
-   */
-  sharesLimitWithId: uuid("shares_limit_with_id").references(
-    (): AnyPgColumn => creditCards.id,
-    { onDelete: "set null" },
-  ),
-  /** Day of month statement closes (1–31). */
-  billingDay: integer("billing_day"),
-  /** Calendar days after statement date until payment is due (e.g. 20). */
-  paymentDueGapDays: integer("payment_due_gap_days"),
-  /** Last 4 digits of the card number (for identification). */
-  lastFour: text("last_four"),
-  /** RuPay cards can be used for UPI. */
-  isRupay: boolean("is_rupay").notNull().default(false),
-  status: text("status").notNull().default("Active"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-});
+export const creditCards = pgTable(
+  "credit_cards",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    currentOutstanding: numeric("current_outstanding", {
+      precision: 14,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+    /**
+     * Closed statement amount still due this cycle (from the bank bill).
+     * When set, due-to-pay uses this; leftover revolving goes to next bill.
+     */
+    statementAmount: numeric("statement_amount", { precision: 14, scale: 2 }),
+    /**
+     * Keep revolving outstanding on the current (last) statement for due-to-pay,
+     * even mid-cycle / after bill day — useful when adding a card with this
+     * month's bill already generated (pay by due date next month).
+     */
+    pinToCurrentStatement: boolean("pin_to_current_statement")
+      .notNull()
+      .default(false),
+    creditLimit: numeric("credit_limit", { precision: 14, scale: 2 }),
+    /**
+     * When set, this card shares the linked card's credit limit pool
+     * (e.g. Axis My Zone / IndianOil / Value Plus). Available = shared
+     * limit − sum(revolving + EMI blocked) across the whole group.
+     */
+    sharesLimitWithId: uuid("shares_limit_with_id").references(
+      (): AnyPgColumn => creditCards.id,
+      { onDelete: "set null" },
+    ),
+    /** Day of month statement closes (1–31). */
+    billingDay: integer("billing_day"),
+    /** Calendar days after statement date until payment is due (e.g. 20). */
+    paymentDueGapDays: integer("payment_due_gap_days"),
+    /** Last 4 digits of the card number (for identification). */
+    lastFour: text("last_four"),
+    /** RuPay cards can be used for UPI. */
+    isRupay: boolean("is_rupay").notNull().default(false),
+    status: text("status").notNull().default("Active"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [index("credit_cards_user").on(t.userId)],
+);
 
 export const transactions = pgTable(
   "transactions",
@@ -168,89 +177,107 @@ export const transactions = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (t) => [uniqueIndex("transactions_user_client").on(t.userId, t.clientId)],
+  (t) => [
+    uniqueIndex("transactions_user_client").on(t.userId, t.clientId),
+    index("transactions_user_date").on(t.userId, t.date),
+    index("transactions_user_occurred").on(t.userId, t.occurredAt),
+    index("transactions_user_category").on(t.userId, t.categoryId),
+    index("transactions_user_bank").on(t.userId, t.bankAccountId),
+    index("transactions_user_card").on(t.userId, t.creditCardId),
+  ],
 );
 
 /**
  * Card ledger events: spends, wallet recharge/cashout, fees, bill payments.
  * outstanding_delta is applied to credit_cards.current_outstanding.
  */
-export const cardActivities = pgTable("card_activities", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  cardId: uuid("card_id")
-    .notNull()
-    .references(() => creditCards.id, { onDelete: "cascade" }),
-  date: date("date").notNull(),
-  /** spend | wallet_recharge | wallet_cashout | fee | bill_payment */
-  activityType: text("activity_type").notNull(),
-  /** Primary display amount (wallet credit, cashout, fee, bill, spend). */
-  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
-  /** Signed change to card outstanding (+ charge, − payment). */
-  outstandingDelta: numeric("outstanding_delta", { precision: 14, scale: 2 })
-    .notNull()
-    .default("0"),
-  /** Wallet recharge: amount credited to wallet. */
-  walletCredit: numeric("wallet_credit", { precision: 12, scale: 2 }),
-  /** Wallet recharge: full amount charged on the card. */
-  cardCharged: numeric("card_charged", { precision: 12, scale: 2 }),
-  /** Wallet cashout: bank fee portion. */
-  bankFee: numeric("bank_fee", { precision: 12, scale: 2 }),
-  description: text("description").notNull().default(""),
-  transactionId: uuid("transaction_id").references(() => transactions.id, {
-    onDelete: "set null",
-  }),
-  /** Secondary linked tx (e.g. bank fee expense on cashout). */
-  relatedTransactionId: uuid("related_transaction_id").references(
-    () => transactions.id,
-    { onDelete: "set null" },
-  ),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-});
+export const cardActivities = pgTable(
+  "card_activities",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    cardId: uuid("card_id")
+      .notNull()
+      .references(() => creditCards.id, { onDelete: "cascade" }),
+    date: date("date").notNull(),
+    /** spend | wallet_recharge | wallet_cashout | fee | bill_payment */
+    activityType: text("activity_type").notNull(),
+    /** Primary display amount (wallet credit, cashout, fee, bill, spend). */
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    /** Signed change to card outstanding (+ charge, − payment). */
+    outstandingDelta: numeric("outstanding_delta", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    /** Wallet recharge: amount credited to wallet. */
+    walletCredit: numeric("wallet_credit", { precision: 12, scale: 2 }),
+    /** Wallet recharge: full amount charged on the card. */
+    cardCharged: numeric("card_charged", { precision: 12, scale: 2 }),
+    /** Wallet cashout: bank fee portion. */
+    bankFee: numeric("bank_fee", { precision: 12, scale: 2 }),
+    description: text("description").notNull().default(""),
+    transactionId: uuid("transaction_id").references(() => transactions.id, {
+      onDelete: "set null",
+    }),
+    /** Secondary linked tx (e.g. bank fee expense on cashout). */
+    relatedTransactionId: uuid("related_transaction_id").references(
+      () => transactions.id,
+      { onDelete: "set null" },
+    ),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    index("card_activities_user_card_date").on(t.userId, t.cardId, t.date),
+    index("card_activities_transaction").on(t.transactionId),
+  ],
+);
 
-export const debtAccounts = pgTable("debt_accounts", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  type: text("type").notNull(),
-  startingBalance: numeric("starting_balance", { precision: 14, scale: 2 })
-    .notNull()
-    .default("0"),
-  monthlyEmi: numeric("monthly_emi", { precision: 12, scale: 2 })
-    .notNull()
-    .default("0"),
-  /** Annual interest % (flat or reducing — see interestType). */
-  interestPercent: numeric("interest_percent", { precision: 8, scale: 2 })
-    .notNull()
-    .default("0"),
-  /** fixed = flat annual (default); reducing = declining-balance like Axis EMI. */
-  interestType: text("interest_type").notNull().default("fixed"),
-  /** GST % applied on the interest portion of an installment (India default 18). */
-  gstPercent: numeric("gst_percent", { precision: 8, scale: 2 })
-    .notNull()
-    .default("18"),
-  totalMonths: integer("total_months").notNull().default(0),
-  monthsPaid: integer("months_paid").notNull().default(0),
-  status: text("status").notNull().default("Active Paydown"),
-  /** Linked rolling card when type is Credit Card EMI. */
-  creditCardId: uuid("credit_card_id").references(() => creditCards.id, {
-    onDelete: "set null",
-  }),
-  /** Income tx logged when borrowed money was received. */
-  receivedTransactionId: uuid("received_transaction_id").references(
-    () => transactions.id,
-    { onDelete: "set null" },
-  ),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-});
+export const debtAccounts = pgTable(
+  "debt_accounts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    type: text("type").notNull(),
+    startingBalance: numeric("starting_balance", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    monthlyEmi: numeric("monthly_emi", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0"),
+    /** Annual interest % (flat or reducing — see interestType). */
+    interestPercent: numeric("interest_percent", { precision: 8, scale: 2 })
+      .notNull()
+      .default("0"),
+    /** fixed = flat annual (default); reducing = declining-balance like Axis EMI. */
+    interestType: text("interest_type").notNull().default("fixed"),
+    /** GST % applied on the interest portion of an installment (India default 18). */
+    gstPercent: numeric("gst_percent", { precision: 8, scale: 2 })
+      .notNull()
+      .default("18"),
+    totalMonths: integer("total_months").notNull().default(0),
+    monthsPaid: integer("months_paid").notNull().default(0),
+    status: text("status").notNull().default("Active Paydown"),
+    /** Linked rolling card when type is Credit Card EMI. */
+    creditCardId: uuid("credit_card_id").references(() => creditCards.id, {
+      onDelete: "set null",
+    }),
+    /** Income tx logged when borrowed money was received. */
+    receivedTransactionId: uuid("received_transaction_id").references(
+      () => transactions.id,
+      { onDelete: "set null" },
+    ),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [index("debt_accounts_user").on(t.userId)],
+);
 
 export const debtPayments = pgTable(
   "debt_payments",
@@ -278,7 +305,11 @@ export const debtPayments = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (t) => [uniqueIndex("debt_payments_transaction").on(t.transactionId)],
+  (t) => [
+    uniqueIndex("debt_payments_transaction").on(t.transactionId),
+    index("debt_payments_user_due").on(t.userId, t.dueDate),
+    index("debt_payments_account_due").on(t.accountId, t.dueDate),
+  ],
 );
 
 export const debtSettings = pgTable("debt_settings", {
@@ -288,55 +319,63 @@ export const debtSettings = pgTable("debt_settings", {
   goalPayoffDate: date("goal_payoff_date").notNull(),
 });
 
-export const savingsGoals = pgTable("savings_goals", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  targetAmount: numeric("target_amount", { precision: 14, scale: 2 })
-    .notNull()
-    .default("0"),
-  currentAmount: numeric("current_amount", { precision: 14, scale: 2 })
-    .notNull()
-    .default("0"),
-  targetDate: date("target_date"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-});
+export const savingsGoals = pgTable(
+  "savings_goals",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    targetAmount: numeric("target_amount", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    currentAmount: numeric("current_amount", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    targetDate: date("target_date"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [index("savings_goals_user").on(t.userId)],
+);
 
 /**
  * Manual investment holdings. Value = quantity × current_price.
  * `symbol` is reserved for a future live-price sync.
  */
-export const investments = pgTable("investments", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  /** stock | mutual_fund | fd | gold | other */
-  type: text("type").notNull().default("stock"),
-  /** Optional ticker / ISIN for later live quotes. */
-  symbol: text("symbol"),
-  quantity: numeric("quantity", { precision: 18, scale: 6 })
-    .notNull()
-    .default("1"),
-  avgBuyPrice: numeric("avg_buy_price", { precision: 14, scale: 4 }),
-  currentPrice: numeric("current_price", { precision: 14, scale: 4 })
-    .notNull()
-    .default("0"),
-  /** Broker / app used to buy (Zerodha, Groww, bank FD, …). */
-  platform: text("platform"),
-  notes: text("notes"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-});
+export const investments = pgTable(
+  "investments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** stock | mutual_fund | fd | gold | other */
+    type: text("type").notNull().default("stock"),
+    /** Optional ticker / ISIN for later live quotes. */
+    symbol: text("symbol"),
+    quantity: numeric("quantity", { precision: 18, scale: 6 })
+      .notNull()
+      .default("1"),
+    avgBuyPrice: numeric("avg_buy_price", { precision: 14, scale: 4 }),
+    currentPrice: numeric("current_price", { precision: 14, scale: 4 })
+      .notNull()
+      .default("0"),
+    /** Broker / app used to buy (Zerodha, Groww, bank FD, …). */
+    platform: text("platform"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [index("investments_user").on(t.userId)],
+);
 
 export const usersRelations = relations(users, ({ many, one }) => ({
   categories: many(categories),

@@ -1,5 +1,6 @@
 import { hash } from "bcryptjs";
 import { and, eq } from "drizzle-orm";
+import { BCRYPT_ROUNDS, PASSWORD_MIN_LENGTH } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { categories, debtSettings, users } from "@/lib/db/schema";
 import { defaultIconForCategoryName } from "@/lib/category-icons";
@@ -88,8 +89,10 @@ export async function createUserAccount(args: {
   const email = args.email.trim().toLowerCase();
   const name = args.name.trim();
   if (!email || !name) throw new Error("Name and email are required");
-  if (args.password.length < 6) {
-    throw new Error("Password must be at least 6 characters");
+  if (args.password.length < PASSWORD_MIN_LENGTH) {
+    throw new Error(
+      `Password must be at least ${PASSWORD_MIN_LENGTH} characters`,
+    );
   }
 
   const existing = await db
@@ -98,10 +101,11 @@ export async function createUserAccount(args: {
     .where(eq(users.email, email))
     .limit(1);
   if (existing[0]) {
-    throw new Error("An account with this email already exists");
+    // Generic — avoid email enumeration (caller maps to GENERIC_SIGNUP_ERROR).
+    throw new Error("EMAIL_TAKEN");
   }
 
-  const passwordHash = await hash(args.password, 12);
+  const passwordHash = await hash(args.password, BCRYPT_ROUNDS);
   const [user] = await db
     .insert(users)
     .values({ email, name, passwordHash })

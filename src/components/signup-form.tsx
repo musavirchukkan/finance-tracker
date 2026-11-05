@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useActionState, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { PASSWORD_MIN_LENGTH } from "@/lib/constants";
 import { registerAction } from "@/lib/register-action";
 import { safeCallbackUrl, type LoginState } from "@/lib/login-utils";
 
-export function SignupForm() {
+export function SignupForm({ requireInvite = false }: { requireInvite?: boolean }) {
   const searchParams = useSearchParams();
   const callbackUrl = safeCallbackUrl(searchParams.get("callbackUrl"));
   const [showPassword, setShowPassword] = useState(false);
@@ -49,7 +50,7 @@ export function SignupForm() {
             name="password"
             type={showPassword ? "text" : "password"}
             required
-            minLength={6}
+            minLength={PASSWORD_MIN_LENGTH}
             autoComplete="new-password"
           />
           <button
@@ -70,10 +71,24 @@ export function SignupForm() {
           name="confirmPassword"
           type={showPassword ? "text" : "password"}
           required
-          minLength={6}
+          minLength={PASSWORD_MIN_LENGTH}
           autoComplete="new-password"
         />
       </div>
+      {requireInvite ? (
+        <div className="field">
+          <label htmlFor="inviteCode">Invite code</label>
+          <input
+            id="inviteCode"
+            name="inviteCode"
+            type="text"
+            required
+            autoComplete="off"
+            autoCapitalize="none"
+            spellCheck={false}
+          />
+        </div>
+      ) : null}
       {state?.error ? (
         <p className="neg form-status" role="alert" style={{ margin: 0 }}>
           {state.error}

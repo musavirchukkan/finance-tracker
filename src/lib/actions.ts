@@ -1,8 +1,15 @@
 "use server";
 
 import { compare, hash } from "bcryptjs";
-import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lt, lte, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { cache } from "react";
+import {
+  BCRYPT_ROUNDS,
+  PASSWORD_MIN_LENGTH,
+  TRANSACTIONS_MAX_PAGE_SIZE,
+  TRANSACTIONS_PAGE_SIZE,
+} from "@/lib/constants";
 import { db } from "@/lib/db";
 import {
   bankAccounts,
@@ -72,6 +79,56 @@ function parsePaymentSource(formData: FormData, type: "expense" | "income") {
   return { creditCardId, cardBillPayId, bankAccountId };
 }
 
+/**
+ * Ensure category + payment sources belong to this user before mutating
+ * balances / card ledgers. Prevents crafted IDs from touching another
+ * user's accounts (or applying side effects when the tx update matched 0 rows).
+ */
+async function assertOwnedTransactionInputs(
+  userId: string,
+  input: {
+    categoryId: string;
+    creditCardId?: string | null;
+    cardBillPayId?: string | null;
+    bankAccountId?: string | null;
+  },
+) {
+  const [cat] = await db
+    .select({ id: categories.id })
+    .from(categories)
+    .where(
+      and(eq(categories.id, input.categoryId), eq(categories.userId, userId)),
+    )
+    .limit(1);
+  if (!cat) throw new Error("Invalid category");
+
+  const cardIds = [input.creditCardId, input.cardBillPayId].filter(
+    (id): id is string => Boolean(id),
+  );
+  for (const cardId of cardIds) {
+    const [card] = await db
+      .select({ id: creditCards.id })
+      .from(creditCards)
+      .where(and(eq(creditCards.id, cardId), eq(creditCards.userId, userId)))
+      .limit(1);
+    if (!card) throw new Error("Invalid credit card");
+  }
+
+  if (input.bankAccountId) {
+    const [bank] = await db
+      .select({ id: bankAccounts.id })
+      .from(bankAccounts)
+      .where(
+        and(
+          eq(bankAccounts.id, input.bankAccountId),
+          eq(bankAccounts.userId, userId),
+        ),
+      )
+      .limit(1);
+    if (!bank) throw new Error("Invalid bank account");
+  }
+}
+
 export async function createTransaction(formData: FormData) {
   const user = await requireUser();
   const date = String(formData.get("date") ?? "");
@@ -132,9 +189,24 @@ export async function updateTransaction(formData: FormData) {
     type,
   );
 
+  if (!id) throw new Error("Missing transaction");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(occurredAt.getTime())) {
     throw new Error("Enter a valid date and time");
   }
+
+  const [existing] = await db
+    .select({ id: transactions.id })
+    .from(transactions)
+    .where(and(eq(transactions.id, id), eq(transactions.userId, user.id)))
+    .limit(1);
+  if (!existing) throw new Error("Transaction not found");
+
+  await assertOwnedTransactionInputs(user.id, {
+    categoryId,
+    creditCardId,
+    cardBillPayId,
+    bankAccountId,
+  });
 
   const {
     reverseActivitiesForTransaction,
@@ -149,7 +221,7 @@ export async function updateTransaction(formData: FormData) {
   await reverseBankBalanceForTransaction(user.id, id);
   await reverseActivitiesForTransaction(user.id, id);
 
-  await db
+  const updated = await db
     .update(transactions)
     .set({
       date,
@@ -161,7 +233,12 @@ export async function updateTransaction(formData: FormData) {
       creditCardId,
       bankAccountId,
     })
-    .where(and(eq(transactions.id, id), eq(transactions.userId, user.id)));
+    .where(and(eq(transactions.id, id), eq(transactions.userId, user.id)))
+    .returning();
+
+  if (!updated[0]) {
+    throw new Error("Transaction not found");
+  }
 
   if (type === "expense" && creditCardId && amount > 0) {
     await recordSpendOnCard({
@@ -205,6 +282,14 @@ export async function updateTransaction(formData: FormData) {
 export async function deleteTransaction(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get("id") ?? "");
+  if (!id) throw new Error("Missing transaction");
+
+  const [existing] = await db
+    .select({ id: transactions.id })
+    .from(transactions)
+    .where(and(eq(transactions.id, id), eq(transactions.userId, user.id)))
+    .limit(1);
+  if (!existing) throw new Error("Transaction not found");
 
   const { reverseActivitiesForTransaction } = await import(
     "@/lib/credit-card-cashflow"
@@ -215,9 +300,11 @@ export async function deleteTransaction(formData: FormData) {
   await reverseBankBalanceForTransaction(user.id, id);
   await reverseActivitiesForTransaction(user.id, id);
 
-  await db
+  const deleted = await db
     .delete(transactions)
-    .where(and(eq(transactions.id, id), eq(transactions.userId, user.id)));
+    .where(and(eq(transactions.id, id), eq(transactions.userId, user.id)))
+    .returning();
+  if (!deleted[0]) throw new Error("Transaction not found");
 
   revalidatePath("/transactions");
   revalidatePath("/budget");
@@ -832,37 +919,69 @@ export async function deleteCategory(formData: FormData) {
 }
 
 export async function getBudgetSummary(userId: string, yearMonth: string) {
-  const cats = await db
-    .select()
-    .from(categories)
-    .where(
-      and(eq(categories.userId, userId), eq(categories.kind, "expense")),
-    )
-    .orderBy(asc(categories.sortOrder));
-
-  const budgetRows = await db
-    .select()
-    .from(budgets)
-    .where(
-      and(eq(budgets.userId, userId), eq(budgets.yearMonth, yearMonth)),
-    );
-
   const { start: monthStart, end: monthEnd } = monthDateBounds(yearMonth);
-  const actualRows = await db
-    .select({
-      categoryId: transactions.categoryId,
-      total: sql<string>`coalesce(sum(${transactions.amount}), 0)`,
-    })
-    .from(transactions)
-    .where(
-      and(
-        eq(transactions.userId, userId),
-        eq(transactions.type, "expense"),
-        gte(transactions.date, monthStart),
-        lte(transactions.date, monthEnd),
-      ),
-    )
-    .groupBy(transactions.categoryId);
+
+  const [cats, budgetRows, actualRows, cashflowRows, incomeByCategory] =
+    await Promise.all([
+      db
+        .select()
+        .from(categories)
+        .where(
+          and(eq(categories.userId, userId), eq(categories.kind, "expense")),
+        )
+        .orderBy(asc(categories.sortOrder)),
+      db
+        .select()
+        .from(budgets)
+        .where(
+          and(eq(budgets.userId, userId), eq(budgets.yearMonth, yearMonth)),
+        ),
+      db
+        .select({
+          categoryId: transactions.categoryId,
+          total: sql<string>`coalesce(sum(${transactions.amount}), 0)`,
+        })
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.userId, userId),
+            eq(transactions.type, "expense"),
+            gte(transactions.date, monthStart),
+            lte(transactions.date, monthEnd),
+          ),
+        )
+        .groupBy(transactions.categoryId),
+      db
+        .select({
+          type: transactions.type,
+          total: sql<string>`coalesce(sum(${transactions.amount}), 0)`,
+        })
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.userId, userId),
+            gte(transactions.date, monthStart),
+            lte(transactions.date, monthEnd),
+          ),
+        )
+        .groupBy(transactions.type),
+      db
+        .select({
+          category: categories.name,
+          total: sql<string>`coalesce(sum(${transactions.amount}), 0)`,
+        })
+        .from(transactions)
+        .innerJoin(categories, eq(transactions.categoryId, categories.id))
+        .where(
+          and(
+            eq(transactions.userId, userId),
+            eq(transactions.type, "income"),
+            gte(transactions.date, monthStart),
+            lte(transactions.date, monthEnd),
+          ),
+        )
+        .groupBy(categories.name),
+    ]);
 
   const budgetMap = new Map(
     budgetRows.map((b) => [b.categoryId, toNumber(b.amount)]),
@@ -894,44 +1013,12 @@ export async function getBudgetSummary(userId: string, yearMonth: string) {
     { budget: 0, actual: 0, difference: 0 },
   );
 
-  const cashflowRows = await db
-    .select({
-      type: transactions.type,
-      total: sql<string>`coalesce(sum(${transactions.amount}), 0)`,
-    })
-    .from(transactions)
-    .where(
-      and(
-        eq(transactions.userId, userId),
-        gte(transactions.date, monthStart),
-        lte(transactions.date, monthEnd),
-      ),
-    )
-    .groupBy(transactions.type);
-
   let income = 0;
   let expense = 0;
   for (const row of cashflowRows) {
     if (row.type === "income") income = toNumber(row.total);
     else expense = toNumber(row.total);
   }
-
-  const incomeByCategory = await db
-    .select({
-      category: categories.name,
-      total: sql<string>`coalesce(sum(${transactions.amount}), 0)`,
-    })
-    .from(transactions)
-    .innerJoin(categories, eq(transactions.categoryId, categories.id))
-    .where(
-      and(
-        eq(transactions.userId, userId),
-        eq(transactions.type, "income"),
-        gte(transactions.date, monthStart),
-        lte(transactions.date, monthEnd),
-      ),
-    )
-    .groupBy(categories.name);
 
   return {
     rows,
@@ -948,6 +1035,58 @@ export async function getBudgetSummary(userId: string, yearMonth: string) {
   };
 }
 
+/** Day-level SUM for charts — avoids loading every transaction row. */
+export async function getMonthlyCashflowByDay(
+  userId: string,
+  yearMonth: string,
+) {
+  const { start, end } = monthDateBounds(yearMonth);
+  const rows = await db
+    .select({
+      date: transactions.date,
+      type: transactions.type,
+      total: sql<string>`coalesce(sum(${transactions.amount}), 0)`,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        gte(transactions.date, start),
+        lte(transactions.date, end),
+      ),
+    )
+    .groupBy(transactions.date, transactions.type);
+
+  return rows.map((r) => ({
+    date: String(r.date),
+    type: r.type as "income" | "expense",
+    total: toNumber(r.total),
+  }));
+}
+
+function encodeTxCursor(occurredAt: Date | string, id: string) {
+  const iso =
+    occurredAt instanceof Date
+      ? occurredAt.toISOString()
+      : new Date(occurredAt).toISOString();
+  return Buffer.from(`${iso}|${id}`, "utf8").toString("base64url");
+}
+
+function decodeTxCursor(
+  cursor: string,
+): { occurredAt: Date; id: string } | null {
+  try {
+    const raw = Buffer.from(cursor, "base64url").toString("utf8");
+    const [iso, id] = raw.split("|");
+    if (!iso || !id) return null;
+    const occurredAt = new Date(iso);
+    if (Number.isNaN(occurredAt.getTime())) return null;
+    return { occurredAt, id };
+  } catch {
+    return null;
+  }
+}
+
 export async function listTransactions(
   userId: string,
   yearMonth?: string,
@@ -956,6 +1095,8 @@ export async function listTransactions(
     categoryId?: string;
     page?: number;
     pageSize?: number;
+    /** Keyset cursor (preferred for large lists). Mutually exclusive with page. */
+    cursor?: string;
   },
 ) {
   const conditions = [eq(transactions.userId, userId)];
@@ -971,26 +1112,41 @@ export async function listTransactions(
     conditions.push(eq(transactions.categoryId, opts.categoryId));
   }
 
-  const where = and(...conditions);
-  const paginate = opts?.page != null || opts?.pageSize != null;
+  const useCursor = Boolean(opts?.cursor);
+  const paginate =
+    useCursor || opts?.page != null || opts?.pageSize != null;
   const pageSize = paginate
-    ? Math.min(100, Math.max(1, opts?.pageSize ?? 20))
+    ? Math.min(
+        TRANSACTIONS_MAX_PAGE_SIZE,
+        Math.max(1, opts?.pageSize ?? TRANSACTIONS_PAGE_SIZE),
+      )
     : undefined;
-  const page = paginate ? Math.max(1, opts?.page ?? 1) : 1;
-  const offset = paginate && pageSize ? (page - 1) * pageSize : 0;
+  const page = !useCursor && paginate ? Math.max(1, opts?.page ?? 1) : 1;
+  const offset =
+    !useCursor && paginate && pageSize ? (page - 1) * pageSize : 0;
 
-  const [countRow] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(transactions)
-    .where(where);
+  if (useCursor && opts?.cursor) {
+    const decoded = decodeTxCursor(opts.cursor);
+    if (decoded) {
+      conditions.push(
+        or(
+          lt(transactions.occurredAt, decoded.occurredAt),
+          and(
+            eq(transactions.occurredAt, decoded.occurredAt),
+            lt(transactions.id, decoded.id),
+          ),
+        )!,
+      );
+    }
+  }
 
-  const total = Number(countRow?.count ?? 0);
+  const where = and(...conditions);
 
   const spendCard = alias(creditCards, "spend_card");
   const billCard = alias(creditCards, "bill_card");
   const billActivity = alias(cardActivities, "bill_activity");
 
-  const query = db
+  const listQuery = db
     .select({
       id: transactions.id,
       date: transactions.date,
@@ -1023,13 +1179,35 @@ export async function listTransactions(
     )
     .leftJoin(billCard, eq(billActivity.cardId, billCard.id))
     .where(where)
-    .orderBy(desc(transactions.occurredAt), desc(transactions.createdAt));
+    .orderBy(desc(transactions.occurredAt), desc(transactions.id));
 
-  const mapped = (
+  // Cursor pages skip COUNT(*) (expensive on large tables).
+  const [countRow, rawRows] = await Promise.all([
+    useCursor
+      ? Promise.resolve([{ count: -1 }])
+      : db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(transactions)
+          .where(where),
     pageSize != null
-      ? await query.limit(pageSize).offset(offset)
-      : await query
-  ).map((row) => ({
+      ? useCursor
+        ? listQuery.limit(pageSize + 1)
+        : listQuery.limit(pageSize).offset(offset)
+      : listQuery,
+  ]);
+
+  const total = Number(countRow[0]?.count ?? 0);
+  let slice = rawRows;
+  let nextCursor: string | null = null;
+  if (useCursor && pageSize != null && rawRows.length > pageSize) {
+    slice = rawRows.slice(0, pageSize);
+    const last = slice[slice.length - 1];
+    nextCursor = encodeTxCursor(last.occurredAt, last.id);
+  } else if (useCursor && slice.length > 0) {
+    nextCursor = null;
+  }
+
+  const mapped = slice.map((row) => ({
     ...row,
     creditCardName: row.creditCardName
       ? formatCardLabel(row.creditCardName, row.creditCardLastFour)
@@ -1041,23 +1219,29 @@ export async function listTransactions(
 
   return {
     rows: mapped,
-    total,
+    total: useCursor ? mapped.length : total,
     page,
-    pageSize: pageSize ?? total,
-    totalPages: pageSize ? Math.max(1, Math.ceil(total / pageSize)) : 1,
+    pageSize: pageSize ?? mapped.length,
+    totalPages:
+      useCursor || !pageSize
+        ? 1
+        : Math.max(1, Math.ceil(total / pageSize)),
+    nextCursor,
   };
 }
 
-export async function listCategories(userId: string, kind?: "expense" | "income") {
-  const conditions = [eq(categories.userId, userId)];
-  if (kind) conditions.push(eq(categories.kind, kind));
+export const listCategories = cache(
+  async (userId: string, kind?: "expense" | "income") => {
+    const conditions = [eq(categories.userId, userId)];
+    if (kind) conditions.push(eq(categories.kind, kind));
 
-  return db
-    .select()
-    .from(categories)
-    .where(and(...conditions))
-    .orderBy(asc(categories.sortOrder));
-}
+    return db
+      .select()
+      .from(categories)
+      .where(and(...conditions))
+      .orderBy(asc(categories.sortOrder));
+  },
+);
 
 /** Shared insert used by server actions and offline sync API. */
 export async function insertTransactionForUser(
@@ -1116,6 +1300,13 @@ export async function insertTransactionForUser(
   // Bill pay may also debit a bank account; card spend may not.
   const bankAccountId =
     creditCardId || !input.bankAccountId ? null : input.bankAccountId;
+
+  await assertOwnedTransactionInputs(userId, {
+    categoryId: input.categoryId,
+    creditCardId,
+    cardBillPayId,
+    bankAccountId,
+  });
 
   try {
     const [row] = await db
@@ -1194,35 +1385,36 @@ export async function getDebtDashboard(userId: string) {
   const { migrateRollingCreditCards } = await import("@/lib/card-actions");
   await migrateRollingCreditCards(userId);
 
-  const accounts = await db
-    .select()
-    .from(debtAccounts)
-    .where(eq(debtAccounts.userId, userId))
-    .orderBy(asc(debtAccounts.name));
-
-  const payments = await db
-    .select({
-      id: debtPayments.id,
-      accountId: debtPayments.accountId,
-      accountName: debtAccounts.name,
-      dueDate: debtPayments.dueDate,
-      paymentType: debtPayments.paymentType,
-      amount: debtPayments.amount,
-      principalAmount: debtPayments.principalAmount,
-      interestAmount: debtPayments.interestAmount,
-      gstAmount: debtPayments.gstAmount,
-      isPaid: debtPayments.isPaid,
-    })
-    .from(debtPayments)
-    .innerJoin(debtAccounts, eq(debtPayments.accountId, debtAccounts.id))
-    .where(eq(debtPayments.userId, userId))
-    .orderBy(desc(debtPayments.dueDate));
-
-  const [settings] = await db
-    .select()
-    .from(debtSettings)
-    .where(eq(debtSettings.userId, userId))
-    .limit(1);
+  const [accounts, payments, settingsRows] = await Promise.all([
+    db
+      .select()
+      .from(debtAccounts)
+      .where(eq(debtAccounts.userId, userId))
+      .orderBy(asc(debtAccounts.name)),
+    db
+      .select({
+        id: debtPayments.id,
+        accountId: debtPayments.accountId,
+        accountName: debtAccounts.name,
+        dueDate: debtPayments.dueDate,
+        paymentType: debtPayments.paymentType,
+        amount: debtPayments.amount,
+        principalAmount: debtPayments.principalAmount,
+        interestAmount: debtPayments.interestAmount,
+        gstAmount: debtPayments.gstAmount,
+        isPaid: debtPayments.isPaid,
+      })
+      .from(debtPayments)
+      .innerJoin(debtAccounts, eq(debtPayments.accountId, debtAccounts.id))
+      .where(eq(debtPayments.userId, userId))
+      .orderBy(desc(debtPayments.dueDate)),
+    db
+      .select()
+      .from(debtSettings)
+      .where(eq(debtSettings.userId, userId))
+      .limit(1),
+  ]);
+  const [settings] = settingsRows;
 
   const paydownByAccount = new Map<string, number>();
   const chargeByAccount = new Map<string, number>();
@@ -1579,8 +1771,10 @@ export async function changePassword(formData: FormData) {
   if (!currentPassword || !newPassword || !confirmPassword) {
     throw new Error("All password fields are required");
   }
-  if (newPassword.length < 6) {
-    throw new Error("New password must be at least 6 characters");
+  if (newPassword.length < PASSWORD_MIN_LENGTH) {
+    throw new Error(
+      `New password must be at least ${PASSWORD_MIN_LENGTH} characters`,
+    );
   }
   if (newPassword !== confirmPassword) {
     throw new Error("New passwords do not match");
@@ -1604,7 +1798,7 @@ export async function changePassword(formData: FormData) {
     throw new Error("Current password is incorrect");
   }
 
-  const passwordHash = await hash(newPassword, 12);
+  const passwordHash = await hash(newPassword, BCRYPT_ROUNDS);
   await db
     .update(users)
     .set({ passwordHash })

@@ -11,6 +11,7 @@ import { OverviewReminders } from "@/components/overview-reminders";
 import {
   getBudgetSummary,
   getDebtDashboard,
+  getMonthlyCashflowByDay,
   listSavingsGoals,
   listTransactions,
 } from "@/lib/actions";
@@ -18,6 +19,7 @@ import {
   listCreditCards,
   listLedgerPaymentWarnings,
 } from "@/lib/card-actions";
+import { OVERVIEW_RECENT_TX_LIMIT } from "@/lib/constants";
 import { getNetWorth } from "@/lib/investment-actions";
 import { formatINR, toNumber } from "@/lib/money";
 import {
@@ -78,15 +80,26 @@ export default async function OverviewPage({
       ? params.month
       : currentYearMonth();
 
-  const [{ rows, cashflow }, { rows: txs }, debt, goals, cards, wealth] =
-    await Promise.all([
-      getBudgetSummary(user.id, month),
-      listTransactions(user.id, month),
-      getDebtDashboard(user.id),
-      listSavingsGoals(user.id),
-      listCreditCards(user.id),
-      getNetWorth(user.id),
-    ]);
+  const [
+    { rows, cashflow },
+    dayCashflow,
+    { rows: recent },
+    debt,
+    goals,
+    cards,
+    wealth,
+  ] = await Promise.all([
+    getBudgetSummary(user.id, month),
+    getMonthlyCashflowByDay(user.id, month),
+    listTransactions(user.id, month, {
+      page: 1,
+      pageSize: OVERVIEW_RECENT_TX_LIMIT,
+    }),
+    getDebtDashboard(user.id),
+    listSavingsGoals(user.id),
+    listCreditCards(user.id),
+    getNetWorth(user.id),
+  ]);
   const reminders = await listLedgerPaymentWarnings(user.id, cards);
 
   const prev = shiftYearMonth(month, -1);
@@ -97,12 +110,11 @@ export default async function OverviewPage({
   const weeks = weekBuckets(month).map((w) => {
     let income = 0;
     let expense = 0;
-    for (const t of txs) {
-      const day = Number(String(t.date).slice(8, 10));
+    for (const row of dayCashflow) {
+      const day = Number(row.date.slice(8, 10));
       if (day < w.startDay || day > w.endDay) continue;
-      const amt = toNumber(t.amount);
-      if (t.type === "income") income += amt;
-      else expense += amt;
+      if (row.type === "income") income += row.total;
+      else expense += row.total;
     }
     return { label: w.label, income, expense };
   });
@@ -117,8 +129,6 @@ export default async function OverviewPage({
     .filter((r) => r.actual > 0)
     .sort((a, b) => b.actual - a.actual)
     .slice(0, 5);
-
-  const recent = txs.slice(0, 6);
 
   const sparkIncome = weeks.map((w) => w.income);
   const sparkExpense = weeks.map((w) => w.expense);

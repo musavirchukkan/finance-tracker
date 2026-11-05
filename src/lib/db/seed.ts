@@ -6,11 +6,11 @@ import {
   createUserAccount,
   ensureDefaultCategories,
 } from "@/lib/bootstrap-user";
+import { getEnv } from "@/lib/env";
 
 async function main() {
-  const email = (process.env.SEED_EMAIL ?? "you@example.com").toLowerCase();
-  const password = process.env.SEED_PASSWORD ?? "changeme123";
-  const name = process.env.SEED_NAME ?? "Musavir";
+  const { seedEmail: email, seedPassword: password, seedName: name } =
+    getEnv();
 
   const existing = await db
     .select()

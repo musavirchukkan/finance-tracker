@@ -10,6 +10,7 @@ import { InfoTip } from "@/components/info-tip";
 import { deleteTransaction, listCategories, listTransactions } from "@/lib/actions";
 import { listBankAccounts } from "@/lib/bank-actions";
 import { listCreditCards } from "@/lib/card-actions";
+import { TRANSACTIONS_PAGE_SIZE } from "@/lib/constants";
 import { isActiveCardStatus } from "@/lib/credit-cards";
 import { formatINR } from "@/lib/money";
 import { toUtcIso } from "@/lib/utc-time";
@@ -20,7 +21,7 @@ import {
 } from "@/lib/months";
 import { requireUser } from "@/lib/session";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = TRANSACTIONS_PAGE_SIZE;
 
 function buildTxHref(args: {
   month: string;
@@ -60,15 +61,17 @@ export default async function TransactionsPage({
       : undefined;
   const page = Math.max(1, Number(params.page) || 1);
 
-  const cats = await listCategories(user.id);
-  const cards = await listCreditCards(user.id);
-  const banks = await listBankAccounts(user.id);
-  const { rows, total, totalPages } = await listTransactions(user.id, month, {
-    type: typeFilter,
-    categoryId,
-    page,
-    pageSize: PAGE_SIZE,
-  });
+  const [cats, cards, banks, { rows, total, totalPages }] = await Promise.all([
+    listCategories(user.id),
+    listCreditCards(user.id),
+    listBankAccounts(user.id),
+    listTransactions(user.id, month, {
+      type: typeFilter,
+      categoryId,
+      page,
+      pageSize: PAGE_SIZE,
+    }),
+  ]);
 
   const prev = shiftYearMonth(month, -1);
   const next = shiftYearMonth(month, 1);

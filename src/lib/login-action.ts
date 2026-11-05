@@ -1,15 +1,30 @@
 "use server";
 
 import { AuthError } from "next-auth";
+import { headers } from "next/headers";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { redirect } from "next/navigation";
 import { signIn } from "@/lib/auth";
+import { AUTH_RATE_LIMIT, GENERIC_AUTH_ERROR } from "@/lib/constants";
 import { safeCallbackUrl, type LoginState } from "@/lib/login-utils";
+import { clientKeyFromHeaders, takeRateLimit } from "@/lib/rate-limit";
 
 export async function loginAction(
   _prev: LoginState,
   formData: FormData,
 ): Promise<LoginState> {
+  const hdrs = await headers();
+  const limited = takeRateLimit(
+    clientKeyFromHeaders(hdrs, "login"),
+    AUTH_RATE_LIMIT.login.limit,
+    AUTH_RATE_LIMIT.login.windowMs,
+  );
+  if (!limited.ok) {
+    return {
+      error: `Too many sign-in attempts. Try again in ${limited.retryAfterSec}s.`,
+    };
+  }
+
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const callbackUrl = safeCallbackUrl(
@@ -35,7 +50,7 @@ export async function loginAction(
         result.includes("CredentialsSignin") ||
         /\/login(\?|$)/.test(new URL(result, "http://local").pathname);
       if (failed) {
-        return { error: "Invalid email or password" };
+        return { error: GENERIC_AUTH_ERROR };
       }
     }
 
@@ -43,7 +58,7 @@ export async function loginAction(
   } catch (error) {
     if (isRedirectError(error)) throw error;
     if (error instanceof AuthError) {
-      return { error: "Invalid email or password" };
+      return { error: GENERIC_AUTH_ERROR };
     }
     return { error: "Could not sign in. Try again." };
   }
