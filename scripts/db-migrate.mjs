@@ -2,6 +2,7 @@
  * Apply committed Drizzle migrations (non-interactive).
  * Used by `npm run build` and `npm run db:migrate`.
  */
+import "dotenv/config";
 import { execSync } from "node:child_process";
 
 const url = process.env.DATABASE_MIGRATION_URL || process.env.DATABASE_URL;

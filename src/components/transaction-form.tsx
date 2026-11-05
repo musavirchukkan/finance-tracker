@@ -57,10 +57,11 @@ export type TransactionEditValues = {
   date: string;
   description: string;
   categoryId: string;
-  type: "expense" | "income";
+  type: "expense" | "income" | "transfer";
   amount: string;
   creditCardId: string | null;
   bankAccountId: string | null;
+  transferToBankAccountId?: string | null;
   cardBillPayId: string | null;
 };
 
@@ -253,7 +254,7 @@ export function TransactionForm({
         time: "12:00",
       }
     : null;
-  const [type, setType] = useState<"expense" | "income">(
+  const [type, setType] = useState<"expense" | "income" | "transfer">(
     editing?.type ?? "expense",
   );
   const [amount, setAmount] = useState(
@@ -263,8 +264,21 @@ export function TransactionForm({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
     initialPayment.paymentMethod,
   );
-  const [bankAccountId, setBankAccountId] = useState(initialPayment.bankAccountId);
+  const [bankAccountId, setBankAccountId] = useState(() => {
+    if (editing?.type === "transfer") {
+      return editing.bankAccountId ?? "cash";
+    }
+    return initialPayment.bankAccountId;
+  });
+  /** Transfer To leg: "" = unset, "cash" = Cash, uuid = bank. */
+  const [transferToBankAccountId, setTransferToBankAccountId] = useState(() => {
+    if (editing?.type === "transfer") {
+      return editing.transferToBankAccountId ?? "cash";
+    }
+    return "";
+  });
   const [cardId, setCardId] = useState(initialPayment.cardId);
+  const saveLock = useRef(false);
   const [categoryId, setCategoryId] = useState(
     () =>
       editing?.categoryId ??
@@ -276,6 +290,7 @@ export function TransactionForm({
     typeof window !== "undefined" ? navigator.onLine : true,
   );
   const [isPending, startTransition] = useTransition();
+  const [saving, setSaving] = useState(false);
   const [editWhen, setEditWhen] = useState(Boolean(editing));
   const [dateValue, setDateValue] = useState(
     initialWhen?.date ?? defaultDate ?? "",
@@ -288,7 +303,10 @@ export function TransactionForm({
   );
 
   const filtered = useMemo(
-    () => categories.filter((c) => c.kind === type),
+    () =>
+      type === "transfer"
+        ? categories.filter((c) => c.kind === "transfer")
+        : categories.filter((c) => c.kind === type),
     [categories, type],
   );
 
@@ -296,10 +314,22 @@ export function TransactionForm({
     ? categoryId
     : (filtered[0]?.id ?? "");
 
-  function changeType(next: "expense" | "income") {
+  function changeType(next: "expense" | "income" | "transfer") {
     setType(next);
+    if (next === "transfer") {
+      const transferCat = categories.find((c) => c.kind === "transfer");
+      setCategoryId(transferCat?.id ?? "");
+      setPaymentMethod("cash");
+      setCardId("");
+      // Force explicit From/To picks — do not default either leg to Cash.
+      setBankAccountId("");
+      setTransferToBankAccountId("");
+      return;
+    }
     const nextFiltered = categories.filter((c) => c.kind === next);
     setCategoryId(nextFiltered[0]?.id ?? "");
+    setBankAccountId("");
+    setTransferToBankAccountId("");
     if (next === "income") {
       setPaymentMethod("cash");
       setCardId("");
@@ -397,6 +427,7 @@ export function TransactionForm({
     setDescription("");
     setPaymentMethod("cash");
     setBankAccountId("");
+    setTransferToBankAccountId("");
     setCardId("");
     setDateValue(todayLocal());
     setTimeValue(nowTimeLocal());
@@ -409,6 +440,18 @@ export function TransactionForm({
   }
 
   async function save() {
+    if (saveLock.current || saving) return;
+    saveLock.current = true;
+    setSaving(true);
+    try {
+      await saveInner();
+    } finally {
+      saveLock.current = false;
+      setSaving(false);
+    }
+  }
+
+  async function saveInner() {
     const date = editing || editWhen ? dateValue : todayLocal();
     const time = editing || editWhen ? timeValue : nowTimeLocal();
     const occurredAt = localWallClockToUtcIso(date, time);
@@ -419,12 +462,107 @@ export function TransactionForm({
     const clientId = crypto.randomUUID();
     const amountNum = Number(amount);
 
-    if (!selectedCategoryId) {
-      toast.error("Pick a category");
+    if (!amountNum || amountNum <= 0) {
+      toast.error("Enter a positive amount");
       return;
     }
-    if (!amountNum || amountNum <= 0) {
-      toast.error("Enter an amount");
+
+    if (type === "transfer") {
+      // "" = not chosen; "cash" = Cash; uuid = bank. Both legs required.
+      if (!bankAccountId || !transferToBankAccountId) {
+        toast.error("Choose both From and To");
+        return;
+      }
+      const fromId = bankAccountId === "cash" ? null : bankAccountId;
+      const toId =
+        transferToBankAccountId === "cash" ? null : transferToBankAccountId;
+      if (!fromId && !toId) {
+        toast.error("Cash to Cash is not allowed");
+        return;
+      }
+      if (fromId && toId && fromId === toId) {
+        toast.error("From and To must be different accounts");
+        return;
+      }
+
+      if (editing) {
+        if (!navigator.onLine) {
+          toast.error("You're offline — connect to save changes");
+          return;
+        }
+        const fd = new FormData();
+        fd.set("id", editing.id);
+        fd.set("date", date);
+        fd.set("occurredAt", occurredAt);
+        fd.set("description", description.trim());
+        fd.set("categoryId", selectedCategoryId);
+        fd.set("type", "transfer");
+        fd.set("amount", String(amountNum));
+        fd.set("creditCardId", "");
+        fd.set("cardBillPayId", "");
+        fd.set("bankAccountId", fromId ?? "");
+        fd.set("transferToBankAccountId", toId ?? "");
+        try {
+          await updateTransaction(fd);
+          toast.success("Transfer updated");
+          router.refresh();
+          onSaved?.();
+        } catch (err) {
+          toast.error(clientErrorMessage(err, "Could not update transfer"));
+        }
+        return;
+      }
+
+      const payload = {
+        clientId,
+        date,
+        occurredAt,
+        description: description.trim(),
+        categoryId: selectedCategoryId,
+        type: "transfer" as const,
+        amount: amountNum,
+        creditCardId: null,
+        cardBillPayId: null,
+        bankAccountId: fromId,
+        transferToBankAccountId: toId,
+      };
+
+      if (!navigator.onLine) {
+        await queueTransaction(payload);
+        resetForm();
+        toast.info("Saved offline — will sync when you're back online");
+        await refreshPending();
+        onSaved?.();
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/transactions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          await queueTransaction(payload);
+          toast.info("Network issue — queued offline");
+          await refreshPending();
+        } else {
+          resetForm();
+          toast.success("Transfer added");
+          router.refresh();
+          onSaved?.();
+        }
+      } catch {
+        await queueTransaction(payload);
+        toast.info("Saved offline — will sync when online");
+        await refreshPending();
+        onSaved?.();
+      }
+      return;
+    }
+
+    if (!selectedCategoryId) {
+      toast.error("Pick a category");
       return;
     }
 
@@ -479,18 +617,15 @@ export function TransactionForm({
       fd.set("creditCardId", cardSpendId ?? "");
       fd.set("cardBillPayId", cardBillPayId ?? "");
       fd.set("bankAccountId", linkedBankAccountId ?? "");
-      startTransition(async () => {
-        try {
-          await updateTransaction(fd);
-          toast.success("Transaction updated");
-          router.refresh();
-          onSaved?.();
-        } catch (err) {
-          toast.error(
-            clientErrorMessage(err, "Could not update transaction"),
-          );
-        }
-      });
+      fd.set("transferToBankAccountId", "");
+      try {
+        await updateTransaction(fd);
+        toast.success("Transaction updated");
+        router.refresh();
+        onSaved?.();
+      } catch (err) {
+        toast.error(clientErrorMessage(err, "Could not update transaction"));
+      }
       return;
     }
 
@@ -505,6 +640,7 @@ export function TransactionForm({
       creditCardId: cardSpendId,
       cardBillPayId,
       bankAccountId: linkedBankAccountId,
+      transferToBankAccountId: null,
     };
 
     if (!navigator.onLine) {
@@ -516,30 +652,28 @@ export function TransactionForm({
       return;
     }
 
-    startTransition(async () => {
-      try {
-        const res = await fetch("/api/transactions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) {
-          await queueTransaction(payload);
-          toast.info("Network issue — queued offline");
-          await refreshPending();
-        } else {
-          resetForm();
-          toast.success(type === "income" ? "Income added" : "Expense added");
-          router.refresh();
-          onSaved?.();
-        }
-      } catch {
+    try {
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
         await queueTransaction(payload);
-        toast.info("Saved offline — will sync when online");
+        toast.info("Network issue — queued offline");
         await refreshPending();
+      } else {
+        resetForm();
+        toast.success(type === "income" ? "Income added" : "Expense added");
+        router.refresh();
         onSaved?.();
       }
-    });
+    } catch {
+      await queueTransaction(payload);
+      toast.info("Saved offline — will sync when online");
+      await refreshPending();
+      onSaved?.();
+    }
   }
 
   const amountNum = Number(amount) || 0;
@@ -610,6 +744,16 @@ export function TransactionForm({
           >
             <span aria-hidden>↑</span> Income
           </button>
+          <button
+            type="button"
+            className={
+              type === "transfer" ? "qa-type-btn active transfer" : "qa-type-btn"
+            }
+            aria-pressed={type === "transfer"}
+            onClick={() => changeType("transfer")}
+          >
+            <span aria-hidden>⇄</span> Transfer
+          </button>
         </div>
 
         <div className="qa-amount-block">
@@ -663,51 +807,100 @@ export function TransactionForm({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder={
-                type === "income"
-                  ? "e.g. January salary"
-                  : "e.g. Auto to Bandra Station"
+                type === "transfer"
+                  ? "e.g. Cash deposit / self transfer"
+                  : type === "income"
+                    ? "e.g. January salary"
+                    : "e.g. Auto to Bandra Station"
               }
               autoComplete="off"
             />
           </div>
         </div>
 
-        <div className="qa-field">
-          <span className="qa-label">Category</span>
-          <QuickCategoryPicker
-            options={filtered}
-            value={selectedCategoryId}
-            onChange={setCategoryId}
-          />
-        </div>
+        {type !== "transfer" ? (
+          <div className="qa-field">
+            <span className="qa-label">Category</span>
+            <QuickCategoryPicker
+              options={filtered}
+              value={selectedCategoryId}
+              onChange={setCategoryId}
+            />
+          </div>
+        ) : null}
 
-        <div className="qa-field">
-          <span className="qa-label">
-            {type === "income" ? "Received how" : "Paid how"}
-          </span>
-          <select
-            className="qa-select"
-            value={paymentMethod}
-            onChange={(e) =>
-              changePaymentMethod(e.target.value as PaymentMethod)
-            }
-            aria-label={type === "income" ? "Received how" : "Paid how"}
-          >
-            <option value="cash">Cash</option>
-            {showUpiOption ? <option value="upi">UPI</option> : null}
-            {bankAccounts.length > 0 ? (
-              <option value="bank">Bank transfer</option>
-            ) : null}
-            {showPosOption ? (
-              <option value="card">Card swipe / POS</option>
-            ) : null}
-            {type === "expense" && creditCards.length > 0 ? (
-              <option value="pay">Pay card bill</option>
-            ) : null}
-          </select>
-        </div>
+        {type === "transfer" ? (
+          <>
+            <div className="qa-field">
+              <span className="qa-label">From</span>
+              <select
+                className="qa-select"
+                value={bankAccountId}
+                onChange={(e) => setBankAccountId(e.target.value)}
+                aria-label="Transfer from"
+                required
+              >
+                <option value="" disabled>
+                  Choose…
+                </option>
+                <option value="cash">Cash</option>
+                {bankAccounts.map((a) => (
+                  <option key={`from-${a.id}`} value={a.id}>
+                    {bankLabel(a)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="qa-field">
+              <span className="qa-label">To</span>
+              <select
+                className="qa-select"
+                value={transferToBankAccountId}
+                onChange={(e) => setTransferToBankAccountId(e.target.value)}
+                aria-label="Transfer to"
+                required
+              >
+                <option value="" disabled>
+                  Choose…
+                </option>
+                <option value="cash">Cash</option>
+                {bankAccounts.map((a) => (
+                  <option key={`to-${a.id}`} value={a.id}>
+                    {bankLabel(a)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </>
+        ) : (
+          <div className="qa-field">
+            <span className="qa-label">
+              {type === "income" ? "Received how" : "Paid how"}
+            </span>
+            <select
+              className="qa-select"
+              value={paymentMethod}
+              onChange={(e) =>
+                changePaymentMethod(e.target.value as PaymentMethod)
+              }
+              aria-label={type === "income" ? "Received how" : "Paid how"}
+            >
+              <option value="cash">Cash</option>
+              {showUpiOption ? <option value="upi">UPI</option> : null}
+              {bankAccounts.length > 0 ? (
+                <option value="bank">Bank transfer</option>
+              ) : null}
+              {showPosOption ? (
+                <option value="card">Card swipe / POS</option>
+              ) : null}
+              {type === "expense" && creditCards.length > 0 ? (
+                <option value="pay">Pay card bill</option>
+              ) : null}
+            </select>
+          </div>
+        )}
 
-        {needsUpiSource ? (
+        {type !== "transfer" && needsUpiSource ? (
           <div className="qa-field">
             <span className="qa-label">
               {type === "income" ? "Into account" : "UPI from"}
@@ -740,7 +933,7 @@ export function TransactionForm({
           </div>
         ) : null}
 
-        {needsPosSource ? (
+        {type !== "transfer" && needsPosSource ? (
           <div className="qa-field">
             <span className="qa-label">Paid with</span>
             <select
@@ -768,7 +961,7 @@ export function TransactionForm({
           </div>
         ) : null}
 
-        {needsCard ? (
+        {type !== "transfer" && needsCard ? (
           <div className="qa-field">
             <span className="qa-label">Credit card</span>
             <select
@@ -791,10 +984,11 @@ export function TransactionForm({
           </div>
         ) : null}
 
-        {needsBankAccount ||
-        (type === "income" &&
-          paymentMethod !== "upi" &&
-          bankAccounts.length > 0) ? (
+        {type !== "transfer" &&
+        (needsBankAccount ||
+          (type === "income" &&
+            paymentMethod !== "upi" &&
+            bankAccounts.length > 0)) ? (
           <div className="qa-field">
             <span className="qa-label">
               {type === "income"
@@ -872,20 +1066,22 @@ export function TransactionForm({
         <button
           type="button"
           className="qa-submit"
-          disabled={isPending}
+          disabled={saving}
           onClick={() => void save()}
         >
           <span className="qa-submit-check" aria-hidden>
             ✓
           </span>
           <span className="qa-submit-label">
-            {isPending
+            {saving
               ? "Saving…"
               : editing
                 ? "Save changes"
-                : type === "income"
-                  ? "Add Income"
-                  : "Add Expense"}
+                : type === "transfer"
+                  ? "Add Transfer"
+                  : type === "income"
+                    ? "Add Income"
+                    : "Add Expense"}
           </span>
           <span className="qa-submit-amt">
             {amountNum > 0 ? formatINR(amountNum) : "₹0"}
@@ -919,6 +1115,13 @@ export function TransactionForm({
             onClick={() => changeType("income")}
           >
             Income
+          </button>
+          <button
+            type="button"
+            className={type === "transfer" ? "active transfer" : ""}
+            onClick={() => changeType("transfer")}
+          >
+            Transfer
           </button>
         </div>
         <div className="field">
@@ -954,8 +1157,12 @@ export function TransactionForm({
             onChange={(e) => setDescription(e.target.value)}
           />
         </div>
-        <button className="btn btn-primary" type="submit" disabled={isPending}>
-          {type === "income" ? "Add income" : "Add expense"}
+        <button className="btn btn-primary" type="submit" disabled={saving}>
+          {type === "transfer"
+            ? "Add transfer"
+            : type === "income"
+              ? "Add income"
+              : "Add expense"}
         </button>
       </form>
     </div>

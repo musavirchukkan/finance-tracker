@@ -10,16 +10,17 @@ import { InfoTip } from "@/components/info-tip";
 import {
   deleteTransaction,
 } from "@/lib/actions";
+import { ensureTransferCategory } from "@/lib/bank-account-cashflow";
 import {
   listCategories,
   listTransactions,
-} from "@/lib/ledger-data";;
+} from "@/lib/ledger-data";
 import {
   listBankAccounts,
-} from "@/lib/bank-data";;
+} from "@/lib/bank-data";
 import {
   listCreditCards,
-} from "@/lib/card-data";;
+} from "@/lib/card-data";
 import { TRANSACTIONS_PAGE_SIZE } from "@/lib/constants";
 import { isActiveCardStatus } from "@/lib/credit-cards";
 import { formatINR } from "@/lib/money";
@@ -64,13 +65,18 @@ export default async function TransactionsPage({
       ? params.month
       : currentYearMonth();
   const typeFilter =
-    params.type === "income" || params.type === "expense" ? params.type : "all";
+    params.type === "income" ||
+    params.type === "expense" ||
+    params.type === "transfer"
+      ? params.type
+      : "all";
   const categoryId =
     params.category && /^[0-9a-f-]{36}$/i.test(params.category)
       ? params.category
       : undefined;
   const page = Math.max(1, Number(params.page) || 1);
 
+  await ensureTransferCategory(user.id);
   const [cats, cards, banks, { rows, total, totalPages }] = await Promise.all([
     listCategories(user.id),
     listCreditCards(user.id),
@@ -119,10 +125,11 @@ export default async function TransactionsPage({
         </div>
         <div className="dash-actions">
           <InfoTip title="Transactions" label="About transactions">
-            <p>Income and expenses for the selected month.</p>
+            <p>Income, expenses, and self-transfers for the selected month.</p>
             <p>
-              Entries queue offline and sync when you&apos;re back online. Choose
-              a bank account, card, cash, or UPI as the payment source.
+              Entries queue offline and sync when you&apos;re back online. Use
+              Transfer for bank↔bank moves or cash deposit/withdrawal — amounts
+              are always positive.
             </p>
           </InfoTip>
           <div className="month-switcher" role="group" aria-label="Month">
@@ -176,6 +183,7 @@ export default async function TransactionsPage({
                 ["all", "All"],
                 ["income", "Income"],
                 ["expense", "Expense"],
+                ["transfer", "Transfer"],
               ] as const
             ).map(([value, label]) => (
               <Link
@@ -227,15 +235,36 @@ export default async function TransactionsPage({
                 <tbody>
                   {rows.map((row) => {
                     const occurredAtIso = toUtcIso(row.occurredAt);
-                    const paidFrom = row.billPayCardName
-                      ? row.bankAccountName
-                        ? `Pay bill · ${row.billPayCardName} ← ${row.bankAccountName}`
-                        : `Pay bill · ${row.billPayCardName}`
-                      : row.creditCardName
-                        ? `Card spend · ${row.creditCardName}`
-                        : row.bankAccountName
-                          ? `Account · ${row.bankAccountName}`
-                          : "—";
+                    const transferFromLabel = row.bankAccountId
+                      ? (row.bankAccountName ?? "Account")
+                      : "Cash";
+                    const transferToLabel = row.transferToBankAccountId
+                      ? (row.transferToBankAccountName ?? "Account")
+                      : "Cash";
+                    const paidFrom =
+                      row.type === "transfer"
+                        ? `${transferFromLabel} → ${transferToLabel}`
+                        : row.billPayCardName
+                          ? row.bankAccountName
+                            ? `Pay bill · ${row.billPayCardName} ← ${row.bankAccountName}`
+                            : `Pay bill · ${row.billPayCardName}`
+                          : row.creditCardName
+                            ? `Card spend · ${row.creditCardName}`
+                            : row.bankAccountName
+                              ? `Account · ${row.bankAccountName}`
+                              : "—";
+                    const amountPrefix =
+                      row.type === "transfer"
+                        ? ""
+                        : row.type === "income"
+                          ? "+"
+                          : "−";
+                    const amountClass =
+                      row.type === "transfer"
+                        ? "num"
+                        : row.type === "income"
+                          ? "num pos"
+                          : "num";
                     return (
                       <tr key={row.id}>
                         <td className="nowrap">
@@ -257,10 +286,8 @@ export default async function TransactionsPage({
                           {row.categoryName}
                         </td>
                         <td className="nowrap muted">{paidFrom}</td>
-                        <td
-                          className={`num ${row.type === "income" ? "pos" : ""}`}
-                        >
-                          {row.type === "income" ? "+" : "−"}
+                        <td className={amountClass}>
+                          {amountPrefix}
                           {formatINR(row.amount)}
                         </td>
                         <td>
@@ -277,10 +304,16 @@ export default async function TransactionsPage({
                                   description: row.description ?? "",
                                   categoryId: row.categoryId,
                                   type:
-                                    row.type === "income" ? "income" : "expense",
+                                    row.type === "income"
+                                      ? "income"
+                                      : row.type === "transfer"
+                                        ? "transfer"
+                                        : "expense",
                                   amount: String(row.amount),
                                   creditCardId: row.creditCardId,
                                   bankAccountId: row.bankAccountId,
+                                  transferToBankAccountId:
+                                    row.transferToBankAccountId,
                                   cardBillPayId: row.billPayCardId,
                                 }}
                               />

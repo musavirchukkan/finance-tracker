@@ -97,6 +97,7 @@ export async function assertOwnedTransactionInputs(
     creditCardId?: string | null;
     cardBillPayId?: string | null;
     bankAccountId?: string | null;
+    transferToBankAccountId?: string | null;
   },
 ) {
   const [cat] = await db
@@ -117,6 +118,9 @@ export async function assertOwnedTransactionInputs(
 
   if (input.bankAccountId) {
     await assertOwnedBankAccount(userId, input.bankAccountId);
+  }
+  if (input.transferToBankAccountId) {
+    await assertOwnedBankAccount(userId, input.transferToBankAccountId);
   }
 }
 
@@ -219,7 +223,7 @@ export async function getBudgetSummary(userId: string, yearMonth: string) {
   let expense = 0;
   for (const row of cashflowRows) {
     if (row.type === "income") income = toNumber(row.total);
-    else expense = toNumber(row.total);
+    else if (row.type === "expense") expense = toNumber(row.total);
   }
 
   return {
@@ -259,11 +263,13 @@ export async function getMonthlyCashflowByDay(
     )
     .groupBy(transactions.date, transactions.type);
 
-  return rows.map((r) => ({
-    date: String(r.date),
-    type: r.type as "income" | "expense",
-    total: toNumber(r.total),
-  }));
+  return rows
+    .filter((r) => r.type === "income" || r.type === "expense")
+    .map((r) => ({
+      date: String(r.date),
+      type: r.type as "income" | "expense",
+      total: toNumber(r.total),
+    }));
 }
 
 function encodeTxCursor(occurredAt: Date | string, id: string) {
@@ -293,7 +299,7 @@ export async function listTransactions(
   userId: string,
   yearMonth?: string,
   opts?: {
-    type?: "income" | "expense" | "all";
+    type?: "income" | "expense" | "transfer" | "all";
     categoryId?: string;
     page?: number;
     pageSize?: number;
@@ -307,7 +313,11 @@ export async function listTransactions(
     conditions.push(gte(transactions.date, start));
     conditions.push(lte(transactions.date, end));
   }
-  if (opts?.type === "income" || opts?.type === "expense") {
+  if (
+    opts?.type === "income" ||
+    opts?.type === "expense" ||
+    opts?.type === "transfer"
+  ) {
     conditions.push(eq(transactions.type, opts.type));
   }
   if (opts?.categoryId) {
@@ -348,6 +358,7 @@ export async function listTransactions(
   const spendCard = alias(creditCards, "spend_card");
   const billCard = alias(creditCards, "bill_card");
   const billActivity = alias(cardActivities, "bill_activity");
+  const transferToBank = alias(bankAccounts, "transfer_to_bank");
 
   const listQuery = db
     .select({
@@ -365,6 +376,8 @@ export async function listTransactions(
       creditCardLastFour: spendCard.lastFour,
       bankAccountId: transactions.bankAccountId,
       bankAccountName: bankAccounts.name,
+      transferToBankAccountId: transactions.transferToBankAccountId,
+      transferToBankAccountName: transferToBank.name,
       billPayCardId: billCard.id,
       billPayCardName: billCard.name,
       billPayCardLastFour: billCard.lastFour,
@@ -389,6 +402,13 @@ export async function listTransactions(
       and(
         eq(transactions.bankAccountId, bankAccounts.id),
         eq(bankAccounts.userId, userId),
+      ),
+    )
+    .leftJoin(
+      transferToBank,
+      and(
+        eq(transactions.transferToBankAccountId, transferToBank.id),
+        eq(transferToBank.userId, userId),
       ),
     )
     .leftJoin(
@@ -475,7 +495,7 @@ export async function insertTransactionForUser(
     date: string;
     description: string;
     categoryId: string;
-    type: "expense" | "income";
+    type: "expense" | "income" | "transfer";
     amount: number;
     occurredAt?: string;
     clientId?: string;
@@ -483,6 +503,7 @@ export async function insertTransactionForUser(
     /** Pay down card outstanding (bill payment), not a new card spend. */
     cardBillPayId?: string | null;
     bankAccountId?: string | null;
+    transferToBankAccountId?: string | null;
   },
 ): Promise<{ id: string; duplicate: boolean }> {
   // Idempotent offline sync: same clientId → return existing, don't insert again
@@ -514,20 +535,98 @@ export async function insertTransactionForUser(
     ? input.date
     : occurredAt.toISOString().slice(0, 10);
 
-  const cardBillPayId =
+  const isTransfer = input.type === "transfer";
+  if (!(input.amount > 0)) {
+    throw new UserFacingError("Enter a positive amount");
+  }
+
+  let categoryId = input.categoryId;
+  let cardBillPayId: string | null = null;
+  let creditCardId: string | null = null;
+  let bankAccountId: string | null = null;
+  let transferToBankAccountId: string | null = null;
+
+  if (isTransfer) {
+    const {
+      ensureTransferCategory,
+      normalizeTransferLegs,
+      applyTransferBalances,
+    } = await import("@/lib/bank-account-cashflow");
+    categoryId = await ensureTransferCategory(userId);
+    const legs = normalizeTransferLegs({
+      fromBankAccountId: input.bankAccountId,
+      toBankAccountId: input.transferToBankAccountId,
+      amount: input.amount,
+    });
+    bankAccountId = legs.fromBankAccountId;
+    transferToBankAccountId = legs.toBankAccountId;
+
+    await assertOwnedTransactionInputs(userId, {
+      categoryId,
+      bankAccountId,
+      transferToBankAccountId,
+    });
+
+    try {
+      const [row] = await db
+        .insert(transactions)
+        .values({
+          userId,
+          date: dateOnly,
+          occurredAt: Number.isNaN(occurredAt.getTime())
+            ? new Date()
+            : occurredAt,
+          description: input.description,
+          categoryId,
+          type: "transfer",
+          amount: input.amount.toFixed(2),
+          creditCardId: null,
+          bankAccountId,
+          transferToBankAccountId,
+          clientId: input.clientId ?? null,
+        })
+        .returning();
+
+      await applyTransferBalances({
+        userId,
+        fromBankAccountId: bankAccountId,
+        toBankAccountId: transferToBankAccountId,
+        amount: input.amount,
+      });
+
+      return { id: row.id, duplicate: false };
+    } catch (err) {
+      if (input.clientId) {
+        const again = await db
+          .select({ id: transactions.id })
+          .from(transactions)
+          .where(
+            and(
+              eq(transactions.userId, userId),
+              eq(transactions.clientId, input.clientId),
+            ),
+          )
+          .limit(1);
+        if (again[0]) return { id: again[0].id, duplicate: true };
+      }
+      throw err;
+    }
+  }
+
+  cardBillPayId =
     input.type === "expense" && input.cardBillPayId
       ? input.cardBillPayId
       : null;
-  const creditCardId =
+  creditCardId =
     input.type === "expense" && input.creditCardId && !cardBillPayId
       ? input.creditCardId
       : null;
   // Bill pay may also debit a bank account; card spend may not.
-  const bankAccountId =
+  bankAccountId =
     creditCardId || !input.bankAccountId ? null : input.bankAccountId;
 
   await assertOwnedTransactionInputs(userId, {
-    categoryId: input.categoryId,
+    categoryId,
     creditCardId,
     cardBillPayId,
     bankAccountId,
@@ -541,11 +640,12 @@ export async function insertTransactionForUser(
         date: dateOnly,
         occurredAt: Number.isNaN(occurredAt.getTime()) ? new Date() : occurredAt,
         description: input.description,
-        categoryId: input.categoryId,
+        categoryId,
         type: input.type,
         amount: input.amount.toFixed(2),
         creditCardId,
         bankAccountId,
+        transferToBankAccountId: null,
         clientId: input.clientId ?? null,
       })
       .returning();
@@ -581,7 +681,7 @@ export async function insertTransactionForUser(
       await applyBankBalanceForTransaction({
         userId,
         bankAccountId,
-        type: input.type,
+        type: input.type === "income" ? "income" : "expense",
         amount: input.amount,
       });
     }

@@ -108,9 +108,8 @@ export default async function BankAccountDetailPage({
           <h2>Recent transactions</h2>
           <InfoTip title="Account activity" label="About account activity">
             <p>
-              Shows transactions that used this account as the payment source.
-              Balance moves with those income and expense entries. Negative
-              balances are allowed so you can reconcile missing credits later.
+              Shows income, expenses, and transfers that touch this account.
+              Transfers always use a positive amount — From debits, To credits.
             </p>
           </InfoTip>
         </div>
@@ -133,6 +132,11 @@ export default async function BankAccountDetailPage({
               <tbody>
                 {txs.map((t) => {
                   const occurredAtIso = toUtcIso(t.occurredAt);
+                  const isCredit =
+                    t.type === "income" ||
+                    (t.type === "transfer" &&
+                      t.transferToBankAccountId === account.id);
+                  const isTransfer = t.type === "transfer";
                   return (
                   <tr key={t.id}>
                     <td className="nowrap">
@@ -146,10 +150,16 @@ export default async function BankAccountDetailPage({
                     <td>{t.type}</td>
                     <td
                       className={
-                        t.type === "income" ? "num income" : "num expense"
+                        isTransfer
+                          ? isCredit
+                            ? "num income"
+                            : "num expense"
+                          : t.type === "income"
+                            ? "num income"
+                            : "num expense"
                       }
                     >
-                      {t.type === "income" ? "+" : "−"}
+                      {isCredit ? "+" : "−"}
                       {formatINR(Number(t.amount))}
                     </td>
                   </tr>

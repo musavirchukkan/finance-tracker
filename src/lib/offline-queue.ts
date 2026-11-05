@@ -4,11 +4,12 @@ export type PendingTransaction = {
   occurredAt: string; // ISO
   description: string;
   categoryId: string;
-  type: "expense" | "income";
+  type: "expense" | "income" | "transfer";
   amount: number;
   creditCardId?: string | null;
   cardBillPayId?: string | null;
   bankAccountId?: string | null;
+  transferToBankAccountId?: string | null;
   createdAt: string;
 };
 
@@ -51,6 +52,7 @@ export async function queueTransaction(
     creditCardId: tx.creditCardId ?? null,
     cardBillPayId: tx.cardBillPayId ?? null,
     bankAccountId: tx.bankAccountId ?? null,
+    transferToBankAccountId: tx.transferToBankAccountId ?? null,
     createdAt: new Date().toISOString(),
   };
 

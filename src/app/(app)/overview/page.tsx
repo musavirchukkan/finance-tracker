@@ -112,7 +112,7 @@ export default async function OverviewPage({
       const day = Number(row.date.slice(8, 10));
       if (day < w.startDay || day > w.endDay) continue;
       if (row.type === "income") income += row.total;
-      else expense += row.total;
+      else if (row.type === "expense") expense += row.total;
     }
     return { label: w.label, income, expense };
   });
@@ -313,6 +313,7 @@ export default async function OverviewPage({
                     {recent.map((t) => {
                       const amt = toNumber(t.amount);
                       const isIncome = t.type === "income";
+                      const isTransfer = t.type === "transfer";
                       const occurredAtIso = toUtcIso(t.occurredAt);
                       return (
                         <tr key={t.id}>
@@ -321,7 +322,7 @@ export default async function OverviewPage({
                           </td>
                           <td>
                             <span
-                              className={`badge ${isIncome ? "income" : "expense"}`}
+                              className={`badge ${isTransfer ? "transfer" : isIncome ? "income" : "expense"}`}
                             >
                               {t.categoryName}
                             </span>
@@ -334,9 +335,9 @@ export default async function OverviewPage({
                             )}
                           </td>
                           <td
-                            className={`num ${isIncome ? "amount-pos" : "amount-neg"}`}
+                            className={`num ${isTransfer ? "" : isIncome ? "amount-pos" : "amount-neg"}`}
                           >
-                            {isIncome ? "+" : "−"}
+                            {isTransfer ? "" : isIncome ? "+" : "−"}
                             {formatINR(amt)}
                           </td>
                         </tr>

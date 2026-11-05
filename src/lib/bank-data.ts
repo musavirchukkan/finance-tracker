@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { bankAccounts, transactions } from "@/lib/db/schema";
 import { formatCardLabel } from "@/lib/credit-cards";
@@ -36,7 +36,10 @@ export async function getBankAccountDetail(userId: string, id: string) {
     .where(
       and(
         eq(transactions.userId, userId),
-        eq(transactions.bankAccountId, id),
+        or(
+          eq(transactions.bankAccountId, id),
+          eq(transactions.transferToBankAccountId, id),
+        ),
       ),
     )
     .orderBy(desc(transactions.date), desc(transactions.occurredAt))

@@ -31,7 +31,7 @@ export const categories = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    kind: text("kind").notNull().default("expense"), // expense | income
+    kind: text("kind").notNull().default("expense"), // expense | income | transfer
     icon: text("icon"),
     sortOrder: integer("sort_order").notNull().default(0),
   },
@@ -161,16 +161,27 @@ export const transactions = pgTable(
     categoryId: uuid("category_id")
       .notNull()
       .references(() => categories.id, { onDelete: "restrict" }),
-    type: text("type").notNull().default("expense"), // expense | income
+    type: text("type").notNull().default("expense"), // expense | income | transfer
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     /** When set on an expense, this spend was paid with the card. */
     creditCardId: uuid("credit_card_id").references(() => creditCards.id, {
       onDelete: "set null",
     }),
-    /** Bank account used: expense decreases balance, income increases it. */
+    /**
+     * Bank account used: expense decreases balance, income increases it.
+     * On transfer: source (From). Null means Cash.
+     */
     bankAccountId: uuid("bank_account_id").references(() => bankAccounts.id, {
       onDelete: "set null",
     }),
+    /**
+     * Transfer destination (To). Null means Cash.
+     * Only used when type === "transfer".
+     */
+    transferToBankAccountId: uuid("transfer_to_bank_account_id").references(
+      () => bankAccounts.id,
+      { onDelete: "set null" },
+    ),
     /** Client-generated id for offline sync idempotency. */
     clientId: text("client_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -183,6 +194,7 @@ export const transactions = pgTable(
     index("transactions_user_occurred").on(t.userId, t.occurredAt),
     index("transactions_user_category").on(t.userId, t.categoryId),
     index("transactions_user_bank").on(t.userId, t.bankAccountId),
+    index("transactions_user_transfer_to").on(t.transferToBankAccountId),
     index("transactions_user_card").on(t.userId, t.creditCardId),
   ],
 );
@@ -399,7 +411,8 @@ export const categoriesRelations = relations(categories, ({ one, many }) => ({
 
 export const bankAccountsRelations = relations(bankAccounts, ({ one, many }) => ({
   user: one(users, { fields: [bankAccounts.userId], references: [users.id] }),
-  transactions: many(transactions),
+  transactions: many(transactions, { relationName: "transferFromBank" }),
+  transferIncoming: many(transactions, { relationName: "transferToBank" }),
 }));
 
 export const creditCardsRelations = relations(creditCards, ({ one, many }) => ({
@@ -422,6 +435,12 @@ export const transactionsRelations = relations(transactions, ({ one }) => ({
   bankAccount: one(bankAccounts, {
     fields: [transactions.bankAccountId],
     references: [bankAccounts.id],
+    relationName: "transferFromBank",
+  }),
+  transferToBankAccount: one(bankAccounts, {
+    fields: [transactions.transferToBankAccountId],
+    references: [bankAccounts.id],
+    relationName: "transferToBank",
   }),
 }));
 

@@ -16,6 +16,7 @@ describe("isBudgetableCategoryName", () => {
     expect(isBudgetableCategoryName("Kuri")).toBe(false);
     expect(isBudgetableCategoryName("Credit Card")).toBe(false);
     expect(isBudgetableCategoryName("Wallet cashout")).toBe(false);
+    expect(isBudgetableCategoryName("Transfer")).toBe(false);
   });
 
   it("is case-insensitive", () => {

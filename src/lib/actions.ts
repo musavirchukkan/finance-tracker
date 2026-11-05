@@ -25,6 +25,7 @@ import {
   zNonEmpty,
   zOptionalUuid,
   zPassword,
+  zTxType,
   zUuid,
   zYearMonth,
 } from "@/lib/form-schemas";
@@ -66,16 +67,27 @@ function revalidateGoals() {
   revalidatePath("/overview");
 }
 
-const createTxSchema = z.object({
-  date: zDate,
-  description: z.string(),
-  categoryId: zUuid,
-  type: zIncomeExpense,
-  amount: z.string(),
-  creditCardId: zOptionalUuid,
-  cardBillPayId: zOptionalUuid,
-  bankAccountId: zOptionalUuid,
-});
+const createTxSchema = z
+  .object({
+    date: zDate,
+    description: z.string(),
+    categoryId: z.string(),
+    type: zTxType,
+    amount: z.string(),
+    creditCardId: zOptionalUuid,
+    cardBillPayId: zOptionalUuid,
+    bankAccountId: zOptionalUuid,
+    transferToBankAccountId: zOptionalUuid,
+  })
+  .superRefine((val, ctx) => {
+    if (val.type !== "transfer" && !zUuid.safeParse(val.categoryId).success) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Invalid category",
+        path: ["categoryId"],
+      });
+    }
+  });
 
 const updateTxSchema = createTxSchema.extend({
   id: zUuid,
@@ -83,11 +95,20 @@ const updateTxSchema = createTxSchema.extend({
 });
 
 function parsePaymentSource(
-  type: "expense" | "income",
+  type: "expense" | "income" | "transfer",
   creditCardId: string | null,
   cardBillPayId: string | null,
   bankAccountId: string | null,
+  transferToBankAccountId: string | null,
 ) {
+  if (type === "transfer") {
+    return {
+      creditCardId: null,
+      cardBillPayId: null,
+      bankAccountId,
+      transferToBankAccountId,
+    };
+  }
   const cardId = type === "expense" ? creditCardId : null;
   const billPayId = type === "expense" ? cardBillPayId : null;
   // Card spend is charged on the card — not paid from a bank account.
@@ -97,6 +118,7 @@ function parsePaymentSource(
     creditCardId: cardId,
     cardBillPayId: billPayId,
     bankAccountId: bankId,
+    transferToBankAccountId: null,
   };
 }
 
@@ -113,26 +135,31 @@ export async function createTransaction(formData: FormData) {
       creditCardId: formString(formData, "creditCardId"),
       cardBillPayId: formString(formData, "cardBillPayId"),
       bankAccountId: formString(formData, "bankAccountId"),
+      transferToBankAccountId: formString(formData, "transferToBankAccountId"),
     },
     "Missing required fields",
   );
   const amount = parseAmount(raw.amount);
-  const { creditCardId, cardBillPayId, bankAccountId } = parsePaymentSource(
-    raw.type,
-    raw.creditCardId,
-    raw.cardBillPayId,
-    raw.bankAccountId,
-  );
+  if (!(amount > 0)) throw new UserFacingError("Enter a positive amount");
+  const { creditCardId, cardBillPayId, bankAccountId, transferToBankAccountId } =
+    parsePaymentSource(
+      raw.type,
+      raw.creditCardId,
+      raw.cardBillPayId,
+      raw.bankAccountId,
+      raw.transferToBankAccountId,
+    );
 
   const result = await insertTransactionForUser(user.id, {
     date: raw.date,
     description: raw.description,
-    categoryId: raw.categoryId,
+    categoryId: raw.categoryId.trim() || raw.categoryId,
     type: raw.type,
     amount,
     creditCardId,
     cardBillPayId,
     bankAccountId,
+    transferToBankAccountId,
   });
 
   if (!result.duplicate) {
@@ -147,6 +174,9 @@ export async function createTransaction(formData: FormData) {
     if (creditCardId) revalidatePath(`/cards/${creditCardId}`);
     if (cardBillPayId) revalidatePath(`/cards/${cardBillPayId}`);
     if (bankAccountId) revalidatePath(`/accounts/${bankAccountId}`);
+    if (transferToBankAccountId) {
+      revalidatePath(`/accounts/${transferToBankAccountId}`);
+    }
   }
 }
 
@@ -165,6 +195,7 @@ export async function updateTransaction(formData: FormData) {
       creditCardId: formString(formData, "creditCardId"),
       cardBillPayId: formString(formData, "cardBillPayId"),
       bankAccountId: formString(formData, "bankAccountId"),
+      transferToBankAccountId: formString(formData, "transferToBankAccountId"),
     },
     "Missing transaction",
   );
@@ -173,26 +204,28 @@ export async function updateTransaction(formData: FormData) {
     throw new UserFacingError("Enter a valid date and time");
   }
   const amount = parseAmount(raw.amount);
-  const { creditCardId, cardBillPayId, bankAccountId } = parsePaymentSource(
-    raw.type,
-    raw.creditCardId,
-    raw.cardBillPayId,
-    raw.bankAccountId,
-  );
+  if (!(amount > 0)) throw new UserFacingError("Enter a positive amount");
+  let { creditCardId, cardBillPayId, bankAccountId, transferToBankAccountId } =
+    parsePaymentSource(
+      raw.type,
+      raw.creditCardId,
+      raw.cardBillPayId,
+      raw.bankAccountId,
+      raw.transferToBankAccountId,
+    );
 
   const [existing] = await db
-    .select({ id: transactions.id })
+    .select({
+      id: transactions.id,
+      type: transactions.type,
+      amount: transactions.amount,
+      bankAccountId: transactions.bankAccountId,
+      transferToBankAccountId: transactions.transferToBankAccountId,
+    })
     .from(transactions)
     .where(and(eq(transactions.id, raw.id), eq(transactions.userId, user.id)))
     .limit(1);
   if (!existing) throw new UserFacingError("Transaction not found");
-
-  await assertOwnedTransactionInputs(user.id, {
-    categoryId: raw.categoryId,
-    creditCardId,
-    cardBillPayId,
-    bankAccountId,
-  });
 
   const {
     reverseActivitiesForTransaction,
@@ -200,11 +233,33 @@ export async function updateTransaction(formData: FormData) {
     recordBillPaymentOnCard,
   } = await import("@/lib/credit-card-cashflow");
   const {
-    reverseBankBalanceForTransaction,
-    applyBankBalanceForTransaction,
+    applyLedgerBalanceTransition,
+    ensureTransferCategory,
+    normalizeTransferLegs,
   } = await import("@/lib/bank-account-cashflow");
 
-  await reverseBankBalanceForTransaction(user.id, raw.id);
+  let categoryId = raw.categoryId;
+  if (raw.type === "transfer") {
+    categoryId = await ensureTransferCategory(user.id);
+    const legs = normalizeTransferLegs({
+      fromBankAccountId: bankAccountId,
+      toBankAccountId: transferToBankAccountId,
+      amount,
+    });
+    bankAccountId = legs.fromBankAccountId;
+    transferToBankAccountId = legs.toBankAccountId;
+    creditCardId = null;
+    cardBillPayId = null;
+  }
+
+  await assertOwnedTransactionInputs(user.id, {
+    categoryId,
+    creditCardId,
+    cardBillPayId,
+    bankAccountId,
+    transferToBankAccountId,
+  });
+
   await reverseActivitiesForTransaction(user.id, raw.id);
 
   const updated = await db
@@ -213,11 +268,13 @@ export async function updateTransaction(formData: FormData) {
       date: raw.date,
       occurredAt,
       description: raw.description,
-      categoryId: raw.categoryId,
+      categoryId,
       type: raw.type,
       amount: amount.toFixed(2),
       creditCardId,
       bankAccountId,
+      transferToBankAccountId:
+        raw.type === "transfer" ? transferToBankAccountId : null,
     })
     .where(and(eq(transactions.id, raw.id), eq(transactions.userId, user.id)))
     .returning();
@@ -225,6 +282,23 @@ export async function updateTransaction(formData: FormData) {
   if (!updated[0]) {
     throw new UserFacingError("Transaction not found");
   }
+
+  await applyLedgerBalanceTransition({
+    userId: user.id,
+    from: {
+      type: existing.type,
+      amount: toNumber(existing.amount),
+      bankAccountId: existing.bankAccountId,
+      transferToBankAccountId: existing.transferToBankAccountId,
+    },
+    to: {
+      type: raw.type,
+      amount,
+      bankAccountId,
+      transferToBankAccountId:
+        raw.type === "transfer" ? transferToBankAccountId : null,
+    },
+  });
 
   if (raw.type === "expense" && creditCardId && amount > 0) {
     await recordSpendOnCard({
@@ -246,13 +320,6 @@ export async function updateTransaction(formData: FormData) {
     });
   }
 
-  await applyBankBalanceForTransaction({
-    userId: user.id,
-    bankAccountId,
-    type: raw.type,
-    amount,
-  });
-
   revalidatePath("/transactions");
   revalidatePath("/budget");
   revalidatePath("/overview");
@@ -263,6 +330,9 @@ export async function updateTransaction(formData: FormData) {
   if (creditCardId) revalidatePath(`/cards/${creditCardId}`);
   if (cardBillPayId) revalidatePath(`/cards/${cardBillPayId}`);
   if (bankAccountId) revalidatePath(`/accounts/${bankAccountId}`);
+  if (transferToBankAccountId) {
+    revalidatePath(`/accounts/${transferToBankAccountId}`);
+  }
 }
 
 export async function deleteTransaction(formData: FormData) {

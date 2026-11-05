@@ -34,6 +34,8 @@ const INCOME_CATEGORIES = [
   "Other Income",
 ];
 
+const TRANSFER_CATEGORIES = ["Transfer"];
+
 export async function ensureDefaultCategories(userId: string) {
   const existing = await db
     .select()
@@ -57,6 +59,13 @@ export async function ensureDefaultCategories(userId: string) {
       icon: defaultIconForCategoryName(name),
       sortOrder: 100 + index,
     })),
+    ...TRANSFER_CATEGORIES.map((name, index) => ({
+      userId,
+      name,
+      kind: "transfer" as const,
+      icon: defaultIconForCategoryName(name),
+      sortOrder: 200 + index,
+    })),
   ].filter((c) => !names.has(c.name));
 
   if (toInsert.length > 0) {
@@ -67,6 +76,9 @@ export async function ensureDefaultCategories(userId: string) {
     const updates: { kind?: string; icon?: string } = {};
     if (INCOME_CATEGORIES.includes(row.name) && row.kind !== "income") {
       updates.kind = "income";
+    }
+    if (TRANSFER_CATEGORIES.includes(row.name) && row.kind !== "transfer") {
+      updates.kind = "transfer";
     }
     if (!row.icon) {
       updates.icon = defaultIconForCategoryName(row.name);

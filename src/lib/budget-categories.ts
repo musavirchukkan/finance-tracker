@@ -1,3 +1,4 @@
+import { TRANSFER_CATEGORY } from "@/lib/bank-account-cashflow";
 import {
   CREDIT_CARD_CATEGORY,
   DEBT_EMI_CATEGORY,
@@ -17,6 +18,7 @@ const NON_BUDGETABLE_EXPENSE_NAMES = new Set(
     KURI_CATEGORY,
     CREDIT_CARD_CATEGORY,
     WALLET_CASHOUT_CATEGORY,
+    TRANSFER_CATEGORY,
   ].map((n) => n.toLowerCase()),
 );
 

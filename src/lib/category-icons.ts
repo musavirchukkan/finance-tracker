@@ -79,6 +79,7 @@ export function resolveCategoryIcon(
   if (/home|rent|hous/.test(key)) return "🏠";
   if (/salary|wage|payroll/.test(key)) return "💼";
   if (/freelance|consult|side/.test(key)) return "💻";
+  if (/transfer|deposit|withdraw/.test(key)) return "⇄";
   if (/income/.test(key)) return "💰";
   return "📁";
 }

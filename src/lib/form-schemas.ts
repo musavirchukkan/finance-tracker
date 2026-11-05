@@ -23,6 +23,14 @@ export const zIncomeExpense = z
   .string()
   .transform((s) => (s === "income" ? ("income" as const) : ("expense" as const)));
 
+export const zTxType = z
+  .string()
+  .transform((s) => {
+    if (s === "income") return "income" as const;
+    if (s === "transfer") return "transfer" as const;
+    return "expense" as const;
+  });
+
 /** Empty → null; otherwise must be a UUID. */
 export const zOptionalUuid = z
   .string()

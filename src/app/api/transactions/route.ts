@@ -3,7 +3,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import {
   insertTransactionForUser,
-} from "@/lib/ledger-data";;
+} from "@/lib/ledger-data";
 import { parseAmount } from "@/lib/money";
 import { parseUtcInstant } from "@/lib/utc-time";
 import { revalidatePath } from "next/cache";
@@ -12,13 +12,22 @@ const bodySchema = z.object({
   date: z.string().min(1).optional(),
   occurredAt: z.string().optional(),
   description: z.string().optional().default(""),
-  categoryId: z.string().uuid(),
-  type: z.enum(["expense", "income"]),
+  categoryId: z.string().optional().default(""),
+  type: z.enum(["expense", "income", "transfer"]),
   amount: z.union([z.string(), z.number()]),
   clientId: z.string().min(1).optional(),
   creditCardId: z.string().uuid().nullable().optional(),
   cardBillPayId: z.string().uuid().nullable().optional(),
   bankAccountId: z.string().uuid().nullable().optional(),
+  transferToBankAccountId: z.string().uuid().nullable().optional(),
+}).superRefine((val, ctx) => {
+  if (val.type !== "transfer" && !z.string().uuid().safeParse(val.categoryId).success) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Invalid category",
+      path: ["categoryId"],
+    });
+  }
 });
 
 export async function POST(request: Request) {
@@ -53,17 +62,30 @@ export async function POST(request: Request) {
 
   try {
     const amount = parseAmount(String(parsed.data.amount));
+    if (!(amount > 0)) {
+      return NextResponse.json({ error: "Enter a positive amount" }, { status: 400 });
+    }
     const result = await insertTransactionForUser(session.user.id, {
       date,
       occurredAt,
       description: (parsed.data.description ?? "").trim(),
-      categoryId: parsed.data.categoryId,
+      categoryId: parsed.data.categoryId || "",
       type: parsed.data.type,
       amount,
       clientId: parsed.data.clientId,
-      creditCardId: parsed.data.creditCardId ?? null,
-      cardBillPayId: parsed.data.cardBillPayId ?? null,
+      creditCardId:
+        parsed.data.type === "transfer"
+          ? null
+          : (parsed.data.creditCardId ?? null),
+      cardBillPayId:
+        parsed.data.type === "transfer"
+          ? null
+          : (parsed.data.cardBillPayId ?? null),
       bankAccountId: parsed.data.bankAccountId ?? null,
+      transferToBankAccountId:
+        parsed.data.type === "transfer"
+          ? (parsed.data.transferToBankAccountId ?? null)
+          : null,
     });
     if (!result.duplicate) {
       revalidatePath("/transactions");
@@ -82,6 +104,9 @@ export async function POST(request: Request) {
       }
       if (parsed.data.bankAccountId) {
         revalidatePath(`/accounts/${parsed.data.bankAccountId}`);
+      }
+      if (parsed.data.transferToBankAccountId) {
+        revalidatePath(`/accounts/${parsed.data.transferToBankAccountId}`);
       }
     }
     return NextResponse.json({

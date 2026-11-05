@@ -706,6 +706,11 @@ table.data.distribute td.shrink {
   color: var(--accent);
 }
 
+.type-toggle button.active.transfer {
+  background: var(--violet-soft);
+  color: var(--violet);
+}
+
 .muted {
   color: var(--muted);
 }
@@ -2282,6 +2287,12 @@ button:disabled {
   box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.35);
 }
 
+.qa-type-btn.active.transfer {
+  background: var(--surface);
+  color: var(--violet);
+  box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.35);
+}
+
 .qa-label {
   font-size: 0.65rem;
   font-weight: 750;
@@ -2888,6 +2899,10 @@ button:disabled {
 .badge.expense {
   background: var(--violet-soft);
   color: var(--violet);
+}
+.badge.transfer {
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  color: var(--fg);
 }
 
 .tx-main {
