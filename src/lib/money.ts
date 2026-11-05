@@ -1,3 +1,5 @@
+import { UserFacingError } from "@/lib/safe-error";
+
 const inr = new Intl.NumberFormat("en-IN", {
   style: "currency",
   currency: "INR",
@@ -24,7 +26,7 @@ export function parseAmount(
   const cleaned = raw.replace(/[₹,\s]/g, "");
   const n = Number(cleaned);
   if (Number.isNaN(n) || (!opts?.allowNegative && n < 0)) {
-    throw new Error("Invalid amount");
+    throw new UserFacingError("Invalid amount");
   }
   return Math.round(n * 100) / 100;
 }

@@ -21,6 +21,7 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 import { toNumber } from "@/lib/money";
 import { monthDateBounds, yearMonthFromDate } from "@/lib/months";
+import { UserFacingError } from "@/lib/safe-error";
 import { parseUtcInstant } from "@/lib/utc-time";
 import {
   DEFAULT_GST_ON_INTEREST_PERCENT,
@@ -61,7 +62,7 @@ export async function assertOwnedTransactionInputs(
       and(eq(categories.id, input.categoryId), eq(categories.userId, userId)),
     )
     .limit(1);
-  if (!cat) throw new Error("Invalid category");
+  if (!cat) throw new UserFacingError("Invalid category");
 
   const cardIds = [input.creditCardId, input.cardBillPayId].filter(
     (id): id is string => Boolean(id),
@@ -72,7 +73,7 @@ export async function assertOwnedTransactionInputs(
       .from(creditCards)
       .where(and(eq(creditCards.id, cardId), eq(creditCards.userId, userId)))
       .limit(1);
-    if (!card) throw new Error("Invalid credit card");
+    if (!card) throw new UserFacingError("Invalid credit card");
   }
 
   if (input.bankAccountId) {
@@ -86,7 +87,7 @@ export async function assertOwnedTransactionInputs(
         ),
       )
       .limit(1);
-    if (!bank) throw new Error("Invalid bank account");
+    if (!bank) throw new UserFacingError("Invalid bank account");
   }
 }
 

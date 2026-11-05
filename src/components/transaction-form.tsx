@@ -19,6 +19,7 @@ import {
 import { formatINR } from "@/lib/money";
 import { resolveCategoryIcon } from "@/lib/category-icons";
 import { updateTransaction } from "@/lib/actions";
+import { clientErrorMessage } from "@/lib/safe-error";
 import {
   localWallClockToUtcIso,
   nowTimeLocal,
@@ -486,9 +487,7 @@ export function TransactionForm({
           onSaved?.();
         } catch (err) {
           toast.error(
-            err instanceof Error && err.message.trim()
-              ? err.message
-              : "Could not update transaction",
+            clientErrorMessage(err, "Could not update transaction"),
           );
         }
       });

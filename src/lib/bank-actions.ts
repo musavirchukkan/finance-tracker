@@ -5,7 +5,12 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { bankAccounts, transactions } from "@/lib/db/schema";
-import { formString, zNonEmpty } from "@/lib/form-schemas";
+import {
+  formString,
+  parseOrThrow,
+  zNonEmpty,
+  zUuid,
+} from "@/lib/form-schemas";
 import { normalizeLastFour } from "@/lib/credit-cards";
 import { parseAmount } from "@/lib/money";
 import { UserFacingError } from "@/lib/safe-error";
@@ -20,12 +25,22 @@ function revalidateBanks(accountId?: string) {
   revalidatePath("/cards");
 }
 
+const bankExtrasSchema = z.object({
+  minBalance: z.string(),
+  balanceRules: z.string(),
+  lastFour: z.string(),
+});
+
 function parseBankExtras(formData: FormData) {
-  const minRaw = String(formData.get("minBalance") ?? "").trim();
+  const raw = parseOrThrow(bankExtrasSchema, {
+    minBalance: formString(formData, "minBalance"),
+    balanceRules: formString(formData, "balanceRules"),
+    lastFour: formString(formData, "lastFour"),
+  });
+  const minRaw = raw.minBalance.trim();
   const minBalance = minRaw ? parseAmount(minRaw) : null;
-  const balanceRules =
-    String(formData.get("balanceRules") ?? "").trim() || null;
-  const lastFour = normalizeLastFour(String(formData.get("lastFour") ?? ""));
+  const balanceRules = raw.balanceRules.trim() || null;
+  const lastFour = normalizeLastFour(raw.lastFour);
   return { minBalance, balanceRules, lastFour };
 }
 
@@ -74,15 +89,21 @@ export async function createBankAccount(formData: FormData) {
 
 export async function updateBankAccount(formData: FormData) {
   const user = await requireUser();
-  const id = formString(formData, "id").trim();
+  const id = parseOrThrow(
+    z.object({ id: zUuid }),
+    { id: formString(formData, "id").trim() },
+    "Missing fields",
+  ).id;
   const parsed = bankUpsertSchema.safeParse({
     name: formString(formData, "name"),
     currentBalance: formString(formData, "currentBalance") || "0",
     accountType: formString(formData, "accountType") || "Savings",
     status: formString(formData, "status") || "Active",
   });
-  if (!id || !parsed.success) {
-    throw new UserFacingError("Missing fields");
+  if (!parsed.success) {
+    throw new UserFacingError(
+      parsed.error.issues[0]?.message ?? "Missing fields",
+    );
   }
 
   const currentBalance = parseAmount(parsed.data.currentBalance, {
@@ -108,8 +129,13 @@ export async function updateBankAccount(formData: FormData) {
 
 export async function deleteBankAccount(formData: FormData) {
   const user = await requireUser();
-  const id = formString(formData, "id").trim();
-  if (!id) return;
+  const idRaw = formString(formData, "id").trim();
+  if (!idRaw) return;
+  const id = parseOrThrow(
+    z.object({ id: zUuid }),
+    { id: idRaw },
+    "Missing account",
+  ).id;
 
   await db
     .update(transactions)
@@ -125,18 +151,29 @@ export async function deleteBankAccount(formData: FormData) {
   revalidateBanks();
 }
 
+const adjustBalanceSchema = z.object({
+  id: zUuid,
+  amount: z.string(),
+  direction: z.string(),
+});
+
 export async function adjustBankAccountBalance(formData: FormData) {
   const user = await requireUser();
-  const id = formString(formData, "id").trim();
-  const amount = parseAmount(formString(formData, "amount") || "0");
-  const direction =
-    formString(formData, "direction") === "debit" ? "debit" : "credit";
-
-  if (!id) throw new UserFacingError("Missing account");
+  const raw = parseOrThrow(
+    adjustBalanceSchema,
+    {
+      id: formString(formData, "id").trim(),
+      amount: formString(formData, "amount") || "0",
+      direction: formString(formData, "direction") || "credit",
+    },
+    "Missing account",
+  );
+  const amount = parseAmount(raw.amount);
+  const direction = raw.direction === "debit" ? "debit" : "credit";
   if (amount <= 0) throw new UserFacingError("Enter an amount");
 
   const delta = direction === "credit" ? amount : -amount;
   const { adjustBankBalance } = await import("@/lib/bank-account-cashflow");
-  await adjustBankBalance(user.id, id, delta);
-  revalidateBanks(id);
+  await adjustBankBalance(user.id, raw.id, delta);
+  revalidateBanks(raw.id);
 }

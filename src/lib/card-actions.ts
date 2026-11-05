@@ -2,6 +2,7 @@
 
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { db } from "@/lib/db";
 import {
   cardActivities,
@@ -19,7 +20,16 @@ import {
   normalizeCardStatus,
   normalizeLastFour,
 } from "@/lib/credit-cards";
+import {
+  formCheckbox,
+  formString,
+  parseOrThrow,
+  zDate,
+  zNonEmpty,
+  zUuid,
+} from "@/lib/form-schemas";
 import { parseAmount, toNumber } from "@/lib/money";
+import { UserFacingError } from "@/lib/safe-error";
 import { requireUser } from "@/lib/session";
 
 function revalidateCards(cardId?: string) {
@@ -35,69 +45,88 @@ function revalidateCards(cardId?: string) {
 async function parseSharesLimitWithId(
   userId: string,
   cardId: string | null,
-  formData: FormData,
+  raw: string,
 ) {
-  const raw = String(formData.get("sharesLimitWithId") ?? "").trim();
-  if (!raw) return null;
-  if (cardId && raw === cardId) {
-    throw new Error("A card cannot share limit with itself");
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const idParsed = zUuid.safeParse(trimmed);
+  if (!idParsed.success) {
+    throw new UserFacingError("Shared-limit card not found");
+  }
+  if (cardId && idParsed.data === cardId) {
+    throw new UserFacingError("A card cannot share limit with itself");
   }
   const [target] = await db
     .select()
     .from(creditCards)
-    .where(and(eq(creditCards.id, raw), eq(creditCards.userId, userId)))
+    .where(and(eq(creditCards.id, idParsed.data), eq(creditCards.userId, userId)))
     .limit(1);
-  if (!target) throw new Error("Shared-limit card not found");
+  if (!target) throw new UserFacingError("Shared-limit card not found");
   if (target.sharesLimitWithId) {
-    throw new Error("Pick the card that owns the shared limit");
+    throw new UserFacingError("Pick the card that owns the shared limit");
   }
   return target.id;
 }
 
-function parseCardExtra(formData: FormData) {
-  const lastFour = normalizeLastFour(String(formData.get("lastFour") ?? ""));
-  const isRupay =
-    formData.get("isRupay") === "on" ||
-    formData.get("isRupay") === "true";
-  return { lastFour, isRupay };
+const cardUpsertSchema = z.object({
+  name: zNonEmpty,
+  currentOutstanding: z.string(),
+  creditLimit: z.string(),
+  billingDay: z.string(),
+  paymentDueGapDays: z.string(),
+  statementAmount: z.string(),
+  status: z.string(),
+  lastFour: z.string(),
+  sharesLimitWithId: z.string(),
+});
+
+function parseCardFields(formData: FormData) {
+  return parseOrThrow(
+    cardUpsertSchema,
+    {
+      name: formString(formData, "name"),
+      currentOutstanding: formString(formData, "currentOutstanding") || "0",
+      creditLimit: formString(formData, "creditLimit"),
+      billingDay: formString(formData, "billingDay"),
+      paymentDueGapDays: formString(formData, "paymentDueGapDays"),
+      statementAmount: formString(formData, "statementAmount"),
+      status: formString(formData, "status") || "Active",
+      lastFour: formString(formData, "lastFour"),
+      sharesLimitWithId: formString(formData, "sharesLimitWithId"),
+    },
+    "Name is required",
+  );
 }
 
 export async function createCreditCard(formData: FormData) {
   const user = await requireUser();
-  const name = String(formData.get("name") ?? "").trim();
-  const outstanding = parseAmount(
-    String(formData.get("currentOutstanding") ?? "0"),
-  );
+  const raw = parseCardFields(formData);
+  const outstanding = parseAmount(raw.currentOutstanding);
   const sharesLimitWithId = await parseSharesLimitWithId(
     user.id,
     null,
-    formData,
+    raw.sharesLimitWithId,
   );
-  const limitRaw = String(formData.get("creditLimit") ?? "").trim();
+  const limitRaw = raw.creditLimit.trim();
   const creditLimit =
     sharesLimitWithId || !limitRaw ? null : parseAmount(limitRaw);
-  const billingDay = clampBillingDay(
-    Number(formData.get("billingDay") ?? "") || null,
-  );
+  const billingDay = clampBillingDay(Number(raw.billingDay) || null);
   const paymentDueGapDays = clampDueGapDays(
-    Number(formData.get("paymentDueGapDays") ?? "") || null,
+    Number(raw.paymentDueGapDays) || null,
   );
-  const statementRaw = String(formData.get("statementAmount") ?? "").trim();
+  const statementRaw = raw.statementAmount.trim();
   const statementAmount =
     statementRaw === "" ? null : parseAmount(statementRaw);
-  const pinToCurrentStatement =
-    formData.get("pinToCurrentStatement") === "on" ||
-    formData.get("pinToCurrentStatement") === "true";
-  const status = normalizeCardStatus(String(formData.get("status") ?? "Active"));
-  const { lastFour, isRupay } = parseCardExtra(formData);
-
-  if (!name) throw new Error("Name is required");
+  const pinToCurrentStatement = formCheckbox(formData, "pinToCurrentStatement");
+  const status = normalizeCardStatus(raw.status);
+  const lastFour = normalizeLastFour(raw.lastFour);
+  const isRupay = formCheckbox(formData, "isRupay");
 
   const [row] = await db
     .insert(creditCards)
     .values({
       userId: user.id,
-      name,
+      name: raw.name,
       currentOutstanding: Math.max(0, outstanding).toFixed(2),
       statementAmount:
         statementAmount != null ? Math.max(0, statementAmount).toFixed(2) : null,
@@ -118,31 +147,32 @@ export async function createCreditCard(formData: FormData) {
 
 export async function updateCreditCard(formData: FormData) {
   const user = await requireUser();
-  const id = String(formData.get("id") ?? "");
-  const name = String(formData.get("name") ?? "").trim();
-  const outstanding = parseAmount(
-    String(formData.get("currentOutstanding") ?? "0"),
+  const id = parseOrThrow(
+    z.object({ id: zUuid }),
+    { id: formString(formData, "id").trim() },
+    "Missing fields",
+  ).id;
+  const raw = parseCardFields(formData);
+  const outstanding = parseAmount(raw.currentOutstanding);
+  const sharesLimitWithId = await parseSharesLimitWithId(
+    user.id,
+    id,
+    raw.sharesLimitWithId,
   );
-  const sharesLimitWithId = await parseSharesLimitWithId(user.id, id, formData);
-  const limitRaw = String(formData.get("creditLimit") ?? "").trim();
+  const limitRaw = raw.creditLimit.trim();
   const creditLimit =
     sharesLimitWithId || !limitRaw ? null : parseAmount(limitRaw);
-  const billingDay = clampBillingDay(
-    Number(formData.get("billingDay") ?? "") || null,
-  );
+  const billingDay = clampBillingDay(Number(raw.billingDay) || null);
   const paymentDueGapDays = clampDueGapDays(
-    Number(formData.get("paymentDueGapDays") ?? "") || null,
+    Number(raw.paymentDueGapDays) || null,
   );
-  const statementRaw = String(formData.get("statementAmount") ?? "").trim();
+  const statementRaw = raw.statementAmount.trim();
   const statementAmount =
     statementRaw === "" ? null : parseAmount(statementRaw);
-  const pinToCurrentStatement =
-    formData.get("pinToCurrentStatement") === "on" ||
-    formData.get("pinToCurrentStatement") === "true";
-  const status = normalizeCardStatus(String(formData.get("status") ?? "Active"));
-  const { lastFour, isRupay } = parseCardExtra(formData);
-
-  if (!id || !name) throw new Error("Missing fields");
+  const pinToCurrentStatement = formCheckbox(formData, "pinToCurrentStatement");
+  const status = normalizeCardStatus(raw.status);
+  const lastFour = normalizeLastFour(raw.lastFour);
+  const isRupay = formCheckbox(formData, "isRupay");
 
   // Clear dependents pointing at this card if it starts sharing with another.
   if (sharesLimitWithId) {
@@ -160,7 +190,7 @@ export async function updateCreditCard(formData: FormData) {
   await db
     .update(creditCards)
     .set({
-      name,
+      name: raw.name,
       currentOutstanding: Math.max(0, outstanding).toFixed(2),
       statementAmount:
         statementAmount != null ? Math.max(0, statementAmount).toFixed(2) : null,
@@ -181,7 +211,11 @@ export async function updateCreditCard(formData: FormData) {
 
 export async function deleteCreditCard(formData: FormData) {
   const user = await requireUser();
-  const id = String(formData.get("id") ?? "");
+  const id = parseOrThrow(
+    z.object({ id: zUuid }),
+    { id: formString(formData, "id").trim() },
+    "Missing card",
+  ).id;
 
   const activities = await db
     .select()
@@ -207,28 +241,44 @@ export async function deleteCreditCard(formData: FormData) {
   revalidateCards(id);
 }
 
+const walletRechargeSchema = z.object({
+  cardId: zUuid,
+  date: zDate,
+  walletCredit: z.string(),
+  cardCharged: z.string(),
+  description: z.string(),
+});
+
 export async function logWalletRecharge(formData: FormData) {
   const user = await requireUser();
-  const cardId = String(formData.get("cardId") ?? "");
-  const date = String(formData.get("date") ?? "");
-  const walletCredit = parseAmount(String(formData.get("walletCredit") ?? "0"));
-  const cardCharged = parseAmount(String(formData.get("cardCharged") ?? "0"));
-  const note = String(formData.get("description") ?? "").trim();
+  const raw = parseOrThrow(
+    walletRechargeSchema,
+    {
+      cardId: formString(formData, "cardId").trim(),
+      date: formString(formData, "date"),
+      walletCredit: formString(formData, "walletCredit") || "0",
+      cardCharged: formString(formData, "cardCharged") || "0",
+      description: formString(formData, "description"),
+    },
+    "Missing fields",
+  );
+  const walletCredit = parseAmount(raw.walletCredit);
+  const cardCharged = parseAmount(raw.cardCharged);
+  const note = raw.description.trim();
 
-  if (!cardId || !date) throw new Error("Missing fields");
   if (walletCredit <= 0 || cardCharged <= 0) {
-    throw new Error("Enter wallet credit and card charged amounts");
+    throw new UserFacingError("Enter wallet credit and card charged amounts");
   }
   if (cardCharged < walletCredit) {
-    throw new Error("Card charged cannot be less than wallet credit");
+    throw new UserFacingError("Card charged cannot be less than wallet credit");
   }
 
   const [card] = await db
     .select({ name: creditCards.name })
     .from(creditCards)
-    .where(and(eq(creditCards.id, cardId), eq(creditCards.userId, user.id)))
+    .where(and(eq(creditCards.id, raw.cardId), eq(creditCards.userId, user.id)))
     .limit(1);
-  if (!card) throw new Error("Card not found");
+  if (!card) throw new UserFacingError("Card not found");
 
   const fee = Math.round((cardCharged - walletCredit) * 100) / 100;
   const description =
@@ -244,8 +294,8 @@ export async function logWalletRecharge(formData: FormData) {
     .insert(transactions)
     .values({
       userId: user.id,
-      date,
-      occurredAt: new Date(`${date}T12:00:00`),
+      date: raw.date,
+      occurredAt: new Date(`${raw.date}T12:00:00`),
       description,
       categoryId: cats.creditCardCategoryId,
       type: "expense",
@@ -256,8 +306,8 @@ export async function logWalletRecharge(formData: FormData) {
 
   await db.insert(cardActivities).values({
     userId: user.id,
-    cardId,
-    date,
+    cardId: raw.cardId,
+    date: raw.date,
     activityType: "wallet_recharge",
     amount: walletCredit.toFixed(2),
     outstandingDelta: cardCharged.toFixed(2),
@@ -266,29 +316,41 @@ export async function logWalletRecharge(formData: FormData) {
     description,
     transactionId: tx?.id ?? null,
   });
-  await adjustCardOutstanding(user.id, cardId, cardCharged);
-  revalidateCards(cardId);
+  await adjustCardOutstanding(user.id, raw.cardId, cardCharged);
+  revalidateCards(raw.cardId);
 }
+
+const cardFeeSchema = z.object({
+  cardId: zUuid,
+  date: zDate,
+  amount: z.string(),
+  description: z.string(),
+});
 
 export async function logCardFee(formData: FormData) {
   const user = await requireUser();
-  const cardId = String(formData.get("cardId") ?? "");
-  const date = String(formData.get("date") ?? "");
-  const amount = parseAmount(String(formData.get("amount") ?? "0"));
-  const logExpense =
-    formData.get("logExpense") === "on" ||
-    formData.get("logExpense") === "true";
-  const note = String(formData.get("description") ?? "").trim();
+  const raw = parseOrThrow(
+    cardFeeSchema,
+    {
+      cardId: formString(formData, "cardId").trim(),
+      date: formString(formData, "date"),
+      amount: formString(formData, "amount") || "0",
+      description: formString(formData, "description"),
+    },
+    "Missing fields",
+  );
+  const amount = parseAmount(raw.amount);
+  const logExpense = formCheckbox(formData, "logExpense");
+  const note = raw.description.trim();
 
-  if (!cardId || !date) throw new Error("Missing fields");
-  if (amount <= 0) throw new Error("Enter fee amount");
+  if (amount <= 0) throw new UserFacingError("Enter fee amount");
 
   const [card] = await db
     .select({ name: creditCards.name })
     .from(creditCards)
-    .where(and(eq(creditCards.id, cardId), eq(creditCards.userId, user.id)))
+    .where(and(eq(creditCards.id, raw.cardId), eq(creditCards.userId, user.id)))
     .limit(1);
-  if (!card) throw new Error("Card not found");
+  if (!card) throw new UserFacingError("Card not found");
 
   let transactionId: string | null = null;
   if (logExpense) {
@@ -297,8 +359,8 @@ export async function logCardFee(formData: FormData) {
       .insert(transactions)
       .values({
         userId: user.id,
-        date,
-        occurredAt: new Date(`${date}T12:00:00`),
+        date: raw.date,
+        occurredAt: new Date(`${raw.date}T12:00:00`),
         description: note || `Card fee — ${card.name}`,
         categoryId: cats.cardFeesCategoryId,
         type: "expense",
@@ -310,30 +372,47 @@ export async function logCardFee(formData: FormData) {
 
   await db.insert(cardActivities).values({
     userId: user.id,
-    cardId,
-    date,
+    cardId: raw.cardId,
+    date: raw.date,
     activityType: "fee",
     amount: amount.toFixed(2),
     outstandingDelta: amount.toFixed(2),
     description: note || `Fee ₹${amount.toFixed(0)}`,
     transactionId,
   });
-  await adjustCardOutstanding(user.id, cardId, amount);
-  revalidateCards(cardId);
+  await adjustCardOutstanding(user.id, raw.cardId, amount);
+  revalidateCards(raw.cardId);
 }
+
+const billPaymentSchema = z.object({
+  cardId: zUuid,
+  date: zDate,
+  amount: z.string(),
+  bankAccountId: zUuid,
+  description: z.string(),
+});
 
 export async function logCardBillPayment(formData: FormData) {
   const user = await requireUser();
-  const cardId = String(formData.get("cardId") ?? "");
-  const date = String(formData.get("date") ?? "");
-  const amount = parseAmount(String(formData.get("amount") ?? "0"));
-  const bankAccountId =
-    String(formData.get("bankAccountId") ?? "").trim() || null;
-  const note = String(formData.get("description") ?? "").trim();
+  const bankRaw = formString(formData, "bankAccountId").trim();
+  if (!bankRaw) {
+    throw new UserFacingError("Choose the account you paid from");
+  }
+  const raw = parseOrThrow(
+    billPaymentSchema,
+    {
+      cardId: formString(formData, "cardId").trim(),
+      date: formString(formData, "date"),
+      amount: formString(formData, "amount") || "0",
+      bankAccountId: bankRaw,
+      description: formString(formData, "description"),
+    },
+    "Missing fields",
+  );
+  const amount = parseAmount(raw.amount);
+  const note = raw.description.trim();
 
-  if (!cardId || !date) throw new Error("Missing fields");
-  if (amount <= 0) throw new Error("Enter payment amount");
-  if (!bankAccountId) throw new Error("Choose the account you paid from");
+  if (amount <= 0) throw new UserFacingError("Enter payment amount");
 
   const [card] = await db
     .select({
@@ -341,24 +420,24 @@ export async function logCardBillPayment(formData: FormData) {
       statementAmount: creditCards.statementAmount,
     })
     .from(creditCards)
-    .where(and(eq(creditCards.id, cardId), eq(creditCards.userId, user.id)))
+    .where(and(eq(creditCards.id, raw.cardId), eq(creditCards.userId, user.id)))
     .limit(1);
-  if (!card) throw new Error("Card not found");
+  if (!card) throw new UserFacingError("Card not found");
 
   const cats = await ensureCardCashflowCategories(user.id);
   const [tx] = await db
     .insert(transactions)
     .values({
       userId: user.id,
-      date,
-      occurredAt: new Date(`${date}T12:00:00`),
+      date: raw.date,
+      occurredAt: new Date(`${raw.date}T12:00:00`),
       description: note || `Bill payment — ${card.name}`,
       categoryId: cats.creditCardCategoryId,
       type: "expense",
       amount: amount.toFixed(2),
       // Bill payment is from bank — do not treat as card spend.
       creditCardId: null,
-      bankAccountId,
+      bankAccountId: raw.bankAccountId,
     })
     .returning();
 
@@ -368,7 +447,7 @@ export async function logCardBillPayment(formData: FormData) {
     );
     await applyBankBalanceForTransaction({
       userId: user.id,
-      bankAccountId,
+      bankAccountId: raw.bankAccountId,
       type: "expense",
       amount,
     });
@@ -376,15 +455,15 @@ export async function logCardBillPayment(formData: FormData) {
 
   await db.insert(cardActivities).values({
     userId: user.id,
-    cardId,
-    date,
+    cardId: raw.cardId,
+    date: raw.date,
     activityType: "bill_payment",
     amount: amount.toFixed(2),
     outstandingDelta: (-amount).toFixed(2),
     description: note || `Bill payment ₹${amount.toFixed(0)}`,
     transactionId: tx?.id ?? null,
   });
-  await adjustCardOutstanding(user.id, cardId, -amount);
+  await adjustCardOutstanding(user.id, raw.cardId, -amount);
 
   // Reduce saved statement/bill amount so only unpaid remainder stays due.
   if (card.statementAmount != null) {
@@ -395,17 +474,21 @@ export async function logCardBillPayment(formData: FormData) {
         statementAmount: nextStatement > 0 ? nextStatement.toFixed(2) : null,
         pinToCurrentStatement: nextStatement > 0,
       })
-      .where(and(eq(creditCards.id, cardId), eq(creditCards.userId, user.id)));
+      .where(and(eq(creditCards.id, raw.cardId), eq(creditCards.userId, user.id)));
   }
 
-  revalidateCards(cardId);
+  revalidateCards(raw.cardId);
   revalidatePath("/accounts");
-  revalidatePath(`/accounts/${bankAccountId}`);
+  revalidatePath(`/accounts/${raw.bankAccountId}`);
 }
 
 export async function deleteCardActivity(formData: FormData) {
   const user = await requireUser();
-  const id = String(formData.get("id") ?? "");
+  const id = parseOrThrow(
+    z.object({ id: zUuid }),
+    { id: formString(formData, "id").trim() },
+    "Missing activity",
+  ).id;
 
   const [row] = await db
     .select()
@@ -426,4 +509,3 @@ export async function deleteCardActivity(formData: FormData) {
 
   revalidateCards(row.cardId);
 }
-

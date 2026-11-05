@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { upsertBudgetAmount } from "@/lib/actions";
 import { formatINR } from "@/lib/money";
+import { clientErrorMessage } from "@/lib/safe-error";
 import { useToast } from "@/components/toast";
 
 export type BudgetTableRow = {
@@ -92,8 +93,7 @@ function BudgetRow({
         setEditing(false);
         router.refresh();
       } catch (err) {
-        console.error(err);
-        toast.error("Could not save budget");
+        toast.error(clientErrorMessage(err, "Could not save budget"));
       }
     });
   }

@@ -1,3 +1,5 @@
+import { UserFacingError } from "@/lib/safe-error";
+
 export const PAID_TO_DATE_TYPE = "Paid to date";
 
 /**
@@ -360,15 +362,15 @@ export function validateDebtTenure(args: {
   } = args;
 
   if (startingBalance < 0 || monthlyEmi < 0 || paidTillNow < 0) {
-    throw new Error("Amounts cannot be negative");
+    throw new UserFacingError("Amounts cannot be negative");
   }
   if (totalMonths < 0 || monthsPaid < 0) {
-    throw new Error("Months cannot be negative");
+    throw new UserFacingError("Months cannot be negative");
   }
   if (totalMonths > 0 && monthsPaid > totalMonths) {
-    throw new Error("Months paid cannot exceed total months");
+    throw new UserFacingError("Months paid cannot exceed total months");
   }
   if (paidTillNow > startingBalance + 0.001) {
-    throw new Error("Paid till now cannot exceed starting balance");
+    throw new UserFacingError("Paid till now cannot exceed starting balance");
   }
 }
