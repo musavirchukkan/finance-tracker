@@ -7,6 +7,7 @@ import {
   WeeklyCashflowBars,
 } from "@/components/charts";
 import { LocalDateTime } from "@/components/local-datetime";
+import { LocalGreeting } from "@/components/local-greeting";
 import { OverviewReminders } from "@/components/overview-reminders";
 import {
   getBudgetSummary,
@@ -31,12 +32,6 @@ import {
 } from "@/lib/months";
 import { requireUser } from "@/lib/session";
 import { toUtcIso } from "@/lib/utc-time";
-
-function greetingForHour(hour: number) {
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
-}
 
 function weekBuckets(yearMonth: string) {
   const { start, end } = monthDateBounds(yearMonth);
@@ -109,7 +104,6 @@ export default async function OverviewPage({
   const prev = shiftYearMonth(month, -1);
   const next = shiftYearMonth(month, 1);
   const firstName = user.name?.split(" ")[0] ?? "there";
-  const hour = new Date().getHours();
 
   const weeks = weekBuckets(month).map((w) => {
     let income = 0;
@@ -153,9 +147,7 @@ export default async function OverviewPage({
     <div className="page-stack">
       <div className="page-header">
         <div>
-          <h2 className="greeting-title">
-            {greetingForHour(hour)}, {firstName}
-          </h2>
+          <LocalGreeting name={firstName} />
           <p className="muted page-sub">
             Here&apos;s your money across all accounts ·{" "}
             {formatYearMonthLabel(month)}
