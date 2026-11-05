@@ -8,7 +8,13 @@ export const SESSION_USER_RECHECK_MS = 60_000;
 
 export const TRANSACTIONS_PAGE_SIZE = 20;
 export const TRANSACTIONS_MAX_PAGE_SIZE = 100;
+/** Hard cap when a caller omits pagination (prevents accidental full dumps). */
+export const TRANSACTIONS_UNBOUNDED_CAP = 500;
 export const OVERVIEW_RECENT_TX_LIMIT = 6;
+/** CSV/JSON export row ceiling. */
+export const EXPORT_MAX_ROWS = 10_000;
+/** Card activity window for statement math (days). */
+export const CARD_ACTIVITY_LOOKBACK_DAYS = 400;
 
 /** Login / signup abuse limits (Redis when configured; else in-memory). */
 export const AUTH_RATE_LIMIT = {

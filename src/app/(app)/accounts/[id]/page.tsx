@@ -5,7 +5,12 @@ import { EditBankAccountButton } from "@/components/bank-forms";
 import { InfoTip } from "@/components/info-tip";
 import { LocalDateTime } from "@/components/local-datetime";
 import { ReviewCallout } from "@/components/review-callout";
-import { deleteBankAccount, getBankAccountDetail } from "@/lib/bank-actions";
+import {
+  deleteBankAccount,
+} from "@/lib/bank-actions";
+import {
+  getBankAccountDetail,
+} from "@/lib/bank-data";;
 import { formatINR } from "@/lib/money";
 import { toUtcIso } from "@/lib/utc-time";
 import { requireUser } from "@/lib/session";

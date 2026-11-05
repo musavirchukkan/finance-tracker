@@ -1,4 +1,5 @@
 import { AppNav } from "@/components/app-nav";
+import { ensureCardLedgerSynced } from "@/lib/card-data";
 import { requireUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +10,8 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const user = await requireUser();
+  // Once per request (React.cache) — keeps list/detail/dashboard reads pure.
+  await ensureCardLedgerSynced(user.id);
 
   return (
     <div className="app-shell">

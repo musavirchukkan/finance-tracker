@@ -15,6 +15,7 @@ import {
 import { getEnv } from "@/lib/env";
 import { safeCallbackUrl, type LoginState } from "@/lib/login-utils";
 import { clientKeyFromHeaders, takeRateLimit } from "@/lib/rate-limit";
+import { secureStringEqual } from "@/lib/secure-compare";
 
 const schema = z.object({
   name: z.string().trim().min(1, "Name is required").max(80),
@@ -68,7 +69,10 @@ export async function registerAction(
 
   if (
     env.signupInviteCode &&
-    parsed.data.inviteCode?.trim() !== env.signupInviteCode
+    !secureStringEqual(
+      parsed.data.inviteCode?.trim() ?? "",
+      env.signupInviteCode,
+    )
   ) {
     return { error: GENERIC_SIGNUP_ERROR };
   }

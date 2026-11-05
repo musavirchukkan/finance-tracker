@@ -3,6 +3,7 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/toast";
+import { clientErrorMessage } from "@/lib/safe-error";
 
 type ServerAction = (formData: FormData) => Promise<void> | void;
 
@@ -61,11 +62,7 @@ export function ActionForm({
             router.refresh();
           } catch (err) {
             console.error(err);
-            const message =
-              err instanceof Error && err.message.trim()
-                ? err.message
-                : errorMessage;
-            toast.error(message);
+            toast.error(clientErrorMessage(err, errorMessage));
           }
         });
       }}

@@ -14,13 +14,14 @@ import {
   getMonthlyCashflowByDay,
   listSavingsGoals,
   listTransactions,
-} from "@/lib/actions";
+} from "@/lib/ledger-data";
+import { listBankAccounts } from "@/lib/bank-data";
 import {
   listCreditCards,
   listLedgerPaymentWarnings,
-} from "@/lib/card-actions";
+} from "@/lib/card-data";
 import { OVERVIEW_RECENT_TX_LIMIT } from "@/lib/constants";
-import { getNetWorth } from "@/lib/investment-actions";
+import { buildNetWorth, listInvestments } from "@/lib/investment-data";
 import { formatINR, toNumber } from "@/lib/money";
 import {
   currentYearMonth,
@@ -87,7 +88,8 @@ export default async function OverviewPage({
     debt,
     goals,
     cards,
-    wealth,
+    banks,
+    holdings,
   ] = await Promise.all([
     getBudgetSummary(user.id, month),
     getMonthlyCashflowByDay(user.id, month),
@@ -98,8 +100,10 @@ export default async function OverviewPage({
     getDebtDashboard(user.id),
     listSavingsGoals(user.id),
     listCreditCards(user.id),
-    getNetWorth(user.id),
+    listBankAccounts(user.id),
+    listInvestments(user.id),
   ]);
+  const wealth = buildNetWorth({ banks, cards, debt, holdings });
   const reminders = await listLedgerPaymentWarnings(user.id, cards);
 
   const prev = shiftYearMonth(month, -1);

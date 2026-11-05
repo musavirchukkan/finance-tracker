@@ -9,8 +9,14 @@ import {
 import { getEnv } from "@/lib/env";
 
 async function main() {
-  const { seedEmail: email, seedPassword: password, seedName: name } =
-    getEnv();
+  const env = getEnv();
+  if (env.nodeEnv === "production" && process.env.ALLOW_DB_SEED !== "true") {
+    throw new Error(
+      "Refusing to seed in production. Set ALLOW_DB_SEED=true if intentional.",
+    );
+  }
+
+  const { seedEmail: email, seedPassword: password, seedName: name } = env;
 
   const existing = await db
     .select()
@@ -28,7 +34,7 @@ async function main() {
   console.log("Seeded user:");
   console.log(`  email:    ${email}`);
   console.log(`  password: ${password}`);
-  console.log("Change SEED_* env vars before seeding in production.");
+  console.log("Change SEED_* env vars; never reuse defaults in production.");
 }
 
 main().catch((err) => {

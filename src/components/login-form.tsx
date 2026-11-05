@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { purgeAppCaches } from "@/lib/client-cache";
+import { PASSWORD_MIN_LENGTH } from "@/lib/constants";
 import { loginAction } from "@/lib/login-action";
 import { safeCallbackUrl, type LoginState } from "@/lib/login-utils";
 
@@ -18,6 +20,11 @@ export function LoginForm({
     loginAction,
     undefined,
   );
+
+  // Drop prior user's cached HTML when visiting login (M1).
+  useEffect(() => {
+    void purgeAppCaches();
+  }, []);
 
   return (
     <form action={formAction} className="form-stack">
@@ -42,7 +49,7 @@ export function LoginForm({
             name="password"
             type={showPassword ? "text" : "password"}
             required
-            minLength={6}
+            minLength={PASSWORD_MIN_LENGTH}
             autoComplete="current-password"
           />
           <button

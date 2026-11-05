@@ -1,0 +1,52 @@
+---
+description: Security, authz, and data-access rules for every feature/change (Ledger)
+alwaysApply: true
+---
+
+# Security & data access (always)
+
+When adding or changing features, **preserve and extend** the patterns in `docs/AUDIT-CHECKLIST.md` and `docs/SECURITY.md`. Scan the **whole change**, not only the files you touched.
+
+## Auth & Server Actions
+
+- `"use server"` modules export **FormData (or similar) mutations only**.
+- Mutations call `requireUser()` (or `auth()`) and use **`user.id` from the session** — never trust a client-supplied `userId`.
+- Queries / services that take `userId` live in `*-data.ts` (or plain server modules) — **not** in `"use server"` files.
+- Internal writers (`insertTransactionForUser`, migrate/EMI helpers, cashflow) stay out of Server Action surfaces; call them only from authenticated actions/API routes.
+
+## Authorization
+
+- Every mutation: `and(eq(...id), eq(...userId, user.id))` (or equivalent).
+- Before ledger side effects (bank/card balances), assert owned FKs (`assertOwnedTransactionInputs` or the same pattern for the domain).
+- Prefer `.returning()` / existence checks so side effects do not run on 0-row updates.
+
+## Input & errors
+
+- Prefer Zod (`form-schemas.ts` / action schemas) for new FormData and API bodies.
+- Throw `UserFacingError` for expected validation failures; clients use `clientErrorMessage` (never raw DB/driver stacks).
+- Secrets only via `getEnv()` / `EnvKeys` — never `NEXT_PUBLIC_*` for DB/auth secrets.
+
+## Performance / DoS (security-adjacent)
+
+- Bound lists: pagination, cursors, or caps (`TRANSACTIONS_*`, `EXPORT_MAX_ROWS`, lookbacks).
+- Keep **reads pure** — no migrate/EMI/posting inside list/detail helpers; use `ensureCardLedgerSynced` (or a similar cached sync) at a single entry point if needed.
+- Avoid N+1 and duplicate nested loaders (reuse preloaded data / `buildNetWorth`-style aggregators).
+
+## Auth surfaces
+
+- Public signup stays gated (`allowPublicSignup` / invite); production default closed.
+- Rate-limit new auth-like endpoints (shared `takeRateLimit` / Redis path).
+- Secrets compares: `secureStringEqual` where timing matters (invite codes, tokens).
+
+## PWA / proxy / headers
+
+- User HTML caches: session-scoped or purge on login/logout; do not cache APIs.
+- Proxy: only real static extensions bypass auth — not `pathname.includes(".")`.
+- Do not weaken CSP / security headers in `next.config.ts` without a documented reason.
+
+## Before finishing a feature
+
+1. Re-read this rule + relevant AUDIT items for regressions.
+2. Run `npm run lint && npm run typecheck && npm test` (or `npm run ci`).
+3. If the change adds a new pattern, update `docs/SECURITY.md` or the audit checklist in the same PR.
+---

@@ -1,4 +1,5 @@
 import { asc, eq } from "drizzle-orm";
+import { EXPORT_MAX_ROWS } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { categories, transactions } from "@/lib/db/schema";
 
@@ -26,7 +27,8 @@ export async function fetchTransactionsForExport(
     .from(transactions)
     .innerJoin(categories, eq(transactions.categoryId, categories.id))
     .where(eq(transactions.userId, userId))
-    .orderBy(asc(transactions.date), asc(transactions.occurredAt));
+    .orderBy(asc(transactions.date), asc(transactions.occurredAt))
+    .limit(EXPORT_MAX_ROWS);
 
   return rows.map((row) => ({
     date: row.date,

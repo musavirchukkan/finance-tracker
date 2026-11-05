@@ -6,7 +6,9 @@ import {
   DeleteGoalButton,
 } from "@/components/goal-forms";
 import { InfoTip } from "@/components/info-tip";
-import { listSavingsGoals } from "@/lib/actions";
+import {
+  listSavingsGoals,
+} from "@/lib/ledger-data";;
 import { formatINR } from "@/lib/money";
 import { requireUser } from "@/lib/session";
 

@@ -131,8 +131,9 @@ export function getEnv(): AppEnv {
     authSecret: raw[EnvKeys.AUTH_SECRET] || undefined,
     authUrl: raw[EnvKeys.AUTH_URL]?.trim() || undefined,
     nodeEnv,
-    // Default: signup open. Set ALLOW_PUBLIC_SIGNUP=false to lock down.
-    allowPublicSignup: raw[EnvKeys.ALLOW_PUBLIC_SIGNUP] ?? true,
+    // Production defaults closed; local/dev open unless explicitly false.
+    allowPublicSignup:
+      raw[EnvKeys.ALLOW_PUBLIC_SIGNUP] ?? nodeEnv !== "production",
     signupInviteCode: raw[EnvKeys.SIGNUP_INVITE_CODE]?.trim() || undefined,
     seedEmail: (raw[EnvKeys.SEED_EMAIL] ?? "you@example.com").toLowerCase(),
     seedPassword: raw[EnvKeys.SEED_PASSWORD] ?? "changeme123",

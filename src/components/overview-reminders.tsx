@@ -70,19 +70,9 @@ function ReminderIcon({
   return <WarningIcon />;
 }
 
-/** One reminder at a time — rotates with a short slide/fade when there are several. */
-export function OverviewReminders({
-  reminders,
-}: {
-  reminders: OverviewReminder[];
-}) {
+function ReminderCarousel({ reminders }: { reminders: OverviewReminder[] }) {
   const [index, setIndex] = useState(0);
   const [phase, setPhase] = useState<"in" | "out">("in");
-
-  useEffect(() => {
-    setIndex(0);
-    setPhase("in");
-  }, [reminders]);
 
   useEffect(() => {
     if (reminders.length <= 1) return;
@@ -102,19 +92,6 @@ export function OverviewReminders({
       window.clearTimeout(swapTimer);
     };
   }, [reminders.length]);
-
-  if (reminders.length === 0) {
-    return (
-      <div className="overview-reminders is-clear" role="status">
-        <span className="overview-reminder-mark" aria-hidden>
-          <OkIcon />
-        </span>
-        <p className="overview-reminder-text">
-          No payment reminders right now
-        </p>
-      </div>
-    );
-  }
 
   const current = reminders[Math.min(index, reminders.length - 1)]!;
 
@@ -162,4 +139,28 @@ export function OverviewReminders({
       </div>
     </div>
   );
+}
+
+/** One reminder at a time — rotates with a short slide/fade when there are several. */
+export function OverviewReminders({
+  reminders,
+}: {
+  reminders: OverviewReminder[];
+}) {
+  if (reminders.length === 0) {
+    return (
+      <div className="overview-reminders is-clear" role="status">
+        <span className="overview-reminder-mark" aria-hidden>
+          <OkIcon />
+        </span>
+        <p className="overview-reminder-text">
+          No payment reminders right now
+        </p>
+      </div>
+    );
+  }
+
+  // Remount when the reminder set changes so carousel state resets without an effect.
+  const resetKey = reminders.map((r) => `${r.kind}:${r.message}`).join("|");
+  return <ReminderCarousel key={resetKey} reminders={reminders} />;
 }

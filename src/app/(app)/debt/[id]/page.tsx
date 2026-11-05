@@ -10,9 +10,9 @@ import { InfoTip } from "@/components/info-tip";
 import {
   deleteDebtAccount,
   deleteDebtPayment,
-  getDebtAccountDetail,
 } from "@/lib/actions";
-import { listCreditCards } from "@/lib/card-actions";
+import { getDebtAccountDetail } from "@/lib/ledger-data";
+import { listCreditCards } from "@/lib/card-data";
 import { PAID_TO_DATE_TYPE } from "@/lib/debt-account";
 import { formatINR } from "@/lib/money";
 import { requireUser } from "@/lib/session";

@@ -10,6 +10,12 @@ const publicPaths = ["/login", "/signup", "/health"];
 export const proxy = auth((request) => {
   const { pathname } = request.nextUrl;
 
+  // Static assets only — do not treat any path with "." as public (M4).
+  const isStaticAsset =
+    /\.(?:ico|png|jpg|jpeg|gif|webp|svg|css|js|map|txt|xml|webmanifest|woff2?)$/i.test(
+      pathname,
+    );
+
   // /api/cron uses CRON_SECRET inside the route (not session auth).
   if (
     pathname.startsWith("/api/auth") ||
@@ -17,7 +23,7 @@ export const proxy = auth((request) => {
     pathname.startsWith("/api/cron") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
-    pathname.includes(".")
+    isStaticAsset
   ) {
     return NextResponse.next();
   }

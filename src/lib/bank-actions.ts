@@ -1,15 +1,14 @@
 "use server";
 
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { db } from "@/lib/db";
 import { bankAccounts, transactions } from "@/lib/db/schema";
-import {
-  applyBankBalanceForTransaction,
-  reverseBankBalanceForTransaction,
-} from "@/lib/bank-account-cashflow";
-import { formatCardLabel, normalizeLastFour } from "@/lib/credit-cards";
-import { parseAmount, toNumber } from "@/lib/money";
+import { formString, zNonEmpty } from "@/lib/form-schemas";
+import { normalizeLastFour } from "@/lib/credit-cards";
+import { parseAmount } from "@/lib/money";
+import { UserFacingError } from "@/lib/safe-error";
 import { requireUser } from "@/lib/session";
 
 function revalidateBanks(accountId?: string) {
@@ -21,58 +20,6 @@ function revalidateBanks(accountId?: string) {
   revalidatePath("/cards");
 }
 
-export async function listBankAccounts(userId: string) {
-  const rows = await db
-    .select()
-    .from(bankAccounts)
-    .where(eq(bankAccounts.userId, userId))
-    .orderBy(asc(bankAccounts.name));
-
-  return rows.map((a) => ({
-    ...a,
-    balanceNum: toNumber(a.currentBalance),
-    minBalanceNum:
-      a.minBalance != null && a.minBalance !== ""
-        ? toNumber(a.minBalance)
-        : null,
-    label: formatCardLabel(a.name, a.lastFour),
-  }));
-}
-
-export async function getBankAccountDetail(userId: string, id: string) {
-  const [account] = await db
-    .select()
-    .from(bankAccounts)
-    .where(and(eq(bankAccounts.id, id), eq(bankAccounts.userId, userId)))
-    .limit(1);
-  if (!account) return null;
-
-  const txs = await db
-    .select()
-    .from(transactions)
-    .where(
-      and(
-        eq(transactions.userId, userId),
-        eq(transactions.bankAccountId, id),
-      ),
-    )
-    .orderBy(desc(transactions.date), desc(transactions.occurredAt))
-    .limit(50);
-
-  return {
-    account: {
-      ...account,
-      balanceNum: toNumber(account.currentBalance),
-      minBalanceNum:
-        account.minBalance != null && account.minBalance !== ""
-          ? toNumber(account.minBalance)
-          : null,
-      label: formatCardLabel(account.name, account.lastFour),
-    },
-    transactions: txs,
-  };
-}
-
 function parseBankExtras(formData: FormData) {
   const minRaw = String(formData.get("minBalance") ?? "").trim();
   const minBalance = minRaw ? parseAmount(minRaw) : null;
@@ -82,31 +29,43 @@ function parseBankExtras(formData: FormData) {
   return { minBalance, balanceRules, lastFour };
 }
 
+const bankUpsertSchema = z.object({
+  name: zNonEmpty,
+  currentBalance: z.string(),
+  accountType: z.string().trim().default("Savings"),
+  status: z.string().trim().default("Active"),
+});
+
 export async function createBankAccount(formData: FormData) {
   const user = await requireUser();
-  const name = String(formData.get("name") ?? "").trim();
-  const currentBalance = parseAmount(
-    String(formData.get("currentBalance") ?? "0"),
-    { allowNegative: true },
-  );
-  const accountType =
-    String(formData.get("accountType") ?? "Savings").trim() || "Savings";
-  const status = String(formData.get("status") ?? "Active").trim() || "Active";
-  const { minBalance, balanceRules, lastFour } = parseBankExtras(formData);
+  const parsed = bankUpsertSchema.safeParse({
+    name: formString(formData, "name"),
+    currentBalance: formString(formData, "currentBalance") || "0",
+    accountType: formString(formData, "accountType") || "Savings",
+    status: formString(formData, "status") || "Active",
+  });
+  if (!parsed.success) {
+    throw new UserFacingError(
+      parsed.error.issues[0]?.message ?? "Invalid account details",
+    );
+  }
 
-  if (!name) throw new Error("Name is required");
+  const currentBalance = parseAmount(parsed.data.currentBalance, {
+    allowNegative: true,
+  });
+  const { minBalance, balanceRules, lastFour } = parseBankExtras(formData);
 
   const [row] = await db
     .insert(bankAccounts)
     .values({
       userId: user.id,
-      name,
+      name: parsed.data.name,
       currentBalance: currentBalance.toFixed(2),
       minBalance: minBalance != null ? minBalance.toFixed(2) : null,
       balanceRules,
       lastFour,
-      accountType,
-      status,
+      accountType: parsed.data.accountType || "Savings",
+      status: parsed.data.status || "Active",
     })
     .returning();
 
@@ -115,29 +74,32 @@ export async function createBankAccount(formData: FormData) {
 
 export async function updateBankAccount(formData: FormData) {
   const user = await requireUser();
-  const id = String(formData.get("id") ?? "");
-  const name = String(formData.get("name") ?? "").trim();
-  const currentBalance = parseAmount(
-    String(formData.get("currentBalance") ?? "0"),
-    { allowNegative: true },
-  );
-  const accountType =
-    String(formData.get("accountType") ?? "Savings").trim() || "Savings";
-  const status = String(formData.get("status") ?? "Active").trim() || "Active";
-  const { minBalance, balanceRules, lastFour } = parseBankExtras(formData);
+  const id = formString(formData, "id").trim();
+  const parsed = bankUpsertSchema.safeParse({
+    name: formString(formData, "name"),
+    currentBalance: formString(formData, "currentBalance") || "0",
+    accountType: formString(formData, "accountType") || "Savings",
+    status: formString(formData, "status") || "Active",
+  });
+  if (!id || !parsed.success) {
+    throw new UserFacingError("Missing fields");
+  }
 
-  if (!id || !name) throw new Error("Missing fields");
+  const currentBalance = parseAmount(parsed.data.currentBalance, {
+    allowNegative: true,
+  });
+  const { minBalance, balanceRules, lastFour } = parseBankExtras(formData);
 
   await db
     .update(bankAccounts)
     .set({
-      name,
+      name: parsed.data.name,
       currentBalance: currentBalance.toFixed(2),
       minBalance: minBalance != null ? minBalance.toFixed(2) : null,
       balanceRules,
       lastFour,
-      accountType,
-      status,
+      accountType: parsed.data.accountType || "Savings",
+      status: parsed.data.status || "Active",
     })
     .where(and(eq(bankAccounts.id, id), eq(bankAccounts.userId, user.id)));
 
@@ -146,7 +108,7 @@ export async function updateBankAccount(formData: FormData) {
 
 export async function deleteBankAccount(formData: FormData) {
   const user = await requireUser();
-  const id = String(formData.get("id") ?? "");
+  const id = formString(formData, "id").trim();
   if (!id) return;
 
   await db
@@ -165,21 +127,16 @@ export async function deleteBankAccount(formData: FormData) {
 
 export async function adjustBankAccountBalance(formData: FormData) {
   const user = await requireUser();
-  const id = String(formData.get("id") ?? "");
-  const amount = parseAmount(String(formData.get("amount") ?? "0"));
+  const id = formString(formData, "id").trim();
+  const amount = parseAmount(formString(formData, "amount") || "0");
   const direction =
-    String(formData.get("direction") ?? "credit") === "debit"
-      ? "debit"
-      : "credit";
+    formString(formData, "direction") === "debit" ? "debit" : "credit";
 
-  if (!id) throw new Error("Missing account");
-  if (amount <= 0) throw new Error("Enter an amount");
+  if (!id) throw new UserFacingError("Missing account");
+  if (amount <= 0) throw new UserFacingError("Enter an amount");
 
   const delta = direction === "credit" ? amount : -amount;
   const { adjustBankBalance } = await import("@/lib/bank-account-cashflow");
   await adjustBankBalance(user.id, id, delta);
   revalidateBanks(id);
 }
-
-/** Re-export helpers used when deleting linked cashflow txs. */
-export { reverseBankBalanceForTransaction, applyBankBalanceForTransaction };

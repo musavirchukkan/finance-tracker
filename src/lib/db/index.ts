@@ -22,7 +22,7 @@ function isLocalPostgres(url: string) {
 }
 
 function createDb(): Db {
-  const { databaseUrl: connectionString, nodeEnv } = getEnv();
+  const { databaseUrl: connectionString } = getEnv();
 
   // Local Docker / self-hosted: node postgres driver
   if (isLocalPostgres(connectionString)) {

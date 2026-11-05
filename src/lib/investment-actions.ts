@@ -1,19 +1,14 @@
 "use server";
 
-import { and, asc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { getDebtDashboard } from "@/lib/actions";
-import { listBankAccounts } from "@/lib/bank-actions";
-import { listCreditCards } from "@/lib/card-actions";
+import { z } from "zod";
 import { db } from "@/lib/db";
 import { investments } from "@/lib/db/schema";
-import {
-  holdingCost,
-  holdingGain,
-  holdingValue,
-  isInvestmentType,
-} from "@/lib/investments";
-import { parseAmount, toNumber } from "@/lib/money";
+import { formString, zNonEmpty, zUuid } from "@/lib/form-schemas";
+import { isInvestmentType } from "@/lib/investments";
+import { parseAmount } from "@/lib/money";
+import { UserFacingError } from "@/lib/safe-error";
 import { requireUser } from "@/lib/session";
 
 function revalidateWealth() {
@@ -22,113 +17,70 @@ function revalidateWealth() {
   revalidatePath("/more");
 }
 
-function mapHolding(row: typeof investments.$inferSelect) {
-  const quantity = toNumber(row.quantity);
-  const currentPrice = toNumber(row.currentPrice);
-  const avgBuyPrice =
-    row.avgBuyPrice != null && row.avgBuyPrice !== ""
-      ? toNumber(row.avgBuyPrice)
-      : null;
-  const value = holdingValue(quantity, currentPrice);
-  const cost = holdingCost(quantity, avgBuyPrice);
-  const gain = holdingGain(value, cost);
-  return {
-    ...row,
-    quantityNum: quantity,
-    currentPriceNum: currentPrice,
-    avgBuyPriceNum: avgBuyPrice,
-    valueNum: value,
-    costNum: cost,
-    gainAmount: gain?.amount ?? null,
-    gainPct: gain?.pct ?? null,
-  };
-}
+const holdingSchema = z.object({
+  name: zNonEmpty,
+  type: z.string().trim().default("stock"),
+  symbol: z.string().trim().optional(),
+  quantity: z.string().trim().default("1"),
+  currentPrice: z.string().trim().default("0"),
+  avgBuyPrice: z.string().trim().optional(),
+  platform: z.string().trim().optional(),
+  notes: z.string().trim().optional(),
+});
 
-export async function listInvestments(userId: string) {
-  const rows = await db
-    .select()
-    .from(investments)
-    .where(eq(investments.userId, userId))
-    .orderBy(asc(investments.name));
-  return rows.map(mapHolding);
-}
-
-export async function getNetWorth(userId: string) {
-  const [banks, cards, debt, holdings] = await Promise.all([
-    listBankAccounts(userId),
-    listCreditCards(userId),
-    getDebtDashboard(userId),
-    listInvestments(userId),
-  ]);
-
-  const bankCash = banks.reduce((s, a) => s + a.balanceNum, 0);
-  const investmentsTotal = holdings.reduce((s, h) => s + h.valueNum, 0);
-  const investmentsCost = holdings.reduce(
-    (s, h) => s + (h.costNum ?? 0),
-    0,
-  );
-  const cardOutstanding = cards.reduce((s, c) => s + c.outstandingNum, 0);
-  const debtPending = debt.totals.pending;
-
-  const assets = {
-    bankCash,
-    investments: investmentsTotal,
-    total: Math.round((bankCash + investmentsTotal) * 100) / 100,
-  };
-  const liabilities = {
-    debt: debtPending,
-    cards: cardOutstanding,
-    total: Math.round((debtPending + cardOutstanding) * 100) / 100,
-  };
-  const netWorth = Math.round((assets.total - liabilities.total) * 100) / 100;
-
-  const byType = new Map<string, number>();
-  for (const h of holdings) {
-    byType.set(h.type, (byType.get(h.type) ?? 0) + h.valueNum);
+function parseHolding(formData: FormData) {
+  const parsed = holdingSchema.safeParse({
+    name: formString(formData, "name"),
+    type: formString(formData, "type") || "stock",
+    symbol: formString(formData, "symbol"),
+    quantity: formString(formData, "quantity") || "1",
+    currentPrice: formString(formData, "currentPrice") || "0",
+    avgBuyPrice: formString(formData, "avgBuyPrice"),
+    platform: formString(formData, "platform"),
+    notes: formString(formData, "notes"),
+  });
+  if (!parsed.success) {
+    throw new UserFacingError(
+      parsed.error.issues[0]?.message ?? "Invalid holding",
+    );
   }
-
+  const typeRaw = parsed.data.type;
+  const type = isInvestmentType(typeRaw) ? typeRaw : "other";
+  const quantity = parseAmount(parsed.data.quantity);
+  const currentPrice = parseAmount(parsed.data.currentPrice);
+  const avgRaw = parsed.data.avgBuyPrice?.trim() ?? "";
+  const avgBuyPrice = avgRaw ? parseAmount(avgRaw) : null;
+  if (quantity <= 0) throw new UserFacingError("Quantity must be greater than 0");
+  if (currentPrice < 0) {
+    throw new UserFacingError("Current price cannot be negative");
+  }
   return {
-    assets,
-    liabilities,
-    netWorth,
-    holdings,
-    holdingsCost: Math.round(investmentsCost * 100) / 100,
-    investmentByType: [...byType.entries()]
-      .map(([type, value]) => ({ type, value }))
-      .sort((a, b) => b.value - a.value),
-    bankCount: banks.length,
-    cardCount: cards.length,
-    debtAccountCount: debt.accounts.length,
+    name: parsed.data.name,
+    type,
+    symbol: parsed.data.symbol?.trim() || null,
+    quantity,
+    currentPrice,
+    avgBuyPrice,
+    platform: parsed.data.platform?.trim() || null,
+    notes: parsed.data.notes?.trim() || null,
   };
 }
 
 export async function createInvestment(formData: FormData) {
   const user = await requireUser();
-  const name = String(formData.get("name") ?? "").trim();
-  const typeRaw = String(formData.get("type") ?? "stock").trim();
-  const type = isInvestmentType(typeRaw) ? typeRaw : "other";
-  const symbol = String(formData.get("symbol") ?? "").trim() || null;
-  const quantity = parseAmount(String(formData.get("quantity") ?? "1"));
-  const currentPrice = parseAmount(String(formData.get("currentPrice") ?? "0"));
-  const avgRaw = String(formData.get("avgBuyPrice") ?? "").trim();
-  const avgBuyPrice = avgRaw ? parseAmount(avgRaw) : null;
-  const platform = String(formData.get("platform") ?? "").trim() || null;
-  const notes = String(formData.get("notes") ?? "").trim() || null;
-
-  if (!name) throw new Error("Name is required");
-  if (quantity <= 0) throw new Error("Quantity must be greater than 0");
-  if (currentPrice < 0) throw new Error("Current price cannot be negative");
+  const holding = parseHolding(formData);
 
   await db.insert(investments).values({
     userId: user.id,
-    name,
-    type,
-    symbol,
-    quantity: quantity.toFixed(6),
-    currentPrice: currentPrice.toFixed(4),
-    avgBuyPrice: avgBuyPrice != null ? avgBuyPrice.toFixed(4) : null,
-    platform,
-    notes,
+    name: holding.name,
+    type: holding.type,
+    symbol: holding.symbol,
+    quantity: holding.quantity.toFixed(6),
+    currentPrice: holding.currentPrice.toFixed(4),
+    avgBuyPrice:
+      holding.avgBuyPrice != null ? holding.avgBuyPrice.toFixed(4) : null,
+    platform: holding.platform,
+    notes: holding.notes,
   });
 
   revalidateWealth();
@@ -136,49 +88,41 @@ export async function createInvestment(formData: FormData) {
 
 export async function updateInvestment(formData: FormData) {
   const user = await requireUser();
-  const id = String(formData.get("id") ?? "");
-  const name = String(formData.get("name") ?? "").trim();
-  const typeRaw = String(formData.get("type") ?? "stock").trim();
-  const type = isInvestmentType(typeRaw) ? typeRaw : "other";
-  const symbol = String(formData.get("symbol") ?? "").trim() || null;
-  const quantity = parseAmount(String(formData.get("quantity") ?? "1"));
-  const currentPrice = parseAmount(String(formData.get("currentPrice") ?? "0"));
-  const avgRaw = String(formData.get("avgBuyPrice") ?? "").trim();
-  const avgBuyPrice = avgRaw ? parseAmount(avgRaw) : null;
-  const platform = String(formData.get("platform") ?? "").trim() || null;
-  const notes = String(formData.get("notes") ?? "").trim() || null;
-
-  if (!id) throw new Error("Missing holding");
-  if (!name) throw new Error("Name is required");
-  if (quantity <= 0) throw new Error("Quantity must be greater than 0");
-  if (currentPrice < 0) throw new Error("Current price cannot be negative");
+  const idParsed = zUuid.safeParse(formString(formData, "id").trim());
+  if (!idParsed.success) throw new UserFacingError("Missing holding");
+  const holding = parseHolding(formData);
 
   await db
     .update(investments)
     .set({
-      name,
-      type,
-      symbol,
-      quantity: quantity.toFixed(6),
-      currentPrice: currentPrice.toFixed(4),
-      avgBuyPrice: avgBuyPrice != null ? avgBuyPrice.toFixed(4) : null,
-      platform,
-      notes,
+      name: holding.name,
+      type: holding.type,
+      symbol: holding.symbol,
+      quantity: holding.quantity.toFixed(6),
+      currentPrice: holding.currentPrice.toFixed(4),
+      avgBuyPrice:
+        holding.avgBuyPrice != null ? holding.avgBuyPrice.toFixed(4) : null,
+      platform: holding.platform,
+      notes: holding.notes,
       updatedAt: new Date(),
     })
-    .where(and(eq(investments.id, id), eq(investments.userId, user.id)));
+    .where(
+      and(eq(investments.id, idParsed.data), eq(investments.userId, user.id)),
+    );
 
   revalidateWealth();
 }
 
 export async function deleteInvestment(formData: FormData) {
   const user = await requireUser();
-  const id = String(formData.get("id") ?? "");
-  if (!id) throw new Error("Missing holding");
+  const idParsed = zUuid.safeParse(formString(formData, "id").trim());
+  if (!idParsed.success) throw new UserFacingError("Missing holding");
 
   await db
     .delete(investments)
-    .where(and(eq(investments.id, id), eq(investments.userId, user.id)));
+    .where(
+      and(eq(investments.id, idParsed.data), eq(investments.userId, user.id)),
+    );
 
   revalidateWealth();
 }

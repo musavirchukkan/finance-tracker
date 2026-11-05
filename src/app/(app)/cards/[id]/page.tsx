@@ -10,12 +10,16 @@ import {
 } from "@/components/card-forms";
 import { InfoTip } from "@/components/info-tip";
 import { ReviewCallout } from "@/components/review-callout";
-import { listBankAccounts } from "@/lib/bank-actions";
+import {
+  listBankAccounts,
+} from "@/lib/bank-data";;
 import {
   deleteCreditCard,
+} from "@/lib/card-actions";
+import {
   getCreditCardDetail,
   listCreditCards,
-} from "@/lib/card-actions";
+} from "@/lib/card-data";;
 import { activityLabel } from "@/lib/credit-cards";
 import { formatINR } from "@/lib/money";
 import { requireUser } from "@/lib/session";

@@ -1,5 +1,5 @@
-const STATIC_CACHE = "ledger-static-v4";
-const PAGE_CACHE = "ledger-pages-v4";
+const STATIC_CACHE = "ledger-static-v5";
+const PAGE_CACHE = "ledger-pages-v5";
 
 const STATIC_PRECACHE = [
   "/manifest.webmanifest",
@@ -13,13 +13,19 @@ const PROTECTED_PREFIXES = [
   "/overview",
   "/debt",
   "/wealth",
+  "/cards",
+  "/accounts",
   "/transactions",
   "/budget",
   "/analytics",
   "/goals",
   "/settings",
   "/quick-add",
+  "/more",
 ];
+
+/** Last session cookie fingerprint seen by this SW — clears pages on user change. */
+let lastSessionFp = null;
 
 function isProtectedPath(pathname) {
   return PROTECTED_PREFIXES.some(
@@ -27,14 +33,12 @@ function isProtectedPath(pathname) {
   );
 }
 
-function hasSessionCookie(request) {
+function sessionCookieFingerprint(request) {
   const cookie = request.headers.get("cookie") || "";
-  return (
-    cookie.includes("authjs.session-token") ||
-    cookie.includes("__Secure-authjs.session-token") ||
-    cookie.includes("next-auth.session-token") ||
-    cookie.includes("__Secure-next-auth.session-token")
-  );
+  const match =
+    cookie.match(/(?:^|;\s*)(?:__Secure-)?authjs\.session-token=([^;]+)/) ||
+    cookie.match(/(?:^|;\s*)(?:__Secure-)?next-auth\.session-token=([^;]+)/);
+  return match ? match[1].slice(0, 32) : "";
 }
 
 self.addEventListener("install", (event) => {
@@ -100,7 +104,13 @@ self.addEventListener("fetch", (event) => {
 });
 
 async function handleNavigation(request, pathname) {
-  const loggedIn = hasSessionCookie(request);
+  const fp = sessionCookieFingerprint(request);
+  if (fp !== lastSessionFp) {
+    await clearPageCache();
+    lastSessionFp = fp;
+  }
+
+  const loggedIn = Boolean(fp);
   const protectedRoute = isProtectedPath(pathname);
 
   // Logged out → never serve cached budget/data pages

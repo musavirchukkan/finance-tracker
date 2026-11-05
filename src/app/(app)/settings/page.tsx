@@ -4,7 +4,9 @@ import { InfoTip } from "@/components/info-tip";
 import { PwaInstallCard } from "@/components/pwa-install-card";
 import { SettingsForms } from "@/components/settings-forms";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { listCategories } from "@/lib/actions";
+import {
+  listCategories,
+} from "@/lib/ledger-data";;
 import { requireUser } from "@/lib/session";
 
 export default async function SettingsPage() {

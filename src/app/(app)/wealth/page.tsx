@@ -5,7 +5,9 @@ import {
   EditInvestmentButton,
 } from "@/components/investment-forms";
 import { InfoTip } from "@/components/info-tip";
-import { getNetWorth } from "@/lib/investment-actions";
+import {
+  getNetWorth,
+} from "@/lib/investment-data";;
 import { investmentTypeLabel } from "@/lib/investments";
 import { formatINR } from "@/lib/money";
 import { requireUser } from "@/lib/session";

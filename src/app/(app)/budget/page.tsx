@@ -8,7 +8,9 @@ import {
 } from "@/components/charts";
 import { BudgetCategoryTable } from "@/components/budget-table";
 import { InfoTip } from "@/components/info-tip";
-import { getBudgetSummary } from "@/lib/actions";
+import {
+  getBudgetSummary,
+} from "@/lib/ledger-data";;
 import { formatINR } from "@/lib/money";
 import {
   currentYearMonth,

@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   useTransition,
 } from "react";
 import { useRouter } from "next/navigation";
@@ -279,11 +280,11 @@ export function TransactionForm({
     initialWhen?.date ?? defaultDate ?? "",
   );
   const [timeValue, setTimeValue] = useState(initialWhen?.time ?? "");
-  const [clockReady, setClockReady] = useState(Boolean(editing));
-
-  useEffect(() => {
-    setClockReady(true);
-  }, []);
+  const clockReady = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => Boolean(editing),
+  );
 
   const filtered = useMemo(
     () => categories.filter((c) => c.kind === type),
