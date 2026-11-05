@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useActionState, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { purgeAppCaches } from "@/lib/client-cache";
+import { clearClientState } from "@/lib/client-cache";
 import { PASSWORD_MIN_LENGTH } from "@/lib/constants";
 import { loginAction } from "@/lib/login-action";
 import { safeCallbackUrl, type LoginState } from "@/lib/login-utils";
@@ -21,9 +21,9 @@ export function LoginForm({
     undefined,
   );
 
-  // Drop prior user's cached HTML when visiting login (M1).
+  // Drop prior user's cached HTML + offline queue when visiting login (H7/M1).
   useEffect(() => {
-    void purgeAppCaches();
+    void clearClientState();
   }, []);
 
   return (

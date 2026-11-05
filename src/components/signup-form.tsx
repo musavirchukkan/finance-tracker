@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { clearClientState } from "@/lib/client-cache";
 import { PASSWORD_MIN_LENGTH } from "@/lib/constants";
 import { registerAction } from "@/lib/register-action";
 import { safeCallbackUrl, type LoginState } from "@/lib/login-utils";
@@ -15,6 +16,11 @@ export function SignupForm({ requireInvite = false }: { requireInvite?: boolean 
     registerAction,
     undefined,
   );
+
+  // Same as login: wipe prior user's caches + offline queue (M1).
+  useEffect(() => {
+    void clearClientState();
+  }, []);
 
   return (
     <form action={formAction} className="form-stack">

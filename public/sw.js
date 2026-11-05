@@ -1,5 +1,5 @@
-const STATIC_CACHE = "ledger-static-v5";
-const PAGE_CACHE = "ledger-pages-v5";
+const STATIC_CACHE = "ledger-static-v6";
+const PAGE_CACHE = "ledger-pages-v6";
 
 const STATIC_PRECACHE = [
   "/manifest.webmanifest",
@@ -33,12 +33,33 @@ function isProtectedPath(pathname) {
   );
 }
 
-function sessionCookieFingerprint(request) {
+/**
+ * Hash the full session cookie (incl. Auth.js chunked tokens).
+ * Do NOT use a short prefix — JWE protected headers are identical across users (H7).
+ */
+async function sessionCookieFingerprint(request) {
   const cookie = request.headers.get("cookie") || "";
-  const match =
-    cookie.match(/(?:^|;\s*)(?:__Secure-)?authjs\.session-token=([^;]+)/) ||
-    cookie.match(/(?:^|;\s*)(?:__Secure-)?next-auth\.session-token=([^;]+)/);
-  return match ? match[1].slice(0, 32) : "";
+  const re =
+    /(?:^|;\s*)(?:__Secure-)?(?:authjs|next-auth)\.session-token(?:\.(\d+))?=([^;]+)/g;
+  const chunks = [];
+  let m;
+  while ((m = re.exec(cookie))) {
+    chunks.push({
+      idx: m[1] != null ? Number(m[1]) : -1,
+      value: m[2],
+    });
+  }
+  if (chunks.length === 0) return "";
+
+  chunks.sort((a, b) => a.idx - b.idx);
+  const raw = chunks.map((c) => c.value).join(".");
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(raw),
+  );
+  return [...new Uint8Array(digest)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 self.addEventListener("install", (event) => {
@@ -104,7 +125,7 @@ self.addEventListener("fetch", (event) => {
 });
 
 async function handleNavigation(request, pathname) {
-  const fp = sessionCookieFingerprint(request);
+  const fp = await sessionCookieFingerprint(request);
   if (fp !== lastSessionFp) {
     await clearPageCache();
     lastSessionFp = fp;
@@ -172,6 +193,7 @@ async function clearPageCache() {
 
 self.addEventListener("message", (event) => {
   if (event.data?.type === "CLEAR_CACHES") {
+    lastSessionFp = null;
     event.waitUntil(
       caches.keys().then((keys) =>
         Promise.all(
@@ -191,6 +213,7 @@ self.addEventListener("message", (event) => {
     );
   }
   if (event.data?.type === "CLEAR_ALL_CACHES") {
+    lastSessionFp = null;
     event.waitUntil(
       caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))),
     );

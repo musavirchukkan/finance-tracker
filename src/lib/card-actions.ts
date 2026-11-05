@@ -28,6 +28,7 @@ import {
   zNonEmpty,
   zUuid,
 } from "@/lib/form-schemas";
+import { assertOwnedBankAccount } from "@/lib/ledger-data";
 import { parseAmount, toNumber } from "@/lib/money";
 import { UserFacingError } from "@/lib/safe-error";
 import { requireUser } from "@/lib/session";
@@ -423,6 +424,8 @@ export async function logCardBillPayment(formData: FormData) {
     .where(and(eq(creditCards.id, raw.cardId), eq(creditCards.userId, user.id)))
     .limit(1);
   if (!card) throw new UserFacingError("Card not found");
+
+  await assertOwnedBankAccount(user.id, raw.bankAccountId);
 
   const cats = await ensureCardCashflowCategories(user.id);
   const [tx] = await db

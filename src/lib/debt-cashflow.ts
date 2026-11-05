@@ -148,7 +148,13 @@ export async function syncDebtPaymentTransaction(paymentId: string, userId: stri
       accountType: debtAccounts.type,
     })
     .from(debtPayments)
-    .innerJoin(debtAccounts, eq(debtPayments.accountId, debtAccounts.id))
+    .innerJoin(
+      debtAccounts,
+      and(
+        eq(debtPayments.accountId, debtAccounts.id),
+        eq(debtAccounts.userId, userId),
+      ),
+    )
     .where(and(eq(debtPayments.id, paymentId), eq(debtPayments.userId, userId)))
     .limit(1);
 

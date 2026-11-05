@@ -55,6 +55,8 @@ import {
   parseEmiOutstandingChoice,
 } from "@/lib/emi-statement-post";
 import {
+  assertOwnedCreditCard,
+  assertOwnedDebtAccount,
   assertOwnedTransactionInputs,
   insertTransactionForUser,
 } from "@/lib/ledger-data";
@@ -463,6 +465,9 @@ function parseDebtFields(formData: FormData) {
 export async function createDebtAccount(formData: FormData) {
   const user = await requireUser();
   const fields = parseDebtFields(formData);
+  if (fields.creditCardId) {
+    await assertOwnedCreditCard(user.id, fields.creditCardId);
+  }
   const logOpeningCashflow =
     formCheckbox(formData, "logAsIncome") ||
     formCheckbox(formData, "logOpeningCashflow");
@@ -608,6 +613,9 @@ export async function updateDebtAccount(formData: FormData) {
     "Missing fields",
   ).id;
   const fields = parseDebtFields(formData);
+  if (fields.creditCardId) {
+    await assertOwnedCreditCard(user.id, fields.creditCardId);
+  }
 
   const [prev] = await db
     .select({ creditCardId: debtAccounts.creditCardId })
@@ -760,6 +768,8 @@ export async function createDebtPayment(formData: FormData) {
     ? Math.round(splitTotal * 100) / 100
     : parseAmount(raw.amount.trim() || "0");
   if (amount <= 0) throw new UserFacingError("Enter payment amount");
+
+  await assertOwnedDebtAccount(user.id, raw.accountId);
 
   const [payment] = await db
     .insert(debtPayments)

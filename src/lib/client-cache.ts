@@ -22,7 +22,7 @@ export async function purgeAppCaches(): Promise<void> {
   }
 }
 
-/** Wipe offline queue DB entirely (used on sign-out). */
+/** Wipe offline queue DB entirely (sign-out / login / signup user switch). */
 export async function clearOfflineDatabase(): Promise<void> {
   const dbReq = indexedDB.deleteDatabase("ledger-offline");
   await new Promise<void>((resolve) => {
@@ -32,7 +32,10 @@ export async function clearOfflineDatabase(): Promise<void> {
   });
 }
 
-/** Sign-out cleanup: caches + offline DB. */
+/**
+ * Full client wipe for user transitions: Cache Storage + SW page cache +
+ * offline IndexedDB queue. Used on logout and when visiting login/signup (M1).
+ */
 export async function clearClientState(): Promise<void> {
   try {
     await purgeAppCaches();

@@ -41,6 +41,50 @@ import {
 } from "@/lib/debt-kinds";
 
 
+/** Owned FK guards — call before inserts that store cross-table IDs (H8–H10). */
+
+export async function assertOwnedBankAccount(
+  userId: string,
+  bankAccountId: string,
+) {
+  const [bank] = await db
+    .select({ id: bankAccounts.id })
+    .from(bankAccounts)
+    .where(
+      and(eq(bankAccounts.id, bankAccountId), eq(bankAccounts.userId, userId)),
+    )
+    .limit(1);
+  if (!bank) throw new UserFacingError("Invalid bank account");
+}
+
+export async function assertOwnedCreditCard(
+  userId: string,
+  creditCardId: string,
+) {
+  const [card] = await db
+    .select({ id: creditCards.id })
+    .from(creditCards)
+    .where(
+      and(eq(creditCards.id, creditCardId), eq(creditCards.userId, userId)),
+    )
+    .limit(1);
+  if (!card) throw new UserFacingError("Invalid credit card");
+}
+
+export async function assertOwnedDebtAccount(
+  userId: string,
+  accountId: string,
+) {
+  const [account] = await db
+    .select({ id: debtAccounts.id })
+    .from(debtAccounts)
+    .where(
+      and(eq(debtAccounts.id, accountId), eq(debtAccounts.userId, userId)),
+    )
+    .limit(1);
+  if (!account) throw new UserFacingError("Invalid debt account");
+}
+
 /**
  * Ensure category + payment sources belong to this user before mutating
  * balances / card ledgers. Prevents crafted IDs from touching another
@@ -68,26 +112,11 @@ export async function assertOwnedTransactionInputs(
     (id): id is string => Boolean(id),
   );
   for (const cardId of cardIds) {
-    const [card] = await db
-      .select({ id: creditCards.id })
-      .from(creditCards)
-      .where(and(eq(creditCards.id, cardId), eq(creditCards.userId, userId)))
-      .limit(1);
-    if (!card) throw new UserFacingError("Invalid credit card");
+    await assertOwnedCreditCard(userId, cardId);
   }
 
   if (input.bankAccountId) {
-    const [bank] = await db
-      .select({ id: bankAccounts.id })
-      .from(bankAccounts)
-      .where(
-        and(
-          eq(bankAccounts.id, input.bankAccountId),
-          eq(bankAccounts.userId, userId),
-        ),
-      )
-      .limit(1);
-    if (!bank) throw new UserFacingError("Invalid bank account");
+    await assertOwnedBankAccount(userId, input.bankAccountId);
   }
 }
 
@@ -341,17 +370,39 @@ export async function listTransactions(
       billPayCardLastFour: billCard.lastFour,
     })
     .from(transactions)
-    .innerJoin(categories, eq(transactions.categoryId, categories.id))
-    .leftJoin(spendCard, eq(transactions.creditCardId, spendCard.id))
-    .leftJoin(bankAccounts, eq(transactions.bankAccountId, bankAccounts.id))
+    .innerJoin(
+      categories,
+      and(
+        eq(transactions.categoryId, categories.id),
+        eq(categories.userId, userId),
+      ),
+    )
+    .leftJoin(
+      spendCard,
+      and(
+        eq(transactions.creditCardId, spendCard.id),
+        eq(spendCard.userId, userId),
+      ),
+    )
+    .leftJoin(
+      bankAccounts,
+      and(
+        eq(transactions.bankAccountId, bankAccounts.id),
+        eq(bankAccounts.userId, userId),
+      ),
+    )
     .leftJoin(
       billActivity,
       and(
         eq(billActivity.transactionId, transactions.id),
         eq(billActivity.activityType, "bill_payment"),
+        eq(billActivity.userId, userId),
       ),
     )
-    .leftJoin(billCard, eq(billActivity.cardId, billCard.id))
+    .leftJoin(
+      billCard,
+      and(eq(billActivity.cardId, billCard.id), eq(billCard.userId, userId)),
+    )
     .where(where)
     .orderBy(desc(transactions.occurredAt), desc(transactions.id));
 
@@ -577,7 +628,13 @@ export async function getDebtDashboard(userId: string) {
         isPaid: debtPayments.isPaid,
       })
       .from(debtPayments)
-      .innerJoin(debtAccounts, eq(debtPayments.accountId, debtAccounts.id))
+      .innerJoin(
+        debtAccounts,
+        and(
+          eq(debtPayments.accountId, debtAccounts.id),
+          eq(debtAccounts.userId, userId),
+        ),
+      )
       .where(eq(debtPayments.userId, userId))
       .orderBy(desc(debtPayments.dueDate)),
     db

@@ -495,7 +495,13 @@ export async function listLedgerPaymentWarnings(
       isPaid: debtPayments.isPaid,
     })
     .from(debtPayments)
-    .innerJoin(debtAccounts, eq(debtPayments.accountId, debtAccounts.id))
+    .innerJoin(
+      debtAccounts,
+      and(
+        eq(debtPayments.accountId, debtAccounts.id),
+        eq(debtAccounts.userId, userId),
+      ),
+    )
     .where(eq(debtPayments.userId, userId));
 
   const unpaid = unpaidDebtPaymentWarnings(debtPays);
