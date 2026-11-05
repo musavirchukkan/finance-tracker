@@ -2,6 +2,7 @@ import Image from "next/image";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/login-form";
+import { getEnv } from "@/lib/env";
 
 export default async function LoginPage({
   searchParams,
@@ -18,6 +19,8 @@ export default async function LoginPage({
         : "";
     redirect(`/login${qs}`);
   }
+
+  const { allowPublicSignup } = getEnv();
 
   return (
     <main className="login-screen">
@@ -40,7 +43,7 @@ export default async function LoginPage({
         <section className="login-panel" aria-label="Sign in">
           <h2 className="login-heading">Sign in</h2>
           <Suspense fallback={<p className="muted">Loading…</p>}>
-            <LoginForm />
+            <LoginForm allowPublicSignup={allowPublicSignup} />
           </Suspense>
         </section>
       </div>

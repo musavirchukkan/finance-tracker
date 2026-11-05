@@ -6,7 +6,11 @@ import { useSearchParams } from "next/navigation";
 import { loginAction } from "@/lib/login-action";
 import { safeCallbackUrl, type LoginState } from "@/lib/login-utils";
 
-export function LoginForm() {
+export function LoginForm({
+  allowPublicSignup = true,
+}: {
+  allowPublicSignup?: boolean;
+}) {
   const searchParams = useSearchParams();
   const callbackUrl = safeCallbackUrl(searchParams.get("callbackUrl"));
   const [showPassword, setShowPassword] = useState(false);
@@ -87,15 +91,17 @@ export function LoginForm() {
       <button className="btn btn-primary" type="submit" disabled={pending}>
         {pending ? "Signing in…" : "Sign in"}
       </button>
-      <p className="muted" style={{ margin: 0, fontSize: "0.9rem" }}>
-        New here?{" "}
-        <Link
-          className="linkish"
-          href={`/signup?callbackUrl=${encodeURIComponent(callbackUrl)}`}
-        >
-          Create an account
-        </Link>
-      </p>
+      {allowPublicSignup ? (
+        <p className="muted" style={{ margin: 0, fontSize: "0.9rem" }}>
+          New here?{" "}
+          <Link
+            className="linkish"
+            href={`/signup?callbackUrl=${encodeURIComponent(callbackUrl)}`}
+          >
+            Create an account
+          </Link>
+        </p>
+      ) : null}
     </form>
   );
 }
