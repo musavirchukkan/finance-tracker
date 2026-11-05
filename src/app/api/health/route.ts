@@ -3,7 +3,7 @@ import { healthResponse } from "@/lib/health";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/** Cron / uptime probe — wakes app + checks DB. */
-export async function GET() {
-  return healthResponse();
+/** Uptime probe — app + Postgres (rate-limited). Redis is checked via keepalive. */
+export async function GET(request: Request) {
+  return healthResponse(request);
 }

@@ -10,9 +10,11 @@ const publicPaths = ["/login", "/signup", "/health"];
 export const proxy = auth((request) => {
   const { pathname } = request.nextUrl;
 
+  // /api/cron uses CRON_SECRET inside the route (not session auth).
   if (
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/health") ||
+    pathname.startsWith("/api/cron") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
     pathname.includes(".")

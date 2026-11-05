@@ -14,7 +14,7 @@ export async function loginAction(
   formData: FormData,
 ): Promise<LoginState> {
   const hdrs = await headers();
-  const limited = takeRateLimit(
+  const limited = await takeRateLimit(
     clientKeyFromHeaders(hdrs, "login"),
     AUTH_RATE_LIMIT.login.limit,
     AUTH_RATE_LIMIT.login.windowMs,

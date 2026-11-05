@@ -1,12 +1,81 @@
+import { getRedis, type Redis } from "@/lib/redis";
+
 type Bucket = { count: number; resetAt: number };
 
 const buckets = new Map<string, Bucket>();
 
 /**
- * Simple in-memory rate limit (per server instance). Enough for single-node /
- * low-traffic deploy. Use Redis/Upstash later if you scale to many instances.
+ * Fixed window: INCR, EXPIRE on first hit, return TTL.
+ * createScript → EVALSHA after first load (one HTTPS round-trip per take).
  */
-export function takeRateLimit(
+const RATE_LIMIT_LUA = `
+local count = redis.call("INCR", KEYS[1])
+if count == 1 then
+  redis.call("EXPIRE", KEYS[1], ARGV[1])
+end
+local ttl = redis.call("TTL", KEYS[1])
+return { count, ttl }
+`;
+
+type RateLimitLuaResult = [number, number];
+
+type RateLimitScript = {
+  eval: (keys: string[], args: string[]) => Promise<RateLimitLuaResult>;
+};
+
+let rateLimitScript: RateLimitScript | null = null;
+
+function getRateLimitScript(redis: Redis): RateLimitScript {
+  if (!rateLimitScript) {
+    rateLimitScript = redis.createScript<RateLimitLuaResult>(RATE_LIMIT_LUA);
+  }
+  return rateLimitScript;
+}
+
+/**
+ * Fixed-window rate limit.
+ * Uses Redis REST (HTTPS) when configured; otherwise in-memory
+ * (fine for local single-process; not shared across serverless isolates).
+ */
+export async function takeRateLimit(
+  key: string,
+  limit: number,
+  windowMs: number,
+): Promise<{ ok: true } | { ok: false; retryAfterSec: number }> {
+  const redis = getRedis();
+  if (redis) {
+    return takeRedisRateLimit(redis, key, limit, windowMs);
+  }
+  return takeMemoryRateLimit(key, limit, windowMs);
+}
+
+async function takeRedisRateLimit(
+  redis: Redis,
+  key: string,
+  limit: number,
+  windowMs: number,
+): Promise<{ ok: true } | { ok: false; retryAfterSec: number }> {
+  const windowSec = Math.max(1, Math.ceil(windowMs / 1000));
+  const redisKey = `rl:${key}`;
+
+  const [countRaw, ttlRaw] = await getRateLimitScript(redis).eval(
+    [redisKey],
+    [String(windowSec)],
+  );
+
+  const count = Number(countRaw);
+  const ttl = Number(ttlRaw);
+
+  if (count > limit) {
+    return {
+      ok: false,
+      retryAfterSec: Math.max(1, ttl > 0 ? ttl : windowSec),
+    };
+  }
+  return { ok: true };
+}
+
+function takeMemoryRateLimit(
   key: string,
   limit: number,
   windowMs: number,

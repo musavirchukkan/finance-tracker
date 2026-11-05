@@ -3,11 +3,17 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { compare } from "bcryptjs";
 import { eq } from "drizzle-orm";
+import { headers } from "next/headers";
 import { z } from "zod";
-import { PASSWORD_MIN_LENGTH, SESSION_USER_RECHECK_MS } from "@/lib/constants";
+import {
+  AUTH_RATE_LIMIT,
+  PASSWORD_MIN_LENGTH,
+  SESSION_USER_RECHECK_MS,
+} from "@/lib/constants";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { getDatabaseFingerprintMaterial } from "@/lib/env";
+import { clientKeyFromHeaders, takeRateLimit } from "@/lib/rate-limit";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -37,6 +43,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       authorize: async (raw) => {
         const parsed = credentialsSchema.safeParse(raw);
         if (!parsed.success) return null;
+
+        // Covers POST /api/auth/callback/credentials (bypasses loginAction).
+        // Separate key from loginAction so FormData UX limits stay independent.
+        const hdrs = await headers();
+        const limited = await takeRateLimit(
+          clientKeyFromHeaders(hdrs, "auth-callback"),
+          AUTH_RATE_LIMIT.login.limit,
+          AUTH_RATE_LIMIT.login.windowMs,
+        );
+        if (!limited.ok) return null;
 
         const email = parsed.data.email.toLowerCase();
         const [user] = await db

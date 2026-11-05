@@ -90,9 +90,11 @@ Open [http://localhost:3000](http://localhost:3000) and sign in with the seeded 
 | Key | Required? | What to put |
 |-----|-----------|-------------|
 | `AUTH_SECRET` | Yes | Output of `openssl rand -base64 32` |
+| `AUTH_URL` | After first deploy | `https://your-app.vercel.app` (or custom domain) |
 | `DATABASE_URL` | Yes | Neon **pooled** URL (`-pooler` in host) |
 | `DATABASE_MIGRATION_URL` | Yes (for auto schema on deploy) | Neon **direct** URL (no `-pooler`) |
-| `AUTH_URL` | After first deploy | `https://your-app.vercel.app` (or custom domain) |
+| `REDIS_REST_URL` / `REDIS_REST_TOKEN` | Recommended | Layerbase (or other) HTTPS Redis REST |
+| `CRON_SECRET` | Yes if using keepalive | Bearer secret for `/api/cron/keepalive` |
 | `SEED_*` | No | Not needed on Vercel — seed once from your laptop |
 
 ### Auto schema on deploy

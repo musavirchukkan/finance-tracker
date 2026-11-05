@@ -39,7 +39,7 @@ export async function registerAction(
   }
 
   const hdrs = await headers();
-  const limited = takeRateLimit(
+  const limited = await takeRateLimit(
     clientKeyFromHeaders(hdrs, "signup"),
     AUTH_RATE_LIMIT.signup.limit,
     AUTH_RATE_LIMIT.signup.windowMs,
