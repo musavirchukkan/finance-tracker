@@ -10,38 +10,98 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  AUTH_SECRET: ci-auth-secret-not-for-production
+  # Only DB jobs use these; quality ignores them.
+  DATABASE_URL: postgresql://finance:finance@127.0.0.1:5432/finance_test
+  DATABASE_MIGRATION_URL: postgresql://finance:finance@127.0.0.1:5432/finance_test
+  E2E_EMAIL: e2e@example.test
+  E2E_PASSWORD: e2e-password-123
+
+# Three independent jobs in parallel (wall-clock ↓).
+# Avoid finer splits — each job pays for checkout + npm ci.
+# Postgres only where needed (minutes + service overhead).
 jobs:
   quality:
-    name: Lint, typecheck, test, build
-    # Pin OS so ubuntu-latest → 26 migration does not surprise us
+    name: Lint, typecheck, unit, build
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Node
-        uses: actions/setup-node@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build:app
 
-      - name: Install
-        run: npm ci
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Unit tests
-        run: npm test
-
-      - name: Build app
-        run: npm run build:app
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18-alpine
         env:
-          AUTH_SECRET: ci-auth-secret-not-for-production
-          DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
-          DATABASE_MIGRATION_URL: postgresql://ci:ci@127.0.0.1:5432/ci
+          POSTGRES_USER: finance
+          POSTGRES_PASSWORD: finance
+          POSTGRES_DB: finance_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U finance -d finance_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:integration
+
+  smoke:
+    name: Playwright smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: finance
+          POSTGRES_PASSWORD: finance
+          POSTGRES_DB: finance_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U finance -d finance_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install chromium --with-deps
+      - run: npm run test:e2e
+
+  # Single required check for branch protection.
+  ci:
+    name: CI passed
+    runs-on: ubuntu-24.04
+    if: always()
+    needs: [quality, integration, smoke]
+    steps:
+      - name: Check jobs
+        run: |
+          test "${{ needs.quality.result }}" = "success"
+          test "${{ needs.integration.result }}" = "success"
+          test "${{ needs.smoke.result }}" = "success"

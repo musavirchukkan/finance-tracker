@@ -11,6 +11,8 @@ services:
     volumes:
       # Postgres 18+ images expect the mount at /var/lib/postgresql (not .../data).
       - finance_pg:/var/lib/postgresql
+      # Extra DB for integration / smoke tests (runs only on first volume init).
+      - ./scripts/docker-init-test-db.sql:/docker-entrypoint-initdb.d/02-test-db.sql:ro
 
 volumes:
   finance_pg:
