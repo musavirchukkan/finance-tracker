@@ -274,7 +274,7 @@ async function reverseEmiPost(args: {
   if (args.monthsPaid > 0) {
     await db
       .update(debtAccounts)
-      .set({ monthsPaid: args.monthsPaid - 1 })
+      .set({ monthsPaid: args.monthsPaid - 1, updatedAt: new Date() })
       .where(
         and(
           eq(debtAccounts.id, args.accountId),
@@ -398,7 +398,7 @@ export async function applyLinkedEmiForCycle(args: {
 
   await db
     .update(debtAccounts)
-    .set({ monthsPaid: debt.monthsPaid + 1 })
+    .set({ monthsPaid: debt.monthsPaid + 1, updatedAt: new Date() })
     .where(
       and(
         eq(debtAccounts.id, debt.id),

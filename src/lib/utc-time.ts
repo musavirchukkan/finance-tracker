@@ -57,7 +57,10 @@ export function utcIsoToLocalFields(
 }
 
 /** Format a UTC instant in the runtime's local timezone. */
-export function formatUtcAsLocal(iso: string): string {
+export function formatUtcAsLocal(
+  iso: string,
+  opts?: { seconds?: boolean },
+): string {
   const instant = new Date(iso);
   if (Number.isNaN(instant.getTime())) return iso;
   return instant.toLocaleString(undefined, {
@@ -66,6 +69,7 @@ export function formatUtcAsLocal(iso: string): string {
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    ...(opts?.seconds ? { second: "2-digit" as const } : {}),
   });
 }
 

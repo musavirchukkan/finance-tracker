@@ -29,6 +29,20 @@
       "when": 1793900000000,
       "tag": "0003_transfers",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794000000000,
+      "tag": "0004_balance_as_of",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794100000000,
+      "tag": "0005_updated_at",
+      "breakpoints": true
     }
   ]
 }

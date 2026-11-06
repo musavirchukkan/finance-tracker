@@ -12,7 +12,7 @@ import {
   zUuid,
 } from "@/lib/form-schemas";
 import { normalizeLastFour } from "@/lib/credit-cards";
-import { parseAmount } from "@/lib/money";
+import { parseAmount, toNumber } from "@/lib/money";
 import { UserFacingError } from "@/lib/safe-error";
 import { requireUser } from "@/lib/session";
 
@@ -69,6 +69,7 @@ export async function createBankAccount(formData: FormData) {
     allowNegative: true,
   });
   const { minBalance, balanceRules, lastFour } = parseBankExtras(formData);
+  const { balanceAsOfNow } = await import("@/lib/bank-account-cashflow");
 
   const [row] = await db
     .insert(bankAccounts)
@@ -76,6 +77,7 @@ export async function createBankAccount(formData: FormData) {
       userId: user.id,
       name: parsed.data.name,
       currentBalance: currentBalance.toFixed(2),
+      balanceAsOf: balanceAsOfNow(),
       minBalance: minBalance != null ? minBalance.toFixed(2) : null,
       balanceRules,
       lastFour,
@@ -111,16 +113,29 @@ export async function updateBankAccount(formData: FormData) {
   });
   const { minBalance, balanceRules, lastFour } = parseBankExtras(formData);
 
+  const [existing] = await db
+    .select({ currentBalance: bankAccounts.currentBalance })
+    .from(bankAccounts)
+    .where(and(eq(bankAccounts.id, id), eq(bankAccounts.userId, user.id)))
+    .limit(1);
+  if (!existing) throw new UserFacingError("Account not found");
+
+  const balanceChanged =
+    toNumber(existing.currentBalance) !== currentBalance;
+  const { balanceAsOfNow } = await import("@/lib/bank-account-cashflow");
+
   await db
     .update(bankAccounts)
     .set({
       name: parsed.data.name,
       currentBalance: currentBalance.toFixed(2),
+      ...(balanceChanged ? { balanceAsOf: balanceAsOfNow() } : {}),
       minBalance: minBalance != null ? minBalance.toFixed(2) : null,
       balanceRules,
       lastFour,
       accountType: parsed.data.accountType || "Savings",
       status: parsed.data.status || "Active",
+      updatedAt: new Date(),
     })
     .where(and(eq(bankAccounts.id, id), eq(bankAccounts.userId, user.id)));
 

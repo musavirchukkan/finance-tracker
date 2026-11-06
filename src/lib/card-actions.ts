@@ -179,7 +179,7 @@ export async function updateCreditCard(formData: FormData) {
   if (sharesLimitWithId) {
     await db
       .update(creditCards)
-      .set({ sharesLimitWithId: null })
+      .set({ sharesLimitWithId: null, updatedAt: new Date() })
       .where(
         and(
           eq(creditCards.userId, user.id),
@@ -203,6 +203,7 @@ export async function updateCreditCard(formData: FormData) {
       lastFour,
       isRupay,
       status,
+      updatedAt: new Date(),
     })
     .where(and(eq(creditCards.id, id), eq(creditCards.userId, user.id)));
 
@@ -428,12 +429,13 @@ export async function logCardBillPayment(formData: FormData) {
   await assertOwnedBankAccount(user.id, raw.bankAccountId);
 
   const cats = await ensureCardCashflowCategories(user.id);
+  const billOccurredAt = new Date(`${raw.date}T12:00:00`);
   const [tx] = await db
     .insert(transactions)
     .values({
       userId: user.id,
       date: raw.date,
-      occurredAt: new Date(`${raw.date}T12:00:00`),
+      occurredAt: billOccurredAt,
       description: note || `Bill payment — ${card.name}`,
       categoryId: cats.creditCardCategoryId,
       type: "expense",
@@ -453,6 +455,7 @@ export async function logCardBillPayment(formData: FormData) {
       bankAccountId: raw.bankAccountId,
       type: "expense",
       amount,
+      occurredAt: billOccurredAt,
     });
   }
 
@@ -476,6 +479,7 @@ export async function logCardBillPayment(formData: FormData) {
       .set({
         statementAmount: nextStatement > 0 ? nextStatement.toFixed(2) : null,
         pinToCurrentStatement: nextStatement > 0,
+        updatedAt: new Date(),
       })
       .where(and(eq(creditCards.id, raw.cardId), eq(creditCards.userId, user.id)));
   }

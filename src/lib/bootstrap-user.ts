@@ -86,7 +86,7 @@ export async function ensureDefaultCategories(userId: string) {
     if (Object.keys(updates).length > 0) {
       await db
         .update(categories)
-        .set(updates)
+        .set({ ...updates, updatedAt: new Date() })
         .where(and(eq(categories.id, row.id), eq(categories.userId, userId)));
     }
   }

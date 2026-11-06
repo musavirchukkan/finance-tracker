@@ -107,7 +107,7 @@ export async function migrateRollingCreditCards(userId: string) {
       );
     await db
       .update(debtAccounts)
-      .set({ receivedTransactionId: null })
+      .set({ receivedTransactionId: null, updatedAt: new Date() })
       .where(
         and(eq(debtAccounts.id, account.id), eq(debtAccounts.userId, userId)),
       );

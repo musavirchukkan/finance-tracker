@@ -8,9 +8,7 @@ import { ReviewCallout } from "@/components/review-callout";
 import {
   deleteBankAccount,
 } from "@/lib/bank-actions";
-import {
-  getBankAccountDetail,
-} from "@/lib/bank-data";;
+import { getBankAccountDetail } from "@/lib/bank-data";
 import { formatINR } from "@/lib/money";
 import { toUtcIso } from "@/lib/utc-time";
 import { requireUser } from "@/lib/session";
@@ -64,6 +62,12 @@ export default async function BankAccountDetailPage({
           <strong className={account.balanceNum < 0 ? "neg" : undefined}>
             {formatINR(account.balanceNum)}
           </strong>
+          {toUtcIso(account.balanceAsOf) ? (
+            <p className="muted" style={{ margin: "0.4rem 0 0", fontSize: "0.8rem" }}>
+              As of{" "}
+              <LocalDateTime iso={toUtcIso(account.balanceAsOf)!} seconds />
+            </p>
+          ) : null}
         </div>
         <div className="stat-card tall">
           <span>Minimum balance</span>
@@ -97,8 +101,9 @@ export default async function BankAccountDetailPage({
           </p>
           <p>
             Add the missing transaction with its real date, or edit this account
-            and set the latest balance from the bank app. The negative clears
-            once the books catch up.
+            and set the latest balance from the bank app (that re-anchors “as
+            of” so older backfilled spends stay tracking-only). The negative
+            clears once the books catch up.
           </p>
         </ReviewCallout>
       ) : null}

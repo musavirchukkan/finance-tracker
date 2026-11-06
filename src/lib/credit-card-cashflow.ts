@@ -70,7 +70,7 @@ export async function adjustCardOutstanding(
   const next = Math.max(0, toNumber(card.currentOutstanding) + delta);
   await db
     .update(creditCards)
-    .set({ currentOutstanding: next.toFixed(2) })
+    .set({ currentOutstanding: next.toFixed(2), updatedAt: new Date() })
     .where(and(eq(creditCards.id, cardId), eq(creditCards.userId, userId)));
 }
 
@@ -83,6 +83,7 @@ export async function setCardOutstanding(
     .update(creditCards)
     .set({
       currentOutstanding: Math.max(0, amount).toFixed(2),
+      updatedAt: new Date(),
     })
     .where(and(eq(creditCards.id, cardId), eq(creditCards.userId, userId)));
 }

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  affectsBankBalance,
+  balanceAsOfNow,
   bankBalanceDelta,
   ledgerBalanceEffects,
   normalizeTransferLegs,
@@ -132,5 +134,96 @@ describe("ledgerBalanceEffects", () => {
     });
     expect((after.get("b") ?? 0) - (before.get("b") ?? 0)).toBe(100);
     expect((after.get("a") ?? 0) - (before.get("a") ?? 0)).toBe(0);
+  });
+});
+
+describe("affectsBankBalance", () => {
+  const asOf = new Date("2026-11-06T10:00:00.000Z");
+
+  it("treats missing as-of as always affecting", () => {
+    expect(affectsBankBalance(new Date("2020-01-01T00:00:00.000Z"), null)).toBe(
+      true,
+    );
+  });
+
+  it("includes the as-of instant itself", () => {
+    expect(affectsBankBalance(asOf, asOf)).toBe(true);
+  });
+
+  it("excludes times before as-of", () => {
+    expect(
+      affectsBankBalance(new Date("2026-11-06T09:59:59.000Z"), asOf),
+    ).toBe(false);
+  });
+});
+
+describe("balanceAsOfNow", () => {
+  it("truncates to whole seconds", () => {
+    const stamped = balanceAsOfNow(new Date("2026-11-06T10:00:00.456Z"));
+    expect(stamped.toISOString()).toBe("2026-11-06T10:00:00.000Z");
+  });
+});
+
+describe("ledgerBalanceEffects with balance as-of", () => {
+  const asOf = new Date("2026-11-06T10:00:00.000Z");
+  const before = new Date("2026-11-06T09:00:00.000Z");
+  const after = new Date("2026-11-06T11:00:00.000Z");
+
+  it("skips expense before as-of", () => {
+    const effects = ledgerBalanceEffects({
+      type: "expense",
+      amount: 50,
+      bankAccountId: "a",
+      occurredAt: before,
+      balanceAsOfByAccount: new Map([["a", asOf]]),
+    });
+    expect(effects.size).toBe(0);
+  });
+
+  it("applies expense on or after as-of", () => {
+    const effects = ledgerBalanceEffects({
+      type: "expense",
+      amount: 50,
+      bankAccountId: "a",
+      occurredAt: after,
+      balanceAsOfByAccount: new Map([["a", asOf]]),
+    });
+    expect(effects.get("a")).toBe(-50);
+  });
+
+  it("edit crossing cutoff: before→after applies full new effect", () => {
+    const asOfMap = new Map<string, Date>([["a", asOf]]);
+    const oldEffects = ledgerBalanceEffects({
+      type: "expense",
+      amount: 40,
+      bankAccountId: "a",
+      occurredAt: before,
+      balanceAsOfByAccount: asOfMap,
+    });
+    const newEffects = ledgerBalanceEffects({
+      type: "expense",
+      amount: 40,
+      bankAccountId: "a",
+      occurredAt: after,
+      balanceAsOfByAccount: asOfMap,
+    });
+    expect((newEffects.get("a") ?? 0) - (oldEffects.get("a") ?? 0)).toBe(-40);
+  });
+
+  it("transfer legs respect each account as-of independently", () => {
+    const asOfMap = new Map<string, Date | null | undefined>([
+      ["from", asOf],
+      ["to", new Date("2026-11-01T00:00:00.000Z")],
+    ]);
+    const effects = ledgerBalanceEffects({
+      type: "transfer",
+      amount: 100,
+      bankAccountId: "from",
+      transferToBankAccountId: "to",
+      occurredAt: before,
+      balanceAsOfByAccount: asOfMap,
+    });
+    expect(effects.has("from")).toBe(false);
+    expect(effects.get("to")).toBe(100);
   });
 });

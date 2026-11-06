@@ -289,7 +289,7 @@ export function TransactionForm({
   const [online, setOnline] = useState(() =>
     typeof window !== "undefined" ? navigator.onLine : true,
   );
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const [saving, setSaving] = useState(false);
   const [editWhen, setEditWhen] = useState(Boolean(editing));
   const [dateValue, setDateValue] = useState(

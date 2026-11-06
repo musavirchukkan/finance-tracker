@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { ActionForm } from "@/components/action-form";
+import { LocalDateTime } from "@/components/local-datetime";
 import { Modal } from "@/components/modal";
 import {
   createBankAccount,
   deleteBankAccount,
   updateBankAccount,
 } from "@/lib/bank-actions";
+import { toUtcIso } from "@/lib/utc-time";
 
 type BankFormValues = {
   id?: string;
@@ -33,9 +35,12 @@ const emptyBank: BankFormValues = {
 function BankFields({
   values,
   onChange,
+  balanceAsOfIso,
 }: {
   values: BankFormValues;
   onChange: (next: BankFormValues) => void;
+  /** When set (edit), show the last absolute-balance anchor. */
+  balanceAsOfIso?: string | null;
 }) {
   function set<K extends keyof BankFormValues>(key: K, value: BankFormValues[K]) {
     onChange({ ...values, [key]: value });
@@ -84,7 +89,15 @@ function BankFields({
         />
         <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.8rem" }}>
           Negative is allowed if the ledger is overdrawn or still catching up.
+          Changing this balance re-anchors “as of” to now — older transactions
+          stay for tracking only.
         </p>
+        {balanceAsOfIso ? (
+          <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.8rem" }}>
+            Balance as of{" "}
+            <LocalDateTime iso={balanceAsOfIso} seconds />
+          </p>
+        ) : null}
       </div>
       <div className="field">
         <label htmlFor="bank-min">Minimum balance</label>
@@ -192,8 +205,10 @@ export function EditBankAccountButton({
     lastFour?: string | null;
     accountType: string;
     status: string;
+    balanceAsOf?: Date | string | null;
   };
 }) {
+  const balanceAsOfIso = toUtcIso(account.balanceAsOf);
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<BankFormValues>({
     id: account.id,
@@ -245,7 +260,11 @@ export function EditBankAccountButton({
           onSuccess={close}
         >
           <input type="hidden" name="id" value={account.id} />
-          <BankFields values={values} onChange={setValues} />
+          <BankFields
+            values={values}
+            onChange={setValues}
+            balanceAsOfIso={balanceAsOfIso}
+          />
           <div className="modal-actions">
             <button type="button" className="btn btn-ghost" onClick={close}>
               Cancel

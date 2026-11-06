@@ -21,6 +21,9 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
 });
 
 export const categories = pgTable(
@@ -34,6 +37,9 @@ export const categories = pgTable(
     kind: text("kind").notNull().default("expense"), // expense | income | transfer
     icon: text("icon"),
     sortOrder: integer("sort_order").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (t) => [uniqueIndex("categories_user_name").on(t.userId, t.name)],
 );
@@ -50,6 +56,9 @@ export const budgets = pgTable(
       .references(() => categories.id, { onDelete: "cascade" }),
     yearMonth: text("year_month").notNull(), // YYYY-MM
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (t) => [
     uniqueIndex("budgets_user_cat_month").on(
@@ -84,7 +93,18 @@ export const bankAccounts = pgTable(
     /** e.g. Savings, Current, Wallet */
     accountType: text("account_type").notNull().default("Savings"),
     status: text("status").notNull().default("Active"),
+    /**
+     * Instant when `currentBalance` was last set as an absolute value.
+     * Transactions with occurredAt before this do not adjust the balance
+     * (expense tracking only).
+     */
+    balanceAsOf: timestamp("balance_as_of", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
   },
@@ -139,6 +159,9 @@ export const creditCards = pgTable(
     isRupay: boolean("is_rupay").notNull().default(false),
     status: text("status").notNull().default("Active"),
     createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
   },
@@ -287,6 +310,9 @@ export const debtAccounts = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (t) => [index("debt_accounts_user").on(t.userId)],
 );
@@ -329,6 +355,9 @@ export const debtSettings = pgTable("debt_settings", {
     .primaryKey()
     .references(() => users.id, { onDelete: "cascade" }),
   goalPayoffDate: date("goal_payoff_date").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
 });
 
 export const savingsGoals = pgTable(
@@ -347,6 +376,9 @@ export const savingsGoals = pgTable(
       .default("0"),
     targetDate: date("target_date"),
     createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
   },

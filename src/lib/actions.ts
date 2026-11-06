@@ -221,6 +221,7 @@ export async function updateTransaction(formData: FormData) {
       amount: transactions.amount,
       bankAccountId: transactions.bankAccountId,
       transferToBankAccountId: transactions.transferToBankAccountId,
+      occurredAt: transactions.occurredAt,
     })
     .from(transactions)
     .where(and(eq(transactions.id, raw.id), eq(transactions.userId, user.id)))
@@ -290,6 +291,7 @@ export async function updateTransaction(formData: FormData) {
       amount: toNumber(existing.amount),
       bankAccountId: existing.bankAccountId,
       transferToBankAccountId: existing.transferToBankAccountId,
+      occurredAt: existing.occurredAt,
     },
     to: {
       type: raw.type,
@@ -297,6 +299,7 @@ export async function updateTransaction(formData: FormData) {
       bankAccountId,
       transferToBankAccountId:
         raw.type === "transfer" ? transferToBankAccountId : null,
+      occurredAt,
     },
   });
 
@@ -419,7 +422,7 @@ export async function upsertBudgetAmount(formData: FormData) {
   if (existing[0]) {
     await db
       .update(budgets)
-      .set({ amount: amount.toFixed(2) })
+      .set({ amount: amount.toFixed(2), updatedAt: new Date() })
       .where(eq(budgets.id, existing[0].id));
   } else {
     await db.insert(budgets).values({
@@ -707,6 +710,7 @@ export async function updateDebtAccount(formData: FormData) {
       monthsPaid: fields.monthsPaid,
       status: fields.status,
       creditCardId: fields.creditCardId,
+      updatedAt: new Date(),
     })
     .where(and(eq(debtAccounts.id, id), eq(debtAccounts.userId, user.id)));
 
@@ -768,7 +772,7 @@ export async function deleteDebtAccount(formData: FormData) {
 
   await db
     .update(debtAccounts)
-    .set({ receivedTransactionId: null })
+    .set({ receivedTransactionId: null, updatedAt: new Date() })
     .where(and(eq(debtAccounts.id, id), eq(debtAccounts.userId, user.id)));
 
   await deleteReceivedIncomeTransaction(user.id, account.receivedTransactionId);
@@ -935,7 +939,7 @@ export async function updateDebtGoal(formData: FormData) {
   if (existing[0]) {
     await db
       .update(debtSettings)
-      .set({ goalPayoffDate })
+      .set({ goalPayoffDate, updatedAt: new Date() })
       .where(eq(debtSettings.userId, user.id));
   } else {
     await db.insert(debtSettings).values({
@@ -1008,7 +1012,7 @@ export async function updateCategory(formData: FormData) {
 
   await db
     .update(categories)
-    .set({ name: raw.name, kind: raw.kind, icon })
+    .set({ name: raw.name, kind: raw.kind, icon, updatedAt: new Date() })
     .where(and(eq(categories.id, raw.id), eq(categories.userId, user.id)));
 
   revalidatePath("/settings");
@@ -1103,7 +1107,7 @@ export async function contributeToSavingsGoal(formData: FormData) {
   const next = toNumber(existing[0].currentAmount) + amount;
   await db
     .update(savingsGoals)
-    .set({ currentAmount: next.toFixed(2) })
+    .set({ currentAmount: next.toFixed(2), updatedAt: new Date() })
     .where(eq(savingsGoals.id, raw.id));
 
   revalidateGoals();
@@ -1167,7 +1171,7 @@ export async function changePassword(formData: FormData) {
   const passwordHash = await hash(raw.newPassword, BCRYPT_ROUNDS);
   await db
     .update(users)
-    .set({ passwordHash })
+    .set({ passwordHash, updatedAt: new Date() })
     .where(eq(users.id, row.id));
 
   revalidatePath("/settings");

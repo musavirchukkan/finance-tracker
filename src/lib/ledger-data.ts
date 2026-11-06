@@ -567,15 +567,17 @@ export async function insertTransactionForUser(
       transferToBankAccountId,
     });
 
+    const transferOccurredAt = Number.isNaN(occurredAt.getTime())
+      ? new Date()
+      : occurredAt;
+
     try {
       const [row] = await db
         .insert(transactions)
         .values({
           userId,
           date: dateOnly,
-          occurredAt: Number.isNaN(occurredAt.getTime())
-            ? new Date()
-            : occurredAt,
+          occurredAt: transferOccurredAt,
           description: input.description,
           categoryId,
           type: "transfer",
@@ -592,6 +594,7 @@ export async function insertTransactionForUser(
         fromBankAccountId: bankAccountId,
         toBankAccountId: transferToBankAccountId,
         amount: input.amount,
+        occurredAt: transferOccurredAt,
       });
 
       return { id: row.id, duplicate: false };
@@ -632,13 +635,17 @@ export async function insertTransactionForUser(
     bankAccountId,
   });
 
+  const txOccurredAt = Number.isNaN(occurredAt.getTime())
+    ? new Date()
+    : occurredAt;
+
   try {
     const [row] = await db
       .insert(transactions)
       .values({
         userId,
         date: dateOnly,
-        occurredAt: Number.isNaN(occurredAt.getTime()) ? new Date() : occurredAt,
+        occurredAt: txOccurredAt,
         description: input.description,
         categoryId,
         type: input.type,
@@ -683,6 +690,7 @@ export async function insertTransactionForUser(
         bankAccountId,
         type: input.type === "income" ? "income" : "expense",
         amount: input.amount,
+        occurredAt: txOccurredAt,
       });
     }
 
