@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import { Providers } from "@/components/providers";
 import { themeInitScript } from "@/lib/theme-script";
@@ -13,6 +14,15 @@ export const metadata: Metadata = {
   title: "Ledger — Finance Tracker",
   description: "Budget, income, expenses, and debt payoff — works offline",
   applicationName: "Ledger",
+  // Private app: no search indexing (landing page can opt in later).
+  robots: {
+    index: false,
+    follow: false,
+    googleBot: {
+      index: false,
+      follow: false,
+    },
+  },
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
@@ -55,6 +65,7 @@ export default function RootLayout({
       </head>
       <body className={`${plusJakarta.variable} antialiased`}>
         <Providers>{children}</Providers>
+        <Analytics />
       </body>
     </html>
   );
