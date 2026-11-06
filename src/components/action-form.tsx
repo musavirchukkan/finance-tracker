@@ -61,7 +61,10 @@ export function ActionForm({
             }
             router.refresh();
           } catch (err) {
-            console.error(err);
+            const { reportUnexpectedError } = await import(
+              "@/lib/report-error"
+            );
+            reportUnexpectedError(err);
             toast.error(clientErrorMessage(err, errorMessage));
           }
         });

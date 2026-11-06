@@ -11,6 +11,9 @@ export const TRANSACTIONS_MAX_PAGE_SIZE = 100;
 /** Hard cap when a caller omits pagination (prevents accidental full dumps). */
 export const TRANSACTIONS_UNBOUNDED_CAP = 500;
 export const OVERVIEW_RECENT_TX_LIMIT = 6;
+/** Activity audit log page size. */
+export const ACTIVITY_PAGE_SIZE = 30;
+export const ACTIVITY_MAX_PAGE_SIZE = 100;
 /** CSV/JSON export row ceiling. */
 export const EXPORT_MAX_ROWS = 10_000;
 /** Card activity window for statement math (days). */

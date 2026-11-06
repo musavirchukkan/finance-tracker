@@ -22,6 +22,13 @@ export const EnvKeys = {
   REDIS_REST_TOKEN: "REDIS_REST_TOKEN",
   /** External cron (e.g. cron-job.org) sends Authorization: Bearer <CRON_SECRET>. */
   CRON_SECRET: "CRON_SECRET",
+  /** Sentry project DSN (server/edge). Optional — empty disables SDK. */
+  SENTRY_DSN: "SENTRY_DSN",
+  /**
+   * Browser Sentry DSN (public project key, not a secret).
+   * Optional — empty disables client SDK. Prefer tunnel via /monitoring.
+   */
+  NEXT_PUBLIC_SENTRY_DSN: "NEXT_PUBLIC_SENTRY_DSN",
 } as const;
 
 const boolish = z
@@ -49,6 +56,8 @@ const schema = z.object({
   [EnvKeys.REDIS_REST_URL]: z.string().optional(),
   [EnvKeys.REDIS_REST_TOKEN]: z.string().optional(),
   [EnvKeys.CRON_SECRET]: z.string().optional(),
+  [EnvKeys.SENTRY_DSN]: z.string().optional(),
+  [EnvKeys.NEXT_PUBLIC_SENTRY_DSN]: z.string().optional(),
 });
 
 export type AppEnv = {
@@ -65,6 +74,8 @@ export type AppEnv = {
   redisRestUrl: string | undefined;
   redisRestToken: string | undefined;
   cronSecret: string | undefined;
+  sentryDsn: string | undefined;
+  nextPublicSentryDsn: string | undefined;
 };
 
 let cached: AppEnv | null = null;
@@ -85,6 +96,9 @@ function readRaw(): Record<string, string | undefined> {
     [EnvKeys.REDIS_REST_URL]: process.env[EnvKeys.REDIS_REST_URL],
     [EnvKeys.REDIS_REST_TOKEN]: process.env[EnvKeys.REDIS_REST_TOKEN],
     [EnvKeys.CRON_SECRET]: process.env[EnvKeys.CRON_SECRET],
+    [EnvKeys.SENTRY_DSN]: process.env[EnvKeys.SENTRY_DSN],
+    [EnvKeys.NEXT_PUBLIC_SENTRY_DSN]:
+      process.env[EnvKeys.NEXT_PUBLIC_SENTRY_DSN],
   };
 }
 
@@ -141,6 +155,9 @@ export function getEnv(): AppEnv {
     redisRestUrl,
     redisRestToken,
     cronSecret: raw[EnvKeys.CRON_SECRET]?.trim() || undefined,
+    sentryDsn: raw[EnvKeys.SENTRY_DSN]?.trim() || undefined,
+    nextPublicSentryDsn:
+      raw[EnvKeys.NEXT_PUBLIC_SENTRY_DSN]?.trim() || undefined,
   };
 
   return cached;

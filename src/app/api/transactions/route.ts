@@ -86,6 +86,7 @@ export async function POST(request: Request) {
         parsed.data.type === "transfer"
           ? (parsed.data.transferToBankAccountId ?? null)
           : null,
+      activitySource: parsed.data.clientId ? "offline_sync" : "api",
     });
     if (!result.duplicate) {
       revalidatePath("/transactions");
@@ -96,6 +97,7 @@ export async function POST(request: Request) {
       revalidatePath("/quick-add");
       revalidatePath("/cards");
       revalidatePath("/accounts");
+      revalidatePath("/activity");
       if (parsed.data.creditCardId) {
         revalidatePath(`/cards/${parsed.data.creditCardId}`);
       }
@@ -116,7 +118,8 @@ export async function POST(request: Request) {
       clientId: parsed.data.clientId,
     });
   } catch (err) {
-    console.error(err);
+    const { reportUnexpectedError } = await import("@/lib/report-error");
+    reportUnexpectedError(err);
     return NextResponse.json({ error: "Failed to save" }, { status: 500 });
   }
 }

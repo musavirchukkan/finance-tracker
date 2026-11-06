@@ -41,6 +41,12 @@ const moreLinks = [
     description: "Account, theme, categories, and install",
     icon: "settings",
   },
+  {
+    href: "/activity",
+    label: "Activity",
+    description: "What you changed — before and after",
+    icon: "list",
+  },
 ] as const;
 
 export function MoreHub() {

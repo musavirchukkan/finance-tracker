@@ -504,8 +504,11 @@ export async function insertTransactionForUser(
     cardBillPayId?: string | null;
     bankAccountId?: string | null;
     transferToBankAccountId?: string | null;
+    /** Audit trail source; defaults to api when omitted from shared insert. */
+    activitySource?: "server_action" | "api" | "offline_sync";
   },
 ): Promise<{ id: string; duplicate: boolean }> {
+  const activitySource = input.activitySource ?? "api";
   // Idempotent offline sync: same clientId → return existing, don't insert again
   if (input.clientId) {
     const existing = await db
@@ -595,6 +598,33 @@ export async function insertTransactionForUser(
         toBankAccountId: transferToBankAccountId,
         amount: input.amount,
         occurredAt: transferOccurredAt,
+      });
+
+      const {
+        recordActivityEvent,
+        summarizeTransactionActivity,
+        transactionActivitySnapshot,
+      } = await import("@/lib/activity-log");
+      const after = transactionActivitySnapshot({
+        type: "transfer",
+        amount: input.amount,
+        date: dateOnly,
+        description: input.description,
+        categoryId,
+        bankAccountId,
+        transferToBankAccountId,
+      });
+      await recordActivityEvent({
+        userId,
+        action: "transaction.create",
+        entityType: "transaction",
+        entityId: row.id,
+        summary: summarizeTransactionActivity({
+          verb: "Created",
+          snapshot: after,
+        }),
+        after,
+        source: activitySource,
       });
 
       return { id: row.id, duplicate: false };
@@ -693,6 +723,35 @@ export async function insertTransactionForUser(
         occurredAt: txOccurredAt,
       });
     }
+
+    const {
+      recordActivityEvent,
+      summarizeTransactionActivity,
+      transactionActivitySnapshot,
+    } = await import("@/lib/activity-log");
+    const after = transactionActivitySnapshot({
+      type: input.type,
+      amount: input.amount,
+      date: dateOnly,
+      description: input.description,
+      categoryId,
+      bankAccountId,
+      transferToBankAccountId: null,
+      creditCardId,
+      cardBillPayId,
+    });
+    await recordActivityEvent({
+      userId,
+      action: "transaction.create",
+      entityType: "transaction",
+      entityId: row.id,
+      summary: summarizeTransactionActivity({
+        verb: "Created",
+        snapshot: after,
+      }),
+      after,
+      source: activitySource,
+    });
 
     return { id: row.id, duplicate: false };
   } catch (err) {

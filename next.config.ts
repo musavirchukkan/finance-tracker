@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
@@ -16,6 +17,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "font-src 'self' data:",
+      // Sentry browser SDK tunnels via /monitoring (same origin) — keep connect-src 'self'.
       "connect-src 'self'",
       "frame-ancestors 'none'",
       "base-uri 'self'",
@@ -37,4 +39,12 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  // Source maps / org upload only when CI provides auth — silent locally.
+  silent: !process.env.CI,
+  widenClientFileUpload: true,
+  tunnelRoute: "/monitoring",
+  webpack: {
+    automaticVercelMonitors: false,
+  },
+});

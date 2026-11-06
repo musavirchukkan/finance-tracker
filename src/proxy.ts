@@ -21,6 +21,8 @@ export const proxy = auth((request) => {
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/health") ||
     pathname.startsWith("/api/cron") ||
+    pathname.startsWith("/monitoring") ||
+    pathname.startsWith("/sentry-tunnel") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
     isStaticAsset
@@ -48,6 +50,7 @@ export const proxy = auth((request) => {
       "/goals",
       "/more",
       "/settings",
+      "/activity",
       "/quick-add",
     ];
     const safeReturn =

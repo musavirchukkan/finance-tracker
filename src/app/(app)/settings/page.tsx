@@ -1,12 +1,11 @@
+import Link from "next/link";
 import { AccountSettings } from "@/components/account-settings";
 import { ExportDataCard } from "@/components/export-data";
 import { InfoTip } from "@/components/info-tip";
 import { PwaInstallCard } from "@/components/pwa-install-card";
 import { SettingsForms } from "@/components/settings-forms";
 import { ThemeToggle } from "@/components/theme-toggle";
-import {
-  listCategories,
-} from "@/lib/ledger-data";;
+import { listCategories } from "@/lib/ledger-data";
 import { requireUser } from "@/lib/session";
 
 export default async function SettingsPage() {
@@ -33,6 +32,22 @@ export default async function SettingsPage() {
         email={user.email ?? ""}
         name={user.name ?? "there"}
       />
+
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <h2>Activity</h2>
+            <p className="muted page-sub" style={{ margin: "0.25rem 0 0" }}>
+              Review creates, edits, and deletes with before/after values.
+            </p>
+          </div>
+        </div>
+        <div className="dash-actions" style={{ justifyContent: "flex-start" }}>
+          <Link href="/activity" className="btn btn-primary">
+            Open activity log
+          </Link>
+        </div>
+      </section>
 
       <ThemeToggle />
 

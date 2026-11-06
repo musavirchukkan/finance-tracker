@@ -1,6 +1,11 @@
 "use client";
 
-import { useMemo, type CSSProperties, type ReactElement } from "react";
+import {
+  useMemo,
+  useSyncExternalStore,
+  type CSSProperties,
+  type ReactElement,
+} from "react";
 import {
   Bar,
   BarChart,
@@ -143,13 +148,27 @@ const FALLBACK_THEME: ChartTheme = {
   },
 };
 
+/** False on server + first client render; true after hydrate (avoids style mismatch). */
+function useIsClient(): boolean {
+  return useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+}
+
+/**
+ * Chart colors from CSS variables. First paint always uses FALLBACK_THEME so
+ * SSR HTML matches the client hydrate; then we read live theme tokens.
+ */
 function useChartTheme(): ChartTheme {
   const { resolved } = useTheme();
+  const isClient = useIsClient();
   return useMemo(() => {
+    if (!isClient) return FALLBACK_THEME;
     void resolved;
-    if (typeof document === "undefined") return FALLBACK_THEME;
     return readChartTheme();
-  }, [resolved]);
+  }, [isClient, resolved]);
 }
 
 function ChartFrame({

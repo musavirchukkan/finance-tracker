@@ -160,6 +160,7 @@ export async function createTransaction(formData: FormData) {
     cardBillPayId,
     bankAccountId,
     transferToBankAccountId,
+    activitySource: "server_action",
   });
 
   if (!result.duplicate) {
@@ -171,6 +172,7 @@ export async function createTransaction(formData: FormData) {
     revalidatePath("/quick-add");
     revalidatePath("/cards");
     revalidatePath("/accounts");
+    revalidatePath("/activity");
     if (creditCardId) revalidatePath(`/cards/${creditCardId}`);
     if (cardBillPayId) revalidatePath(`/cards/${cardBillPayId}`);
     if (bankAccountId) revalidatePath(`/accounts/${bankAccountId}`);
@@ -219,6 +221,10 @@ export async function updateTransaction(formData: FormData) {
       id: transactions.id,
       type: transactions.type,
       amount: transactions.amount,
+      date: transactions.date,
+      description: transactions.description,
+      categoryId: transactions.categoryId,
+      creditCardId: transactions.creditCardId,
       bankAccountId: transactions.bankAccountId,
       transferToBankAccountId: transactions.transferToBankAccountId,
       occurredAt: transactions.occurredAt,
@@ -323,6 +329,44 @@ export async function updateTransaction(formData: FormData) {
     });
   }
 
+  const {
+    recordActivityEvent,
+    summarizeTransactionActivity,
+    transactionActivitySnapshot,
+  } = await import("@/lib/activity-log");
+  const before = transactionActivitySnapshot({
+    type: existing.type,
+    amount: toNumber(existing.amount),
+    date: existing.date,
+    description: existing.description,
+    categoryId: existing.categoryId,
+    bankAccountId: existing.bankAccountId,
+    transferToBankAccountId: existing.transferToBankAccountId,
+    creditCardId: existing.creditCardId,
+  });
+  const after = transactionActivitySnapshot({
+    type: raw.type,
+    amount,
+    date: raw.date,
+    description: raw.description,
+    categoryId,
+    bankAccountId,
+    transferToBankAccountId:
+      raw.type === "transfer" ? transferToBankAccountId : null,
+    creditCardId,
+    cardBillPayId,
+  });
+  await recordActivityEvent({
+    userId: user.id,
+    action: "transaction.update",
+    entityType: "transaction",
+    entityId: raw.id,
+    summary: summarizeTransactionActivity({ verb: "Updated", snapshot: after }),
+    before,
+    after,
+    source: "server_action",
+  });
+
   revalidatePath("/transactions");
   revalidatePath("/budget");
   revalidatePath("/overview");
@@ -330,6 +374,7 @@ export async function updateTransaction(formData: FormData) {
   revalidatePath("/goals");
   revalidatePath("/cards");
   revalidatePath("/accounts");
+  revalidatePath("/activity");
   if (creditCardId) revalidatePath(`/cards/${creditCardId}`);
   if (cardBillPayId) revalidatePath(`/cards/${cardBillPayId}`);
   if (bankAccountId) revalidatePath(`/accounts/${bankAccountId}`);
@@ -347,7 +392,17 @@ export async function deleteTransaction(formData: FormData) {
   ).id;
 
   const [existing] = await db
-    .select({ id: transactions.id })
+    .select({
+      id: transactions.id,
+      type: transactions.type,
+      amount: transactions.amount,
+      date: transactions.date,
+      description: transactions.description,
+      categoryId: transactions.categoryId,
+      creditCardId: transactions.creditCardId,
+      bankAccountId: transactions.bankAccountId,
+      transferToBankAccountId: transactions.transferToBankAccountId,
+    })
     .from(transactions)
     .where(and(eq(transactions.id, id), eq(transactions.userId, user.id)))
     .limit(1);
@@ -368,6 +423,34 @@ export async function deleteTransaction(formData: FormData) {
     .returning();
   if (!deleted[0]) throw new UserFacingError("Transaction not found");
 
+  const {
+    recordActivityEvent,
+    summarizeTransactionActivity,
+    transactionActivitySnapshot,
+  } = await import("@/lib/activity-log");
+  const before = transactionActivitySnapshot({
+    type: existing.type,
+    amount: toNumber(existing.amount),
+    date: existing.date,
+    description: existing.description,
+    categoryId: existing.categoryId,
+    bankAccountId: existing.bankAccountId,
+    transferToBankAccountId: existing.transferToBankAccountId,
+    creditCardId: existing.creditCardId,
+  });
+  await recordActivityEvent({
+    userId: user.id,
+    action: "transaction.delete",
+    entityType: "transaction",
+    entityId: id,
+    summary: summarizeTransactionActivity({
+      verb: "Deleted",
+      snapshot: before,
+    }),
+    before,
+    source: "server_action",
+  });
+
   revalidatePath("/transactions");
   revalidatePath("/budget");
   revalidatePath("/overview");
@@ -375,6 +458,7 @@ export async function deleteTransaction(formData: FormData) {
   revalidatePath("/goals");
   revalidatePath("/cards");
   revalidatePath("/accounts");
+  revalidatePath("/activity");
 }
 
 const budgetSchema = z.object({

@@ -4,6 +4,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   numeric,
   pgTable,
   text,
@@ -421,6 +422,34 @@ export const investments = pgTable(
   (t) => [index("investments_user").on(t.userId)],
 );
 
+/**
+ * Append-only user activity audit trail (mutations: before/after snapshots).
+ * Not a security log for cross-user admin — owner-scoped only.
+ */
+export const activityEvents = pgTable(
+  "activity_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** e.g. transaction.create | transaction.update | transaction.delete */
+    action: text("action").notNull(),
+    /** e.g. transaction */
+    entityType: text("entity_type").notNull(),
+    entityId: uuid("entity_id"),
+    summary: text("summary").notNull(),
+    before: jsonb("before").$type<Record<string, unknown> | null>(),
+    after: jsonb("after").$type<Record<string, unknown> | null>(),
+    /** server_action | api | offline_sync */
+    source: text("source").notNull().default("server_action"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [index("activity_events_user_created").on(t.userId, t.createdAt)],
+);
+
 export const usersRelations = relations(users, ({ many, one }) => ({
   categories: many(categories),
   budgets: many(budgets),
@@ -433,6 +462,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   debtSettings: one(debtSettings),
   savingsGoals: many(savingsGoals),
   investments: many(investments),
+  activityEvents: many(activityEvents),
 }));
 
 export const categoriesRelations = relations(categories, ({ one, many }) => ({
@@ -523,6 +553,11 @@ export type DebtAccount = typeof debtAccounts.$inferSelect;
 export type DebtPayment = typeof debtPayments.$inferSelect;
 export type SavingsGoal = typeof savingsGoals.$inferSelect;
 export type Investment = typeof investments.$inferSelect;
+export type ActivityEvent = typeof activityEvents.$inferSelect;
+
+export const activityEventsRelations = relations(activityEvents, ({ one }) => ({
+  user: one(users, { fields: [activityEvents.userId], references: [users.id] }),
+}));
 
 export const investmentsRelations = relations(investments, ({ one }) => ({
   user: one(users, { fields: [investments.userId], references: [users.id] }),
