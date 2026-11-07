@@ -5,12 +5,14 @@ import { ActionForm } from "@/components/action-form";
 import { Modal } from "@/components/modal";
 import {
   createCreditCard,
+  updateCreditCard,
+} from "@/lib/card-crud-actions";
+import {
   deleteCardActivity,
   logCardBillPayment,
   logCardFee,
   logWalletRecharge,
-  updateCreditCard,
-} from "@/lib/card-actions";
+} from "@/lib/card-activity-actions";
 import { formatINR } from "@/lib/money";
 import { todayLocal } from "@/lib/utc-time";
 

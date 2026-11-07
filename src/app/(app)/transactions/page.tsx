@@ -9,17 +9,19 @@ import { CategoryFilterSelect } from "@/components/category-filter-select";
 import { InfoTip } from "@/components/info-tip";
 import {
   deleteTransaction,
-} from "@/lib/actions";
+} from "@/lib/transaction-actions";
 import { ensureTransferCategory } from "@/lib/bank-account-cashflow";
 import {
   listCategories,
-  listTransactions,
-} from "@/lib/ledger-data";
+} from "@/lib/budget-data";
 import {
-  listBankAccounts,
+  listTransactions,
+} from "@/lib/transaction-data";
+import {
+  listBankAccountOptions,
 } from "@/lib/bank-data";
 import {
-  listCreditCards,
+  listCreditCardOptions,
 } from "@/lib/card-data";
 import { TRANSACTIONS_PAGE_SIZE } from "@/lib/constants";
 import { isActiveCardStatus } from "@/lib/credit-cards";
@@ -79,8 +81,8 @@ export default async function TransactionsPage({
   await ensureTransferCategory(user.id);
   const [cats, cards, banks, { rows, total, totalPages }] = await Promise.all([
     listCategories(user.id),
-    listCreditCards(user.id),
-    listBankAccounts(user.id),
+    listCreditCardOptions(user.id),
+    listBankAccountOptions(user.id),
     listTransactions(user.id, month, {
       type: typeFilter,
       categoryId,

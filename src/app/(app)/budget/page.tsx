@@ -10,7 +10,7 @@ import { BudgetCategoryTable } from "@/components/budget-table";
 import { InfoTip } from "@/components/info-tip";
 import {
   getBudgetSummary,
-} from "@/lib/ledger-data";;
+} from "@/lib/budget-data";
 import { formatINR } from "@/lib/money";
 import {
   currentYearMonth,

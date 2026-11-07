@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { bankAccounts, categories, transactions } from "@/lib/db/schema";
 import { defaultIconForCategoryName } from "@/lib/category-icons";
 import { toNumber } from "@/lib/money";
+import { invalidateCategoryCache } from "@/lib/ref-cache";
 import { UserFacingError } from "@/lib/safe-error";
 
 export const TRANSFER_CATEGORY = "Transfer";
@@ -143,6 +144,7 @@ export async function ensureTransferCategory(userId: string) {
         .where(
           and(eq(categories.id, existing.id), eq(categories.userId, userId)),
         );
+      await invalidateCategoryCache(userId);
     }
     return existing.id;
   }
@@ -156,6 +158,7 @@ export async function ensureTransferCategory(userId: string) {
       sortOrder: 200,
     })
     .returning();
+  await invalidateCategoryCache(userId);
   return row.id;
 }
 

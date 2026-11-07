@@ -4,7 +4,9 @@ import { useState, useTransition } from "react";
 import { signOut } from "next-auth/react";
 import { ActionForm } from "@/components/action-form";
 import { Modal } from "@/components/modal";
-import { changePassword } from "@/lib/actions";
+import {
+  changePassword,
+} from "@/lib/account-actions";
 import { clearClientState } from "@/lib/client-cache";
 
 type Props = {

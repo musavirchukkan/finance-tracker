@@ -2,7 +2,9 @@
 
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { upsertBudgetAmount } from "@/lib/actions";
+import {
+  upsertBudgetAmount,
+} from "@/lib/budget-actions";
 import { formatINR } from "@/lib/money";
 import { clientErrorMessage } from "@/lib/safe-error";
 import { useToast } from "@/components/toast";

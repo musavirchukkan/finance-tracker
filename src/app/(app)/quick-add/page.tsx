@@ -2,12 +2,12 @@ import { TransactionForm } from "@/components/transaction-form";
 import { ensureTransferCategory } from "@/lib/bank-account-cashflow";
 import {
   listCategories,
-} from "@/lib/ledger-data";
+} from "@/lib/budget-data";
 import {
-  listBankAccounts,
+  listBankAccountOptions,
 } from "@/lib/bank-data";
 import {
-  listCreditCards,
+  listCreditCardOptions,
 } from "@/lib/card-data";
 import { isActiveCardStatus } from "@/lib/credit-cards";
 import { requireUser } from "@/lib/session";
@@ -16,8 +16,8 @@ export default async function QuickAddPage() {
   const user = await requireUser();
   await ensureTransferCategory(user.id);
   const cats = await listCategories(user.id);
-  const cards = await listCreditCards(user.id);
-  const banks = await listBankAccounts(user.id);
+  const cards = await listCreditCardOptions(user.id);
+  const banks = await listBankAccountOptions(user.id);
 
   return (
     <div className="page-stack quick-add-page">

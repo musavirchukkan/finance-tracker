@@ -11,11 +11,17 @@ import { LocalGreeting } from "@/components/local-greeting";
 import { OverviewReminders } from "@/components/overview-reminders";
 import {
   getBudgetSummary,
+} from "@/lib/budget-data";
+import {
   getDebtDashboard,
+} from "@/lib/debt-data";
+import {
   getMonthlyCashflowByDay,
-  listSavingsGoals,
   listTransactions,
-} from "@/lib/ledger-data";
+} from "@/lib/transaction-data";
+import {
+  listSavingsGoals,
+} from "@/lib/savings-data";
 import { listBankAccounts } from "@/lib/bank-data";
 import {
   listCreditCards,

@@ -11,15 +11,14 @@ import {
 import { InfoTip } from "@/components/info-tip";
 import { ReviewCallout } from "@/components/review-callout";
 import {
-  listBankAccounts,
-} from "@/lib/bank-data";;
+  listBankAccountOptions,
+} from "@/lib/bank-data";
 import {
   deleteCreditCard,
-} from "@/lib/card-actions";
+} from "@/lib/card-crud-actions";
 import {
   getCreditCardDetail,
-  listCreditCards,
-} from "@/lib/card-data";;
+} from "@/lib/card-data";
 import { activityLabel } from "@/lib/credit-cards";
 import { formatINR } from "@/lib/money";
 import { requireUser } from "@/lib/session";
@@ -31,16 +30,14 @@ export default async function CardDetailPage({
 }) {
   const user = await requireUser();
   const { id } = await params;
-  const data = await getCreditCardDetail(user.id, id);
+  const [data, banks] = await Promise.all([
+    getCreditCardDetail(user.id, id),
+    listBankAccountOptions(user.id),
+  ]);
   if (!data) notFound();
 
-  const banks = await listBankAccounts(user.id);
   const bankOptions = banks.map((a) => ({ id: a.id, name: a.label ?? a.name }));
-  const allCards = await listCreditCards(user.id);
-  const shareOptions = allCards
-    .filter((c) => !c.sharesLimitWithId && c.id !== id)
-    .map((c) => ({ id: c.id, label: c.label }));
-  const { card, activities, warnings } = data;
+  const { card, activities, warnings, shareOptions } = data;
 
   return (
     <div className="page-stack">

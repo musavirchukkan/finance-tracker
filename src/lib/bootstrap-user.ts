@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { categories, debtSettings, users } from "@/lib/db/schema";
 import { defaultIconForCategoryName } from "@/lib/category-icons";
 import { defaultGoalDate } from "@/lib/debt-projection";
+import { invalidateCategoryCache } from "@/lib/ref-cache";
 
 const EXPENSE_CATEGORIES = [
   "Auto",
@@ -68,6 +69,7 @@ export async function ensureDefaultCategories(userId: string) {
     })),
   ].filter((c) => !names.has(c.name));
 
+  let changed = toInsert.length > 0;
   if (toInsert.length > 0) {
     await db.insert(categories).values(toInsert);
   }
@@ -84,11 +86,16 @@ export async function ensureDefaultCategories(userId: string) {
       updates.icon = defaultIconForCategoryName(row.name);
     }
     if (Object.keys(updates).length > 0) {
+      changed = true;
       await db
         .update(categories)
         .set({ ...updates, updatedAt: new Date() })
         .where(and(eq(categories.id, row.id), eq(categories.userId, userId)));
     }
+  }
+
+  if (changed) {
+    await invalidateCategoryCache(userId);
   }
 }
 

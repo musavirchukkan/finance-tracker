@@ -19,6 +19,13 @@ export const EXPORT_MAX_ROWS = 10_000;
 /** Card activity window for statement math (days). */
 export const CARD_ACTIVITY_LOOKBACK_DAYS = 400;
 
+/**
+ * Redis TTL for dropdown reference lists (categories / bank+card options).
+ * Freshness comes from CRUD `DEL` (lists often sit unchanged for months).
+ * Long TTL is only a safety net for missed invalidation / orphaned keys.
+ */
+export const REF_CACHE_TTL_SEC = 60 * 60 * 24 * 30;
+
 /** Login / signup abuse limits (Redis when configured; else in-memory). */
 export const AUTH_RATE_LIMIT = {
   login: { limit: 10, windowMs: 15 * 60 * 1000 },
@@ -32,6 +39,16 @@ export const AUTH_RATE_LIMIT = {
 export const HEALTH_RATE_LIMIT = {
   limit: 12,
   windowMs: 5 * 60 * 1000,
+} as const;
+
+/** Authenticated FormData / API ledger mutations (per user). */
+export const WRITE_RATE_LIMIT = { limit: 60, windowMs: 60_000 } as const;
+/** CSV/JSON export (heavy; per user). */
+export const EXPORT_RATE_LIMIT = { limit: 5, windowMs: 60_000 } as const;
+/** Password change (stricter; per user). */
+export const PASSWORD_CHANGE_RATE_LIMIT = {
+  limit: 5,
+  windowMs: 15 * 60 * 1000,
 } as const;
 
 export const GENERIC_AUTH_ERROR = "Invalid email or password";

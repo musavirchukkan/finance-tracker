@@ -2,7 +2,9 @@ import { and, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { transactions } from "@/lib/db/schema";
-import { insertTransactionForUser } from "@/lib/ledger-data";
+import {
+  insertTransactionForUser,
+} from "@/lib/transaction-data";
 import { UserFacingError } from "@/lib/safe-error";
 import {
   createFixtureUser,

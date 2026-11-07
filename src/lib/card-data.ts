@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
 import { cache } from "react";
+import { cacheGetOrSetJson } from "@/lib/cache";
 import { CARD_ACTIVITY_LOOKBACK_DAYS } from "@/lib/constants";
 import { db } from "@/lib/db";
 import {
@@ -19,108 +19,19 @@ import {
   summarizeCardStatement,
   totalDueThisCycle,
 } from "@/lib/credit-cards";
+import { REF_CACHE_TTL_SEC, RefCacheKeys } from "@/lib/ref-cache";
 import {
   computeOutstanding,
   isCreditCardEmiType,
-  isCreditCardType,
 } from "@/lib/debt-kinds";
 import { suggestInstallmentSplit } from "@/lib/debt-account";
 import {
   cardBillWarnings,
   emiPostedForBillDate,
-  postLinkedEmisForUser,
   unpaidDebtPaymentWarnings,
   type LedgerWarning,
 } from "@/lib/emi-statement-post";
 import { toNumber } from "@/lib/money";
-
-function revalidateCards(cardId?: string) {
-  revalidatePath("/cards");
-  if (cardId) revalidatePath(`/cards/${cardId}`);
-  revalidatePath("/transactions");
-  revalidatePath("/overview");
-  revalidatePath("/budget");
-  revalidatePath("/debt");
-  revalidatePath("/quick-add");
-}
-
-/** Move legacy rolling Credit Card debt accounts into credit_cards. */
-export async function migrateRollingCreditCards(userId: string) {
-  const debtRows = await db
-    .select()
-    .from(debtAccounts)
-    .where(eq(debtAccounts.userId, userId));
-
-  const rolling = debtRows.filter((a) => isCreditCardType(a.type));
-  if (rolling.length === 0) return { migrated: 0 };
-
-  const payments = await db
-    .select()
-    .from(debtPayments)
-    .where(eq(debtPayments.userId, userId));
-
-  let migrated = 0;
-  for (const account of rolling) {
-    const accountPayments = payments.filter((p) => p.accountId === account.id);
-    const outstanding = computeOutstanding({
-      startingBalance: toNumber(account.startingBalance),
-      payments: accountPayments.map((p) => ({
-        amount: toNumber(p.amount),
-        isPaid: p.isPaid,
-        paymentType: p.paymentType,
-      })),
-    });
-
-    const existing = await db
-      .select({ id: creditCards.id })
-      .from(creditCards)
-      .where(
-        and(eq(creditCards.userId, userId), eq(creditCards.name, account.name)),
-      )
-      .limit(1);
-
-    if (!existing[0]) {
-      await db.insert(creditCards).values({
-        userId,
-        name: account.name,
-        currentOutstanding: outstanding.toFixed(2),
-        status: account.status || "Active",
-      });
-      migrated += 1;
-    }
-
-    for (const p of accountPayments) {
-      if (p.transactionId) {
-        await db
-          .update(debtPayments)
-          .set({ transactionId: null })
-          .where(eq(debtPayments.id, p.id));
-      }
-    }
-    await db
-      .delete(debtPayments)
-      .where(
-        and(
-          eq(debtPayments.accountId, account.id),
-          eq(debtPayments.userId, userId),
-        ),
-      );
-    await db
-      .update(debtAccounts)
-      .set({ receivedTransactionId: null, updatedAt: new Date() })
-      .where(
-        and(eq(debtAccounts.id, account.id), eq(debtAccounts.userId, userId)),
-      );
-    await db
-      .delete(debtAccounts)
-      .where(
-        and(eq(debtAccounts.id, account.id), eq(debtAccounts.userId, userId)),
-      );
-  }
-
-  if (migrated > 0) revalidateCards();
-  return { migrated };
-}
 
 function statementFromActivities(
   card: {
@@ -384,23 +295,49 @@ function withEmiAggregates(
   };
 }
 
-/**
- * Side effects (legacy migrate + EMI post) — once per RSC request via cache.
- * Keep list/detail/dashboard reads pure (H4).
- */
-export const ensureCardLedgerSynced = cache(async (userId: string) => {
-  await migrateRollingCreditCards(userId);
-  await postLinkedEmisForUser(userId);
-});
-
 function activityLookbackDate() {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - CARD_ACTIVITY_LOOKBACK_DAYS);
   return d.toISOString().slice(0, 10);
 }
 
+export type CreditCardOption = {
+  id: string;
+  name: string;
+  lastFour: string | null;
+  label: string;
+  status: string;
+  isRupay: boolean;
+};
+
+/** Dropdown-shaped cards (no outstanding / EMI). Redis when configured. */
+export const listCreditCardOptions = cache(async (userId: string) => {
+  return cacheGetOrSetJson<CreditCardOption[]>(
+    RefCacheKeys.cardOptions(userId),
+    REF_CACHE_TTL_SEC,
+    async () => {
+      const rows = await db
+        .select({
+          id: creditCards.id,
+          name: creditCards.name,
+          lastFour: creditCards.lastFour,
+          status: creditCards.status,
+          isRupay: creditCards.isRupay,
+        })
+        .from(creditCards)
+        .where(eq(creditCards.userId, userId))
+        .orderBy(asc(creditCards.name));
+
+      return rows.map((c) => ({
+        ...c,
+        label: formatCardLabel(c.name, c.lastFour),
+      }));
+    },
+  );
+});
+
 /** Pure read — call `ensureCardLedgerSynced` first when EMI/migrate must run. */
-export async function listCreditCards(userId: string) {
+export const listCreditCards = cache(async (userId: string) => {
   const rows = await db
     .select()
     .from(creditCards)
@@ -464,7 +401,7 @@ export async function listCreditCards(userId: string) {
   });
 
   return listed;
-}
+});
 
 /** Payment / bill reminders for Cards + Debt pages. */
 export async function listLedgerPaymentWarnings(
@@ -551,6 +488,13 @@ export async function getCreditCardDetail(userId: string, cardId: string) {
 
   return {
     card: cardRow,
+    /** Share-limit peers from the same allCards load (avoids a second list query). */
+    shareOptions: allCards
+      .filter((c) => !c.sharesLimitWithId && c.id !== cardId)
+      .map((c) => ({
+        id: c.id,
+        label: formatCardLabel(c.name, c.lastFour),
+      })),
     warnings: cardBillWarnings([
       {
         id: cardRow.id,
@@ -574,4 +518,3 @@ export async function getCreditCardDetail(userId: string, cardId: string) {
     })),
   };
 }
-

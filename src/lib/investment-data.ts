@@ -8,7 +8,9 @@ import {
   holdingGain,
   holdingValue,
 } from "@/lib/investments";
-import { getDebtDashboard } from "@/lib/ledger-data";
+import {
+  getDebtDashboard,
+} from "@/lib/debt-data";
 import { toNumber } from "@/lib/money";
 
 function mapHolding(row: typeof investments.$inferSelect) {

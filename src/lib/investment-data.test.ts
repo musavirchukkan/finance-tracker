@@ -22,7 +22,7 @@ describe("buildNetWorth", () => {
         totals: { pending: 300 },
         accounts: [{ id: "1" }],
       } as Awaited<
-        ReturnType<typeof import("@/lib/ledger-data").getDebtDashboard>
+        ReturnType<typeof import("@/lib/debt-data").getDebtDashboard>
       >,
       holdings: [
         {

@@ -8,7 +8,7 @@ import {
   createDebtPayment,
   toggleDebtPaymentPaid,
   updateDebtAccount,
-} from "@/lib/actions";
+} from "@/lib/debt-actions";
 import {
   DEFAULT_GST_ON_INTEREST_PERCENT,
   computeFlatAnnualInterestPercent,

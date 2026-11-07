@@ -18,7 +18,9 @@ import {
 } from "@/lib/offline-queue";
 import { formatINR } from "@/lib/money";
 import { resolveCategoryIcon } from "@/lib/category-icons";
-import { updateTransaction } from "@/lib/actions";
+import {
+  updateTransaction,
+} from "@/lib/transaction-actions";
 import { clientErrorMessage } from "@/lib/safe-error";
 import {
   localWallClockToUtcIso,

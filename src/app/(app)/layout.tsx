@@ -1,5 +1,5 @@
 import { AppNav } from "@/components/app-nav";
-import { ensureCardLedgerSynced } from "@/lib/card-data";
+import { ensureCardLedgerSynced } from "@/lib/card-sync";
 import { requireUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";

@@ -8,6 +8,7 @@ import {
 } from "@/lib/db/schema";
 import { defaultIconForCategoryName } from "@/lib/category-icons";
 import { toNumber } from "@/lib/money";
+import { invalidateCategoryCache } from "@/lib/ref-cache";
 
 export const CREDIT_CARD_CATEGORY = "Credit Card";
 export const WALLET_CASHOUT_CATEGORY = "Wallet cashout";
@@ -20,6 +21,7 @@ export async function ensureCardCashflowCategories(userId: string) {
     .from(categories)
     .where(eq(categories.userId, userId));
   const byName = new Map(existing.map((c) => [c.name.toLowerCase(), c]));
+  let inserted = false;
 
   async function ensure(
     name: string,
@@ -38,6 +40,7 @@ export async function ensureCardCashflowCategories(userId: string) {
         sortOrder,
       })
       .returning();
+    inserted = true;
     byName.set(name.toLowerCase(), row);
     return row;
   }
@@ -46,6 +49,10 @@ export async function ensureCardCashflowCategories(userId: string) {
   const cardFees = await ensure(CARD_FEES_CATEGORY, "expense", 54);
   const bankCharges = await ensure(BANK_CHARGES_CATEGORY, "expense", 55);
   const walletCashout = await ensure(WALLET_CASHOUT_CATEGORY, "income", 113);
+
+  if (inserted) {
+    await invalidateCategoryCache(userId);
+  }
 
   return {
     creditCardCategoryId: creditCard.id,

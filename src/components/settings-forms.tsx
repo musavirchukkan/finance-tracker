@@ -5,7 +5,10 @@ import { ActionForm } from "@/components/action-form";
 import { AddCategoryButton } from "@/components/add-modals";
 import { CategoryIconPicker } from "@/components/category-icon-picker";
 import { Modal } from "@/components/modal";
-import { deleteCategory, updateCategory } from "@/lib/actions";
+import {
+  deleteCategory,
+  updateCategory,
+} from "@/lib/category-actions";
 import { resolveCategoryIcon } from "@/lib/category-icons";
 
 type Cat = { id: string; name: string; icon?: string | null };

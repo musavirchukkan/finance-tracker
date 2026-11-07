@@ -1,3 +1,4 @@
+import { UserFacingError } from "@/lib/safe-error";
 import { getRedis, type Redis } from "@/lib/redis";
 
 type Bucket = { count: number; resetAt: number };
@@ -106,4 +107,30 @@ export function clientKeyFromHeaders(
     headersList.get("x-real-ip") ||
     "unknown";
   return `${prefix}:${ip}`;
+}
+
+/**
+ * Per-user rate limit for authenticated mutations / export.
+ * Throws UserFacingError when exceeded (Server Actions).
+ */
+export async function assertWriteRateLimit(
+  userId: string,
+  bucket: "write" | "export" | "password",
+  limit: number,
+  windowMs: number,
+): Promise<void> {
+  const result = await takeRateLimit(`${bucket}:${userId}`, limit, windowMs);
+  if (!result.ok) {
+    throw new UserFacingError("Too many requests. Try again shortly.");
+  }
+}
+
+/** Same as assertWriteRateLimit but returns whether the call was allowed. */
+export async function takeUserRateLimit(
+  userId: string,
+  bucket: "write" | "export" | "password",
+  limit: number,
+  windowMs: number,
+): Promise<{ ok: true } | { ok: false; retryAfterSec: number }> {
+  return takeRateLimit(`${bucket}:${userId}`, limit, windowMs);
 }

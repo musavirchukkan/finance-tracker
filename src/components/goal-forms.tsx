@@ -7,7 +7,7 @@ import {
   contributeToSavingsGoal,
   createSavingsGoal,
   deleteSavingsGoal,
-} from "@/lib/actions";
+} from "@/lib/savings-actions";
 import { formatINR } from "@/lib/money";
 
 export function AddGoalButton() {

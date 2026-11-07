@@ -14,14 +14,14 @@ import { ReviewCallout } from "@/components/review-callout";
 import {
   deleteDebtAccount,
   deleteDebtPayment,
-} from "@/lib/actions";
+} from "@/lib/debt-actions";
 import {
   getDebtDashboard,
-} from "@/lib/ledger-data";;
+} from "@/lib/debt-data";
 import {
   listCreditCards,
   listLedgerPaymentWarnings,
-} from "@/lib/card-data";;
+} from "@/lib/card-data";
 import {
   buildPayoffCurve,
   defaultGoalDate,
@@ -87,8 +87,10 @@ function IconHourglass() {
 
 export default async function DebtPage() {
   const user = await requireUser();
-  const data = await getDebtDashboard(user.id);
-  const cards = await listCreditCards(user.id);
+  const [data, cards] = await Promise.all([
+    getDebtDashboard(user.id),
+    listCreditCards(user.id),
+  ]);
   const paymentWarnings = await listLedgerPaymentWarnings(user.id, cards);
   const cardsDue = cards.reduce((s, c) => s + c.amountDue, 0);
   const cardDueById = new Map(

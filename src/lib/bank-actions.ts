@@ -3,6 +3,7 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { WRITE_RATE_LIMIT } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { bankAccounts, transactions } from "@/lib/db/schema";
 import {
@@ -13,6 +14,8 @@ import {
 } from "@/lib/form-schemas";
 import { normalizeLastFour } from "@/lib/credit-cards";
 import { parseAmount, toNumber } from "@/lib/money";
+import { assertWriteRateLimit } from "@/lib/rate-limit";
+import { invalidateBankOptionsCache } from "@/lib/ref-cache";
 import { UserFacingError } from "@/lib/safe-error";
 import { requireUser } from "@/lib/session";
 
@@ -53,6 +56,12 @@ const bankUpsertSchema = z.object({
 
 export async function createBankAccount(formData: FormData) {
   const user = await requireUser();
+  await assertWriteRateLimit(
+    user.id,
+    "write",
+    WRITE_RATE_LIMIT.limit,
+    WRITE_RATE_LIMIT.windowMs,
+  );
   const parsed = bankUpsertSchema.safeParse({
     name: formString(formData, "name"),
     currentBalance: formString(formData, "currentBalance") || "0",
@@ -86,11 +95,18 @@ export async function createBankAccount(formData: FormData) {
     })
     .returning();
 
+  await invalidateBankOptionsCache(user.id);
   revalidateBanks(row.id);
 }
 
 export async function updateBankAccount(formData: FormData) {
   const user = await requireUser();
+  await assertWriteRateLimit(
+    user.id,
+    "write",
+    WRITE_RATE_LIMIT.limit,
+    WRITE_RATE_LIMIT.windowMs,
+  );
   const id = parseOrThrow(
     z.object({ id: zUuid }),
     { id: formString(formData, "id").trim() },
@@ -139,11 +155,18 @@ export async function updateBankAccount(formData: FormData) {
     })
     .where(and(eq(bankAccounts.id, id), eq(bankAccounts.userId, user.id)));
 
+  await invalidateBankOptionsCache(user.id);
   revalidateBanks(id);
 }
 
 export async function deleteBankAccount(formData: FormData) {
   const user = await requireUser();
+  await assertWriteRateLimit(
+    user.id,
+    "write",
+    WRITE_RATE_LIMIT.limit,
+    WRITE_RATE_LIMIT.windowMs,
+  );
   const idRaw = formString(formData, "id").trim();
   if (!idRaw) return;
   const id = parseOrThrow(
@@ -163,6 +186,7 @@ export async function deleteBankAccount(formData: FormData) {
     .delete(bankAccounts)
     .where(and(eq(bankAccounts.id, id), eq(bankAccounts.userId, user.id)));
 
+  await invalidateBankOptionsCache(user.id);
   revalidateBanks();
 }
 
@@ -174,6 +198,12 @@ const adjustBalanceSchema = z.object({
 
 export async function adjustBankAccountBalance(formData: FormData) {
   const user = await requireUser();
+  await assertWriteRateLimit(
+    user.id,
+    "write",
+    WRITE_RATE_LIMIT.limit,
+    WRITE_RATE_LIMIT.windowMs,
+  );
   const raw = parseOrThrow(
     adjustBalanceSchema,
     {

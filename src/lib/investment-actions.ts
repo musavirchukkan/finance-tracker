@@ -3,11 +3,13 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { WRITE_RATE_LIMIT } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { investments } from "@/lib/db/schema";
 import { formString, zNonEmpty, zUuid } from "@/lib/form-schemas";
 import { isInvestmentType } from "@/lib/investments";
 import { parseAmount } from "@/lib/money";
+import { assertWriteRateLimit } from "@/lib/rate-limit";
 import { UserFacingError } from "@/lib/safe-error";
 import { requireUser } from "@/lib/session";
 
@@ -68,6 +70,12 @@ function parseHolding(formData: FormData) {
 
 export async function createInvestment(formData: FormData) {
   const user = await requireUser();
+  await assertWriteRateLimit(
+    user.id,
+    "write",
+    WRITE_RATE_LIMIT.limit,
+    WRITE_RATE_LIMIT.windowMs,
+  );
   const holding = parseHolding(formData);
 
   await db.insert(investments).values({
@@ -88,6 +96,12 @@ export async function createInvestment(formData: FormData) {
 
 export async function updateInvestment(formData: FormData) {
   const user = await requireUser();
+  await assertWriteRateLimit(
+    user.id,
+    "write",
+    WRITE_RATE_LIMIT.limit,
+    WRITE_RATE_LIMIT.windowMs,
+  );
   const idParsed = zUuid.safeParse(formString(formData, "id").trim());
   if (!idParsed.success) throw new UserFacingError("Missing holding");
   const holding = parseHolding(formData);
@@ -115,6 +129,12 @@ export async function updateInvestment(formData: FormData) {
 
 export async function deleteInvestment(formData: FormData) {
   const user = await requireUser();
+  await assertWriteRateLimit(
+    user.id,
+    "write",
+    WRITE_RATE_LIMIT.limit,
+    WRITE_RATE_LIMIT.windowMs,
+  );
   const idParsed = zUuid.safeParse(formString(formData, "id").trim());
   if (!idParsed.success) throw new UserFacingError("Missing holding");
 

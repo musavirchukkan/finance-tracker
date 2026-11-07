@@ -11,7 +11,12 @@ import {
   type CreditCardOption,
   type TransactionEditValues,
 } from "@/components/transaction-form";
-import { createCategory, updateDebtGoal } from "@/lib/actions";
+import {
+  createCategory,
+} from "@/lib/category-actions";
+import {
+  updateDebtGoal,
+} from "@/lib/debt-actions";
 
 export function AddCategoryButton({
   defaultKind = "expense",

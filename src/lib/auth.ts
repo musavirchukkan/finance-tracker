@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { compare } from "bcryptjs";
+import { compare, hashSync } from "bcryptjs";
 import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { z } from "zod";
 import {
   AUTH_RATE_LIMIT,
+  BCRYPT_ROUNDS,
   PASSWORD_MIN_LENGTH,
   SESSION_USER_RECHECK_MS,
 } from "@/lib/constants";
@@ -14,6 +15,12 @@ import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { getDatabaseFingerprintMaterial } from "@/lib/env";
 import { clientKeyFromHeaders, takeRateLimit } from "@/lib/rate-limit";
+
+/** Dummy hash so missing-user logins still pay bcrypt.compare (timing pad). */
+const DUMMY_PASSWORD_HASH = hashSync(
+  "__ledger_dummy_password_not_a_real_user__",
+  BCRYPT_ROUNDS,
+);
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -61,10 +68,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           .where(eq(users.email, email))
           .limit(1);
 
-        if (!user) return null;
-
-        const valid = await compare(parsed.data.password, user.passwordHash);
-        if (!valid) return null;
+        const valid = await compare(
+          parsed.data.password,
+          user?.passwordHash ?? DUMMY_PASSWORD_HASH,
+        );
+        if (!user || !valid) return null;
 
         return {
           id: user.id,

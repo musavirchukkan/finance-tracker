@@ -13,6 +13,7 @@ import {
   isLentType,
   paymentBalanceEffect,
 } from "@/lib/debt-kinds";
+import { invalidateCategoryCache } from "@/lib/ref-cache";
 
 export const DEBT_EMI_CATEGORY = "Debt / EMI";
 export const BORROWED_CATEGORY = "Borrowed";
@@ -32,6 +33,7 @@ export async function ensureDebtCashflowCategories(userId: string) {
     .where(eq(categories.userId, userId));
 
   const byName = new Map(existing.map((c) => [c.name.toLowerCase(), c]));
+  let inserted = false;
 
   async function ensure(name: string, kind: "expense" | "income", sortOrder: number) {
     const found = byName.get(name.toLowerCase());
@@ -46,6 +48,7 @@ export async function ensureDebtCashflowCategories(userId: string) {
         sortOrder,
       })
       .returning();
+    inserted = true;
     byName.set(name.toLowerCase(), row);
     return row;
   }
@@ -58,6 +61,10 @@ export async function ensureDebtCashflowCategories(userId: string) {
   const lentRepaid = await ensure(LENT_REPAID_CATEGORY, "income", 111);
   const kuriPayout = await ensure(KURI_PAYOUT_CATEGORY, "income", 112);
   const walletCashout = await ensure(WALLET_CASHOUT_CATEGORY, "income", 113);
+
+  if (inserted) {
+    await invalidateCategoryCache(userId);
+  }
 
   return {
     debtEmiCategoryId: debtEmi.id,

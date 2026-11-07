@@ -7,7 +7,7 @@ import {
 import { InfoTip } from "@/components/info-tip";
 import {
   getNetWorth,
-} from "@/lib/investment-data";;
+} from "@/lib/investment-data";
 import { investmentTypeLabel } from "@/lib/investments";
 import { formatINR } from "@/lib/money";
 import { requireUser } from "@/lib/session";
