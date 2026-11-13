@@ -9,14 +9,19 @@ export function LocalDateTime({
   seconds = false,
 }: {
   iso: string;
-  /** Include seconds (e.g. balance-as-of anchors). */
+  /** Include seconds (e.g. activity / balance-as-of anchors). */
   seconds?: boolean;
 }) {
   const label = useSyncExternalStore(
     () => () => {},
     () => formatUtcAsLocal(iso, { seconds }),
-    () => "—",
+    // Same formatter on the server so date+time is visible before hydrate.
+    () => formatUtcAsLocal(iso, { seconds }),
   );
 
-  return <time dateTime={iso}>{label}</time>;
+  return (
+    <time dateTime={iso} suppressHydrationWarning>
+      {label}
+    </time>
+  );
 }

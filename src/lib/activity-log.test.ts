@@ -25,6 +25,17 @@ describe("transactionActivitySnapshot", () => {
       cardBillPayId: null,
     });
   });
+
+  it("folds occurredAt into date so time edits show on the same field", () => {
+    expect(
+      transactionActivitySnapshot({
+        type: "expense",
+        amount: 42,
+        date: "2026-11-09",
+        occurredAt: new Date("2026-11-09T07:15:30.000Z"),
+      }).date,
+    ).toBe("2026-11-09T07:15:30.000Z");
+  });
 });
 
 describe("summarizeTransactionActivity", () => {

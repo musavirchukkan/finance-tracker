@@ -443,9 +443,19 @@ export function sharedLimitMemberIds(
     .map((c) => c.id);
 }
 
+/** Prepaid credit sitting on a card (overpay / cashback). Per-card only. */
+export function prepaidOnCard(outstanding: number): number {
+  if (!(outstanding < 0)) return 0;
+  return Math.round((-outstanding) * 100) / 100;
+}
+
 /**
  * Available credit for a card, pooling revolving + EMI across every card
  * that shares the same limit root.
+ *
+ * Shared pool only counts **positive** outstanding (prepaid on one card does
+ * not inflate available for siblings). This card's own prepaid is then added
+ * so spends on *this* card can consume credit first.
  */
 export function availableCreditForSharedLimit(args: {
   cardId: string;
@@ -476,11 +486,15 @@ export function availableCreditForSharedLimit(args: {
     emiBlocked += Math.max(0, emiMap.get(id) ?? 0);
   }
 
-  return availableCredit({
+  const shared = availableCredit({
     creditLimit: limit != null && Number.isFinite(limit) ? limit : null,
     revolvingOutstanding: revolving,
     emiBlocked,
   });
+  if (shared == null) return null;
+
+  const ownOutstanding = Number(byId.get(cardId)?.currentOutstanding ?? 0) || 0;
+  return Math.round((shared + prepaidOnCard(ownOutstanding)) * 100) / 100;
 }
 
 /** Statement spend due + linked monthly EMI installments. */

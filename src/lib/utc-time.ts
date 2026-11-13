@@ -63,14 +63,18 @@ export function formatUtcAsLocal(
 ): string {
   const instant = new Date(iso);
   if (Number.isNaN(instant.getTime())) return iso;
-  return instant.toLocaleString(undefined, {
+  // Build date + time separately so locales can't drop the clock portion.
+  const datePart = instant.toLocaleDateString(undefined, {
     day: "2-digit",
     month: "short",
     year: "numeric",
-    hour: "numeric",
+  });
+  const timePart = instant.toLocaleTimeString(undefined, {
+    hour: "2-digit",
     minute: "2-digit",
     ...(opts?.seconds ? { second: "2-digit" as const } : {}),
   });
+  return `${datePart}, ${timePart}`;
 }
 
 /**

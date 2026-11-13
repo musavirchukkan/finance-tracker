@@ -1,6 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import {
+  buildTransactionsHref,
+  type PaidFromFilter,
+} from "@/lib/transaction-filters";
 
 type CategoryOption = {
   id: string;
@@ -11,21 +15,15 @@ type CategoryFilterSelectProps = {
   month: string;
   type: string;
   categoryId?: string;
+  paidFrom?: PaidFromFilter;
   options: CategoryOption[];
 };
-
-function buildHref(month: string, type: string, category?: string) {
-  const q = new URLSearchParams();
-  q.set("month", month);
-  if (type && type !== "all") q.set("type", type);
-  if (category) q.set("category", category);
-  return `/transactions?${q.toString()}`;
-}
 
 export function CategoryFilterSelect({
   month,
   type,
   categoryId,
+  paidFrom,
   options,
 }: CategoryFilterSelectProps) {
   const router = useRouter();
@@ -39,7 +37,14 @@ export function CategoryFilterSelect({
         aria-label="Category"
         onChange={(e) => {
           const next = e.target.value || undefined;
-          router.push(buildHref(month, type, next));
+          router.push(
+            buildTransactionsHref({
+              month,
+              type,
+              category: next,
+              paidFrom,
+            }),
+          );
         }}
       >
         <option value="">All categories</option>

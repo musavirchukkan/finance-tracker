@@ -46,6 +46,29 @@ function ThemeIcon({ name }: { name: "sun" | "moon" | "system" }) {
   );
 }
 
+/** One-tap light/dark switch for the nav (anywhere). */
+export function ThemeQuickToggle({
+  className = "theme-quick-btn has-tip",
+}: {
+  className?: string;
+}) {
+  const { resolved, setPreference } = useTheme();
+  const next = resolved === "dark" ? "light" : "dark";
+  const label = next === "light" ? "Switch to light" : "Switch to dark";
+
+  return (
+    <button
+      type="button"
+      className={className}
+      aria-label={label}
+      data-tip={label}
+      onClick={() => setPreference(next)}
+    >
+      <ThemeIcon name={resolved === "dark" ? "sun" : "moon"} />
+    </button>
+  );
+}
+
 export function ThemeToggle() {
   const { preference, setPreference } = useTheme();
 

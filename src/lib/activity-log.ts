@@ -1,12 +1,17 @@
 import { activityEvents } from "@/lib/db/schema";
 import { db } from "@/lib/db";
 import { formatINR } from "@/lib/money";
+import { toUtcIso } from "@/lib/utc-time";
 
 export type ActivitySource = "server_action" | "api" | "offline_sync";
 
 export type TransactionActivitySnapshot = {
   type: string;
   amount: number;
+  /**
+   * When the tx happened. Prefer full UTC ISO (from occurredAt) so time edits
+   * show in this same field; older events may be calendar YYYY-MM-DD only.
+   */
   date?: string | null;
   description?: string | null;
   categoryId?: string | null;
@@ -16,13 +21,27 @@ export type TransactionActivitySnapshot = {
   cardBillPayId?: string | null;
 };
 
+function snapshotWhen(
+  occurredAt: string | Date | null | undefined,
+  date: string | null | undefined,
+): string | null {
+  if (occurredAt != null && occurredAt !== "") {
+    if (occurredAt instanceof Date) return toUtcIso(occurredAt);
+    return toUtcIso(occurredAt) ?? String(occurredAt);
+  }
+  return date ?? null;
+}
+
 export function transactionActivitySnapshot(
-  input: TransactionActivitySnapshot,
+  input: TransactionActivitySnapshot & {
+    /** Not stored separately — folded into `date` as UTC ISO. */
+    occurredAt?: string | Date | null;
+  },
 ): TransactionActivitySnapshot {
   return {
     type: input.type,
     amount: input.amount,
-    date: input.date ?? null,
+    date: snapshotWhen(input.occurredAt, input.date),
     description: input.description ?? null,
     categoryId: input.categoryId ?? null,
     bankAccountId: input.bankAccountId ?? null,

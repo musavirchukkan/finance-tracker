@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lt, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, exists, gte, lt, lte, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
   TRANSACTIONS_MAX_PAGE_SIZE,
@@ -80,6 +80,10 @@ export async function listTransactions(
   opts?: {
     type?: "income" | "expense" | "transfer" | "all";
     categoryId?: string;
+    /** Bank as From or To (UPI/POS/income/transfer/bill pay). */
+    bankAccountId?: string;
+    /** Card spend or linked card-activity cashflow tx (bill/fee/wallet). */
+    creditCardId?: string;
     page?: number;
     pageSize?: number;
     /** Keyset cursor (preferred for large lists). Mutually exclusive with page. */
@@ -101,6 +105,36 @@ export async function listTransactions(
   }
   if (opts?.categoryId) {
     conditions.push(eq(transactions.categoryId, opts.categoryId));
+  }
+  if (opts?.bankAccountId) {
+    conditions.push(
+      or(
+        eq(transactions.bankAccountId, opts.bankAccountId),
+        eq(transactions.transferToBankAccountId, opts.bankAccountId),
+      )!,
+    );
+  }
+  if (opts?.creditCardId) {
+    conditions.push(
+      or(
+        eq(transactions.creditCardId, opts.creditCardId),
+        exists(
+          db
+            .select({ id: cardActivities.id })
+            .from(cardActivities)
+            .where(
+              and(
+                eq(cardActivities.userId, userId),
+                eq(cardActivities.cardId, opts.creditCardId),
+                or(
+                  eq(cardActivities.transactionId, transactions.id),
+                  eq(cardActivities.relatedTransactionId, transactions.id),
+                )!,
+              ),
+            ),
+        ),
+      )!,
+    );
   }
 
   const useCursor = Boolean(opts?.cursor);
@@ -375,6 +409,7 @@ export async function insertTransactionForUser(
         type: "transfer",
         amount: input.amount,
         date: dateOnly,
+        occurredAt: transferOccurredAt,
         description: input.description,
         categoryId,
         bankAccountId,
@@ -499,6 +534,7 @@ export async function insertTransactionForUser(
       type: input.type,
       amount: input.amount,
       date: dateOnly,
+      occurredAt: txOccurredAt,
       description: input.description,
       categoryId,
       bankAccountId,

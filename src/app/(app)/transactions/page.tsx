@@ -7,6 +7,7 @@ import {
 import { LocalDateTime } from "@/components/local-datetime";
 import { CategoryFilterSelect } from "@/components/category-filter-select";
 import { InfoTip } from "@/components/info-tip";
+import { PaidFromFilterSelect } from "@/components/paid-from-filter-select";
 import {
   deleteTransaction,
 } from "@/lib/transaction-actions";
@@ -33,22 +34,12 @@ import {
   shiftYearMonth,
 } from "@/lib/months";
 import { requireUser } from "@/lib/session";
+import {
+  buildTransactionsHref,
+  parsePaidFromParam,
+} from "@/lib/transaction-filters";
 
 const PAGE_SIZE = TRANSACTIONS_PAGE_SIZE;
-
-function buildTxHref(args: {
-  month: string;
-  type?: string;
-  category?: string;
-  page?: number;
-}) {
-  const q = new URLSearchParams();
-  q.set("month", args.month);
-  if (args.type && args.type !== "all") q.set("type", args.type);
-  if (args.category) q.set("category", args.category);
-  if (args.page && args.page > 1) q.set("page", String(args.page));
-  return `/transactions?${q.toString()}`;
-}
 
 export default async function TransactionsPage({
   searchParams,
@@ -57,6 +48,7 @@ export default async function TransactionsPage({
     month?: string;
     type?: string;
     category?: string;
+    from?: string;
     page?: string;
   }>;
 }) {
@@ -76,6 +68,7 @@ export default async function TransactionsPage({
     params.category && /^[0-9a-f-]{36}$/i.test(params.category)
       ? params.category
       : undefined;
+  const paidFrom = parsePaidFromParam(params.from);
   const page = Math.max(1, Number(params.page) || 1);
 
   await ensureTransferCategory(user.id);
@@ -86,6 +79,8 @@ export default async function TransactionsPage({
     listTransactions(user.id, month, {
       type: typeFilter,
       categoryId,
+      bankAccountId: paidFrom?.kind === "bank" ? paidFrom.id : undefined,
+      creditCardId: paidFrom?.kind === "card" ? paidFrom.id : undefined,
       page,
       pageSize: PAGE_SIZE,
     }),
@@ -117,7 +112,12 @@ export default async function TransactionsPage({
       ? cats
       : cats.filter((c) => c.kind === typeFilter);
 
-  const filterBase = { month, type: typeFilter, category: categoryId };
+  const filterBase = {
+    month,
+    type: typeFilter,
+    category: categoryId,
+    paidFrom,
+  };
 
   return (
     <div className="page-stack">
@@ -137,7 +137,7 @@ export default async function TransactionsPage({
           <div className="month-switcher" role="group" aria-label="Month">
             <Link
               className="btn btn-ghost btn-xs"
-              href={buildTxHref({ ...filterBase, month: prev })}
+              href={buildTransactionsHref({ ...filterBase, month: prev })}
               aria-label={`Previous month, ${formatYearMonthLabel(prev)}`}
             >
               ←
@@ -147,7 +147,7 @@ export default async function TransactionsPage({
             </span>
             <Link
               className="btn btn-ghost btn-xs"
-              href={buildTxHref({ ...filterBase, month: next })}
+              href={buildTransactionsHref({ ...filterBase, month: next })}
               aria-label={`Next month, ${formatYearMonthLabel(next)}`}
             >
               →
@@ -190,10 +190,11 @@ export default async function TransactionsPage({
             ).map(([value, label]) => (
               <Link
                 key={value}
-                href={buildTxHref({
+                href={buildTransactionsHref({
                   month,
                   type: value,
                   category: undefined,
+                  paidFrom,
                 })}
                 className={
                   typeFilter === value ? "filter-pill active" : "filter-pill"
@@ -204,10 +205,25 @@ export default async function TransactionsPage({
               </Link>
             ))}
           </div>
+          <PaidFromFilterSelect
+            month={month}
+            type={typeFilter}
+            categoryId={categoryId}
+            paidFrom={paidFrom}
+            banks={bankAccounts.map((a) => ({
+              id: a.id,
+              label: a.label,
+            }))}
+            cards={creditCards.map((c) => ({
+              id: c.id,
+              label: c.label,
+            }))}
+          />
           <CategoryFilterSelect
             month={month}
             type={typeFilter}
             categoryId={categoryId}
+            paidFrom={paidFrom}
             options={categoryOptions.map((c) => ({
               id: c.id,
               name: c.name,
@@ -348,7 +364,10 @@ export default async function TransactionsPage({
                 {page > 1 ? (
                   <Link
                     className="btn btn-ghost btn-xs"
-                    href={buildTxHref({ ...filterBase, page: page - 1 })}
+                    href={buildTransactionsHref({
+                      ...filterBase,
+                      page: page - 1,
+                    })}
                   >
                     ← Prev
                   </Link>
@@ -363,7 +382,10 @@ export default async function TransactionsPage({
                 {page < totalPages ? (
                   <Link
                     className="btn btn-ghost btn-xs"
-                    href={buildTxHref({ ...filterBase, page: page + 1 })}
+                    href={buildTransactionsHref({
+                      ...filterBase,
+                      page: page + 1,
+                    })}
                   >
                     Next →
                   </Link>

@@ -74,7 +74,9 @@ export async function adjustCardOutstanding(
     .where(and(eq(creditCards.id, cardId), eq(creditCards.userId, userId)))
     .limit(1);
   if (!card) return;
-  const next = Math.max(0, toNumber(card.currentOutstanding) + delta);
+  // Negative outstanding = prepaid / cashback / overpay credit on this card only.
+  const next =
+    Math.round((toNumber(card.currentOutstanding) + delta) * 100) / 100;
   await db
     .update(creditCards)
     .set({ currentOutstanding: next.toFixed(2), updatedAt: new Date() })
@@ -86,10 +88,11 @@ export async function setCardOutstanding(
   cardId: string,
   amount: number,
 ) {
+  const next = Math.round(amount * 100) / 100;
   await db
     .update(creditCards)
     .set({
-      currentOutstanding: Math.max(0, amount).toFixed(2),
+      currentOutstanding: next.toFixed(2),
       updatedAt: new Date(),
     })
     .where(and(eq(creditCards.id, cardId), eq(creditCards.userId, userId)));

@@ -102,7 +102,9 @@ export async function createCreditCard(formData: FormData) {
   const user = await requireUser();
   await assertWriteRateLimit(user.id, "write", WRITE_RATE_LIMIT.limit, WRITE_RATE_LIMIT.windowMs);
   const raw = parseCardFields(formData);
-  const outstanding = parseAmount(raw.currentOutstanding);
+  const outstanding = parseAmount(raw.currentOutstanding, {
+    allowNegative: true,
+  });
   const sharesLimitWithId = await parseSharesLimitWithId(
     user.id,
     null,
@@ -128,7 +130,7 @@ export async function createCreditCard(formData: FormData) {
     .values({
       userId: user.id,
       name: raw.name,
-      currentOutstanding: Math.max(0, outstanding).toFixed(2),
+      currentOutstanding: outstanding.toFixed(2),
       statementAmount:
         statementAmount != null ? Math.max(0, statementAmount).toFixed(2) : null,
       pinToCurrentStatement,
@@ -156,7 +158,9 @@ export async function updateCreditCard(formData: FormData) {
     "Missing fields",
   ).id;
   const raw = parseCardFields(formData);
-  const outstanding = parseAmount(raw.currentOutstanding);
+  const outstanding = parseAmount(raw.currentOutstanding, {
+    allowNegative: true,
+  });
   const sharesLimitWithId = await parseSharesLimitWithId(
     user.id,
     id,
@@ -194,7 +198,7 @@ export async function updateCreditCard(formData: FormData) {
     .update(creditCards)
     .set({
       name: raw.name,
-      currentOutstanding: Math.max(0, outstanding).toFixed(2),
+      currentOutstanding: outstanding.toFixed(2),
       statementAmount:
         statementAmount != null ? Math.max(0, statementAmount).toFixed(2) : null,
       pinToCurrentStatement,

@@ -2,19 +2,10 @@
 
 import { useState } from "react";
 import { LocalDateTime } from "@/components/local-datetime";
-import { toUtcIso } from "@/lib/utc-time";
+import type { ActivityEventView } from "@/lib/activity-view";
+import { formatUtcAsLocal } from "@/lib/utc-time";
 
-export type ActivityEventView = {
-  id: string;
-  action: string;
-  entityType: string;
-  entityId: string | null;
-  summary: string;
-  before: Record<string, unknown> | null;
-  after: Record<string, unknown> | null;
-  source: string;
-  createdAt: string;
-};
+export type { ActivityEventView };
 
 const SNAPSHOT_KEYS = [
   "type",
@@ -28,8 +19,15 @@ const SNAPSHOT_KEYS = [
   "cardBillPayId",
 ] as const;
 
-function formatValue(value: unknown): string {
+function looksLikeInstant(value: string): boolean {
+  return /T\d{2}:\d{2}/.test(value) || /(?:[zZ]|[+-]\d{2}:\d{2})$/.test(value);
+}
+
+function formatValue(key: string, value: unknown): string {
   if (value == null || value === "") return "—";
+  if (key === "date" && typeof value === "string" && looksLikeInstant(value)) {
+    return formatUtcAsLocal(value, { seconds: true });
+  }
   if (typeof value === "string" || typeof value === "number") {
     return String(value);
   }
@@ -77,8 +75,8 @@ function DiffTable({
           return (
             <tr key={key} className={changed ? "changed" : undefined}>
               <td>{key}</td>
-              <td>{formatValue(b)}</td>
-              <td>{formatValue(a)}</td>
+              <td>{formatValue(key, b)}</td>
+              <td>{formatValue(key, a)}</td>
             </tr>
           );
         })}
@@ -114,7 +112,7 @@ export function ActivityEventList({ events }: { events: ActivityEventView[] }) {
               <span className="activity-item-main">
                 <strong>{event.summary}</strong>
                 <span className="muted activity-item-meta">
-                  <LocalDateTime iso={event.createdAt} />
+                  <LocalDateTime iso={event.createdAt} seconds />
                   <span aria-hidden="true"> · </span>
                   {event.source}
                   <span aria-hidden="true"> · </span>
@@ -138,22 +136,4 @@ export function ActivityEventList({ events }: { events: ActivityEventView[] }) {
       })}
     </ul>
   );
-}
-
-/** Server helper: serialize Date for the client list. */
-export function toActivityEventView(row: {
-  id: string;
-  action: string;
-  entityType: string;
-  entityId: string | null;
-  summary: string;
-  before: Record<string, unknown> | null;
-  after: Record<string, unknown> | null;
-  source: string;
-  createdAt: Date;
-}): ActivityEventView {
-  return {
-    ...row,
-    createdAt: toUtcIso(row.createdAt) ?? new Date(0).toISOString(),
-  };
 }

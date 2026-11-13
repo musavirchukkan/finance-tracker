@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { signOut } from "next-auth/react";
 import { NavIcon } from "@/components/nav-icons";
+import { ThemeQuickToggle } from "@/components/theme-toggle";
 import { clearClientState } from "@/lib/client-cache";
 
 function BrandMark({ size = 28 }: { size?: number }) {
@@ -159,6 +160,7 @@ export function AppNav({ name }: { name?: string | null }) {
         </nav>
 
         <div className="top-bar-user">
+          <ThemeQuickToggle />
           <span className="muted">{name ?? firstName}</span>
           <button
             className="btn btn-ghost btn-xs"
@@ -176,6 +178,7 @@ export function AppNav({ name }: { name?: string | null }) {
       <header className="mobile-top">
         <BrandMark size={24} />
         <div className="mobile-top-actions">
+          <ThemeQuickToggle className="icon-btn has-tip" />
           <button
             type="button"
             className="btn btn-ghost btn-xs"
@@ -183,20 +186,6 @@ export function AppNav({ name }: { name?: string | null }) {
             aria-label="Current month"
           >
             Month
-          </button>
-          <button type="button" className="icon-btn" aria-label="Notifications">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              aria-hidden
-            >
-              <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-              <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-            </svg>
           </button>
         </div>
       </header>

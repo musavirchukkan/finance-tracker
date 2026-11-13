@@ -1,10 +1,8 @@
 import Link from "next/link";
-import {
-  ActivityEventList,
-  toActivityEventView,
-} from "@/components/activity-event-list";
+import { ActivityEventList } from "@/components/activity-event-list";
 import { InfoTip } from "@/components/info-tip";
 import { listActivityEvents } from "@/lib/activity-data";
+import { toActivityEventView } from "@/lib/activity-view";
 import { ACTIVITY_PAGE_SIZE } from "@/lib/constants";
 import { requireUser } from "@/lib/session";
 

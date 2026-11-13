@@ -237,8 +237,9 @@ function withEmiAggregates(
   const members = allCards.filter((c) => memberIds.includes(c.id));
   const sharedLimit =
     root.creditLimit != null ? toNumber(root.creditLimit) : null;
+  // Shared-limit usage only counts positive revolving (prepaid stays per-card).
   const groupRevolving = members.reduce(
-    (s, c) => s + toNumber(c.currentOutstanding),
+    (s, c) => s + Math.max(0, toNumber(c.currentOutstanding)),
     0,
   );
   const groupEmiBlocked = members.reduce(
@@ -266,6 +267,8 @@ function withEmiAggregates(
 
   return {
     outstandingNum,
+    /** Prepaid sitting on this card when outstanding is negative. */
+    prepaidNum: outstandingNum < 0 ? -outstandingNum : 0,
     /** Limit shown for this card: own limit, or shared root limit. */
     creditLimitNum: sharedLimit,
     ownCreditLimitNum:
@@ -494,6 +497,10 @@ export async function getCreditCardDetail(userId: string, cardId: string) {
       .map((c) => ({
         id: c.id,
         label: formatCardLabel(c.name, c.lastFour),
+        creditLimit:
+          c.creditLimit != null && c.creditLimit !== ""
+            ? toNumber(c.creditLimit)
+            : null,
       })),
     warnings: cardBillWarnings([
       {

@@ -97,8 +97,18 @@ export default async function CardDetailPage({
           </strong>
         </div>
         <div className="stat-card tall">
-          <span>Revolving outstanding</span>
-          <strong>{formatINR(card.outstandingNum)}</strong>
+          <span>
+            {card.outstandingNum < 0
+              ? "Prepaid credit"
+              : "Revolving outstanding"}
+          </span>
+          <strong
+            className={card.outstandingNum < 0 ? "pos" : undefined}
+          >
+            {card.outstandingNum < 0
+              ? formatINR(-card.outstandingNum)
+              : formatINR(card.outstandingNum)}
+          </strong>
         </div>
       </div>
 
@@ -146,13 +156,14 @@ export default async function CardDetailPage({
               date (P+I+GST), so it is included there — not added twice.
             </p>
             <p>
-              <strong>Available</strong> = credit limit − revolving outstanding −
+              <strong>Available</strong> = credit limit − positive revolving −
               EMI principal remaining (blocked)
               {card.sharesLimit
                 ? ", pooled across every card that shares this limit."
                 : "."}{" "}
-              When an EMI posts, its principal unlocks from the limit;
-              interest and GST never blocked it.
+              Prepaid (negative outstanding) on this card adds to this card
+              only — not to siblings. When an EMI posts, its principal unlocks
+              from the limit; interest and GST never blocked it.
             </p>
             <p>
               Spends after the bill date go on the next statement (next bill

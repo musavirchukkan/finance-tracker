@@ -12,6 +12,7 @@ import {
   formatCardLabel,
   nextCycleDate,
   normalizeLastFour,
+  prepaidOnCard,
   previousCycleDate,
   resolveLimitRootId,
   sharedLimitMemberIds,
@@ -322,6 +323,51 @@ describe("shared credit limit", () => {
         emiBlockedByCard,
       }),
     ).toBe(45_000);
+  });
+
+  it("keeps prepaid on one card only after overpay", () => {
+    // Limit 5000; A spent 500, B spent 1000 → shared remaining 3500.
+    // Pay 1000 on A → A = -500, B = 1000.
+    // Shared pool uses only positive outstanding → 5000 − 1000 = 4000.
+    // A also has 500 prepaid → A available 4500; B stays 4000.
+    const afterPay = [
+      {
+        id: "a",
+        creditLimit: "5000",
+        currentOutstanding: "-500",
+        sharesLimitWithId: null,
+      },
+      {
+        id: "b",
+        creditLimit: null,
+        currentOutstanding: "1000",
+        sharesLimitWithId: "a",
+      },
+    ];
+    const emiBlockedByCard = { a: 0, b: 0 };
+    expect(prepaidOnCard(-500)).toBe(500);
+    expect(
+      availableCreditForSharedLimit({
+        cardId: "a",
+        cards: afterPay,
+        emiBlockedByCard,
+      }),
+    ).toBe(4500);
+    expect(
+      availableCreditForSharedLimit({
+        cardId: "b",
+        cards: afterPay,
+        emiBlockedByCard,
+      }),
+    ).toBe(4000);
+  });
+});
+
+describe("prepaidOnCard", () => {
+  it("returns credit only when outstanding is negative", () => {
+    expect(prepaidOnCard(0)).toBe(0);
+    expect(prepaidOnCard(100)).toBe(0);
+    expect(prepaidOnCard(-250.5)).toBe(250.5);
   });
 });
 

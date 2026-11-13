@@ -19,6 +19,8 @@ import { todayLocal } from "@/lib/utc-time";
 type ShareLimitOption = {
   id: string;
   label: string;
+  /** Parent card's own credit limit (shown disabled when sharing). */
+  creditLimit?: number | null;
 };
 
 type CardFormValues = {
@@ -64,6 +66,13 @@ function CardFields({
   }
 
   const sharesLimit = !!values.sharesLimitWithId;
+  const sharedParent = sharesLimit
+    ? shareOptions.find((o) => o.id === values.sharesLimitWithId)
+    : undefined;
+  const sharedLimitDisplay =
+    sharedParent?.creditLimit != null && Number.isFinite(sharedParent.creditLimit)
+      ? String(sharedParent.creditLimit)
+      : "";
 
   return (
     <>
@@ -113,12 +122,15 @@ function CardFields({
           name="currentOutstanding"
           type="number"
           step="0.01"
-          min="0"
           inputMode="decimal"
           placeholder="0"
           value={values.currentOutstanding}
           onChange={(e) => set("currentOutstanding", e.target.value)}
         />
+        <p className="muted page-sub" style={{ margin: "0.35rem 0 0" }}>
+          Negative = prepaid / cashback / overpay on this card only. Later spends
+          on this card use that credit first. Shared-limit siblings do not get it.
+        </p>
       </div>
       <div className="field">
         <label htmlFor="card-statement">Statement / bill amount</label>
@@ -167,6 +179,8 @@ function CardFields({
               onChange({
                 ...values,
                 sharesLimitWithId: next,
+                // Own limit is unused while sharing — keep form state clear so
+                // a disabled display value is never submitted as this card's limit.
                 creditLimit: next ? "" : values.creditLimit,
               });
             }}
@@ -175,6 +189,9 @@ function CardFields({
             {shareOptions.map((o) => (
               <option key={o.id} value={o.id}>
                 {o.label}
+                {o.creditLimit != null && Number.isFinite(o.creditLimit)
+                  ? ` · ${formatINR(o.creditLimit)}`
+                  : ""}
               </option>
             ))}
           </select>
@@ -186,20 +203,51 @@ function CardFields({
       ) : null}
       <div className="field">
         <label htmlFor="card-limit">
-          {sharesLimit ? "Credit limit (from shared card)" : "Credit limit"}
+          {sharesLimit
+            ? sharedParent
+              ? `Credit limit (from ${sharedParent.label})`
+              : "Credit limit (from shared card)"
+            : "Credit limit"}
         </label>
-        <input
-          id="card-limit"
-          name="creditLimit"
-          type="number"
-          step="0.01"
-          min="0"
-          inputMode="decimal"
-          placeholder={sharesLimit ? "Uses linked card limit" : "0"}
-          value={values.creditLimit}
-          disabled={sharesLimit}
-          onChange={(e) => set("creditLimit", e.target.value)}
-        />
+        {sharesLimit ? (
+          <>
+            {/* Disabled inputs are not submitted — correct: shared cards store null limit. */}
+            <input
+              id="card-limit"
+              type="text"
+              inputMode="decimal"
+              readOnly
+              disabled
+              value={
+                sharedLimitDisplay
+                  ? formatINR(Number(sharedLimitDisplay))
+                  : "No limit set on shared card"
+              }
+              aria-describedby="card-limit-shared-hint"
+            />
+            <input type="hidden" name="creditLimit" value="" />
+            <p
+              id="card-limit-shared-hint"
+              className="muted page-sub"
+              style={{ margin: "0.35rem 0 0" }}
+            >
+              This card has no limit of its own — it uses the selected card&apos;s
+              limit.
+            </p>
+          </>
+        ) : (
+          <input
+            id="card-limit"
+            name="creditLimit"
+            type="number"
+            step="0.01"
+            min="0"
+            inputMode="decimal"
+            placeholder="0"
+            value={values.creditLimit}
+            onChange={(e) => set("creditLimit", e.target.value)}
+          />
+        )}
       </div>
       <div className="field">
         <label htmlFor="card-billing">Billing day (1–31)</label>
@@ -298,9 +346,52 @@ export function AddCreditCardButton({
   );
 }
 
+function IconEdit() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 20h9"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path
+        d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconPay() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect
+        x="3"
+        y="6"
+        width="18"
+        height="12"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M3 10h18"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function EditCreditCardButton({
   card,
   shareOptions = [],
+  iconOnly = false,
 }: {
   card: {
     id: string;
@@ -318,6 +409,8 @@ export function EditCreditCardButton({
     status: string;
   };
   shareOptions?: ShareLimitOption[];
+  /** Compact table action — icon with accessible label. */
+  iconOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const options = shareOptions.filter((o) => o.id !== card.id);
@@ -358,8 +451,16 @@ export function EditCreditCardButton({
 
   return (
     <>
-      <button type="button" className="btn btn-ghost btn-xs" onClick={openModal}>
-        Edit
+      <button
+        type="button"
+        className={
+          iconOnly ? "row-icon-btn has-tip" : "btn btn-ghost btn-xs"
+        }
+        onClick={openModal}
+        aria-label={iconOnly ? `Edit ${card.name}` : undefined}
+        data-tip={iconOnly ? "Edit" : undefined}
+      >
+        {iconOnly ? <IconEdit /> : "Edit"}
       </button>
       <Modal
         open={open}
@@ -583,6 +684,7 @@ export function PayBillButton({
   dueAmount = 0,
   outstandingAmount = 0,
   buttonLabel = "Pay",
+  iconOnly = false,
 }: {
   cardId: string;
   bankAccounts?: { id: string; name: string }[];
@@ -591,20 +693,26 @@ export function PayBillButton({
   /** Revolving outstanding for a one-tap full balance payment. */
   outstandingAmount?: number;
   buttonLabel?: string;
+  iconOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const due = Math.max(0, Math.round(dueAmount * 100) / 100);
-  const outstanding = Math.max(
-    0,
-    Math.round(outstandingAmount * 100) / 100,
-  );
+  const outstanding = Math.round(outstandingAmount * 100) / 100;
   const defaultAmount =
-    due > 0 ? String(due) : outstanding > 0 ? String(outstanding) : "";
+    due > 0
+      ? String(due)
+      : outstanding > 0
+        ? String(outstanding)
+        : "";
   const [amount, setAmount] = useState(defaultAmount);
 
   function openModal() {
     setAmount(
-      due > 0 ? String(due) : outstanding > 0 ? String(outstanding) : "",
+      due > 0
+        ? String(due)
+        : outstanding > 0
+          ? String(outstanding)
+          : "",
     );
     setOpen(true);
   }
@@ -617,10 +725,16 @@ export function PayBillButton({
     <>
       <button
         type="button"
-        className="btn btn-primary btn-xs"
+        className={
+          iconOnly
+            ? "row-icon-btn row-icon-btn-primary has-tip"
+            : "btn btn-primary btn-xs"
+        }
         onClick={openModal}
+        aria-label={iconOnly ? buttonLabel : undefined}
+        data-tip={iconOnly ? buttonLabel : undefined}
       >
-        {buttonLabel}
+        {iconOnly ? <IconPay /> : buttonLabel}
       </button>
       <DateAmountShell
         open={open}

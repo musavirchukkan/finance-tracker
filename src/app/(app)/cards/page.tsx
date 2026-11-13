@@ -20,6 +20,63 @@ import {
 import { formatINR } from "@/lib/money";
 import { requireUser } from "@/lib/session";
 
+function IconView() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function IconDelete() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 7h16M9 7V5h6v2M10 11v6M14 11v6M6 7l1 12h10l1-12"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconStatusActive() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="M8.5 12.5l2.2 2.2 4.8-5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconStatusInactive() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="M9 12h6"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export default async function CardsPage() {
   const user = await requireUser();
   const cards = await listCreditCards(user.id);
@@ -35,7 +92,11 @@ export default async function CardsPage() {
   const totalNextBill = cards.reduce((s, c) => s + c.nextBillPending, 0);
   const shareOptions = cards
     .filter((c) => !c.sharesLimitWithId)
-    .map((c) => ({ id: c.id, label: c.label }));
+    .map((c) => ({
+      id: c.id,
+      label: c.label,
+      creditLimit: c.ownCreditLimitNum ?? c.creditLimitNum,
+    }));
   // One note per shared-limit root (or single card) with negative available.
   const overLimitCards = cards.filter(
     (c) =>
@@ -68,9 +129,10 @@ export default async function CardsPage() {
               via <strong>Pay bill</strong> when the bank due date arrives.
             </p>
             <p>
-              <strong>Available</strong> = shared limit − revolving − EMI
-              principal blocked across every card in a shared-limit group (e.g.
-              Axis add-on cards). Interest/GST on EMI do not block the limit.
+              <strong>Available</strong> = shared limit − positive revolving −
+              EMI principal blocked across the group. Prepaid / overpay on one
+              card stays on that card and does not boost siblings&apos; limit.
+              Interest/GST on EMI do not block the limit.
             </p>
             <p>
               Available can go negative if the ledger is over limit — spends are
@@ -165,8 +227,9 @@ export default async function CardsPage() {
                   <th className="num">EMI</th>
                   <th className="num">Available</th>
                   <th className="num">Next bill</th>
+                  <th>Bill date</th>
                   <th>Due date</th>
-                  <th>Status</th>
+                  <th className="status-col">Status</th>
                   <th>
                     <span className="sr-only">Actions</span>
                   </th>
@@ -209,31 +272,48 @@ export default async function CardsPage() {
                         : "—"}
                     </td>
                     <td className="num">{formatINR(c.nextBillPending)}</td>
+                    <td className="nowrap">{c.nextBillDate ?? "—"}</td>
                     <td className="nowrap">{c.nextDueDate ?? "—"}</td>
-                    <td>
+                    <td className="status-col">
                       {c.status === "Inactive" ? (
-                        <span className="muted">Inactive</span>
+                        <span
+                          className="status-icon status-icon-inactive has-tip"
+                          data-tip="Inactive"
+                          aria-label="Inactive"
+                        >
+                          <IconStatusInactive />
+                        </span>
                       ) : (
-                        "Active"
+                        <span
+                          className="status-icon status-icon-active has-tip"
+                          data-tip="Active"
+                          aria-label="Active"
+                        >
+                          <IconStatusActive />
+                        </span>
                       )}
                     </td>
                     <td>
-                      <div className="row-actions">
+                      <div className="row-actions-grid">
                         <PayBillButton
                           cardId={c.id}
                           bankAccounts={bankOptions}
                           dueAmount={c.amountDue}
                           outstandingAmount={c.outstandingNum}
+                          iconOnly
                         />
                         <Link
-                          className="btn btn-ghost btn-xs"
+                          className="row-icon-btn has-tip"
                           href={`/cards/${c.id}`}
+                          aria-label={`View ${c.name}`}
+                          data-tip="View"
                         >
-                          View
+                          <IconView />
                         </Link>
                         <EditCreditCardButton
                           card={c}
                           shareOptions={shareOptions}
+                          iconOnly
                         />
                         <ActionForm
                           action={deleteCreditCard}
@@ -243,10 +323,12 @@ export default async function CardsPage() {
                         >
                           <input type="hidden" name="id" value={c.id} />
                           <button
-                            className="btn btn-danger btn-xs"
+                            className="row-icon-btn row-icon-btn-danger has-tip"
                             type="submit"
+                            aria-label={`Delete ${c.name}`}
+                            data-tip="Delete"
                           >
-                            Del
+                            <IconDelete />
                           </button>
                         </ActionForm>
                       </div>
@@ -259,10 +341,11 @@ export default async function CardsPage() {
                   <td>Total</td>
                   <td className="num">{formatINR(totalDue)}</td>
                   <td className="num">{formatINR(totalEmi)}</td>
-                  <td colSpan={2} className="num">
+                  <td className="num">—</td>
+                  <td className="num">
                     {formatINR(totalNextBill)} next bill
                   </td>
-                  <td colSpan={3}></td>
+                  <td colSpan={4}></td>
                 </tr>
               </tfoot>
             </table>
