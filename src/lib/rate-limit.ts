@@ -1,3 +1,4 @@
+import { reportUnexpectedError } from "@/lib/report-error";
 import { UserFacingError } from "@/lib/safe-error";
 import { getRedis, type Redis } from "@/lib/redis";
 
@@ -35,8 +36,9 @@ function getRateLimitScript(redis: Redis): RateLimitScript {
 
 /**
  * Fixed-window rate limit.
- * Uses Redis REST (HTTPS) when configured; otherwise in-memory
- * (fine for local single-process; not shared across serverless isolates).
+ * Uses Redis REST (HTTPS) when configured; soft-fails to in-memory on
+ * Redis errors (e.g. Upstash free-plan sleep) so writes are not 500s.
+ * In-memory is fine for local / single-process; not shared across isolates.
  */
 export async function takeRateLimit(
   key: string,
@@ -45,7 +47,12 @@ export async function takeRateLimit(
 ): Promise<{ ok: true } | { ok: false; retryAfterSec: number }> {
   const redis = getRedis();
   if (redis) {
-    return takeRedisRateLimit(redis, key, limit, windowMs);
+    try {
+      return await takeRedisRateLimit(redis, key, limit, windowMs);
+    } catch (err) {
+      reportUnexpectedError(err);
+      return takeMemoryRateLimit(key, limit, windowMs);
+    }
   }
   return takeMemoryRateLimit(key, limit, windowMs);
 }
