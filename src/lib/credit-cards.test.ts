@@ -9,7 +9,10 @@ import {
   dueDateForBill,
   dueDateFromBill,
   estimateDueGapDays,
+  filterPaymentPickerOptions,
   formatCardLabel,
+  isShownInPaymentPicker,
+  partitionPaymentPickerOptions,
   nextCycleDate,
   normalizeLastFour,
   prepaidOnCard,
@@ -20,6 +23,41 @@ import {
   summarizeCardStatement,
   totalDueThisCycle,
 } from "@/lib/credit-cards";
+
+describe("payment picker visibility", () => {
+  it("treats missing flag as shown (legacy cache)", () => {
+    expect(isShownInPaymentPicker(undefined)).toBe(true);
+    expect(isShownInPaymentPicker(null)).toBe(true);
+    expect(isShownInPaymentPicker(true)).toBe(true);
+    expect(isShownInPaymentPicker(false)).toBe(false);
+  });
+
+  it("filters hidden options unless explicitly included", () => {
+    const items = [
+      { id: "a", showInPaymentPicker: true },
+      { id: "b", showInPaymentPicker: false },
+      { id: "c" },
+    ];
+    expect(filterPaymentPickerOptions(items).map((i) => i.id)).toEqual([
+      "a",
+      "c",
+    ]);
+    expect(
+      filterPaymentPickerOptions(items, ["b", null]).map((i) => i.id),
+    ).toEqual(["a", "b", "c"]);
+  });
+
+  it("partitions primary vs other", () => {
+    const items = [
+      { id: "a", showInPaymentPicker: true },
+      { id: "b", showInPaymentPicker: false },
+      { id: "c" },
+    ];
+    const { primary, more } = partitionPaymentPickerOptions(items);
+    expect(primary.map((i) => i.id)).toEqual(["a", "c"]);
+    expect(more.map((i) => i.id)).toEqual(["b"]);
+  });
+});
 
 describe("clampBillingDay", () => {
   it("accepts 1–31", () => {

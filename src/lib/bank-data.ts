@@ -12,6 +12,7 @@ export type BankAccountOption = {
   name: string;
   lastFour: string | null;
   label: string;
+  showInPaymentPicker: boolean;
 };
 
 /** Dropdown-shaped banks (no balances). Redis when configured. */
@@ -25,6 +26,7 @@ export const listBankAccountOptions = cache(async (userId: string) => {
           id: bankAccounts.id,
           name: bankAccounts.name,
           lastFour: bankAccounts.lastFour,
+          showInPaymentPicker: bankAccounts.showInPaymentPicker,
         })
         .from(bankAccounts)
         .where(eq(bankAccounts.userId, userId))

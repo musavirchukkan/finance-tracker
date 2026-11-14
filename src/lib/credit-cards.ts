@@ -26,6 +26,42 @@ export function isActiveCardStatus(status: string | null | undefined): boolean {
   return normalizeCardStatus(status) === "Active";
 }
 
+/**
+ * Payment-picker visibility. Treat missing/undefined as shown so older Redis
+ * option-cache entries without the field stay usable until TTL refresh.
+ */
+export function isShownInPaymentPicker(
+  value: boolean | null | undefined,
+): boolean {
+  return value !== false;
+}
+
+/** Keep picker-visible rows, plus any ids still linked on an edit form. */
+export function filterPaymentPickerOptions<
+  T extends { id: string; showInPaymentPicker?: boolean | null },
+>(items: T[], includeIds: Iterable<string | null | undefined> = []): T[] {
+  const keep = new Set<string>();
+  for (const id of includeIds) {
+    if (id) keep.add(id);
+  }
+  return items.filter(
+    (item) => isShownInPaymentPicker(item.showInPaymentPicker) || keep.has(item.id),
+  );
+}
+
+/** Split usual payment-list items from the overflow “Other” group. */
+export function partitionPaymentPickerOptions<
+  T extends { showInPaymentPicker?: boolean | null },
+>(items: T[]): { primary: T[]; more: T[] } {
+  const primary: T[] = [];
+  const more: T[] = [];
+  for (const item of items) {
+    if (isShownInPaymentPicker(item.showInPaymentPicker)) primary.push(item);
+    else more.push(item);
+  }
+  return { primary, more };
+}
+
 /** Preferred day of month 1–31 (resolved per-month to last day when needed). */
 export function clampBillingDay(day: number | null | undefined): number | null {
   if (day == null || !Number.isFinite(day)) return null;

@@ -36,6 +36,7 @@ type CardFormValues = {
   lastFour: string;
   isRupay: boolean;
   status: string;
+  showInPaymentPicker: boolean;
 };
 
 const emptyCard: CardFormValues = {
@@ -50,6 +51,7 @@ const emptyCard: CardFormValues = {
   lastFour: "",
   isRupay: false,
   status: "Active",
+  showInPaymentPicker: true,
 };
 
 function CardFields({
@@ -293,6 +295,23 @@ function CardFields({
           transaction payment pickers.
         </p>
       </div>
+      <div className="field">
+        <label className="debt-check-label" htmlFor="card-show-picker">
+          <input
+            id="card-show-picker"
+            name="showInPaymentPicker"
+            type="checkbox"
+            value="true"
+            checked={values.showInPaymentPicker}
+            onChange={(e) => set("showInPaymentPicker", e.target.checked)}
+          />
+          Show in transaction payment lists
+        </label>
+        <p className="muted page-sub" style={{ margin: "0.35rem 0 0" }}>
+          Uncheck to hide an active card from Add / UPI / swipe dropdowns
+          without marking it Inactive.
+        </p>
+      </div>
     </>
   );
 }
@@ -407,6 +426,7 @@ export function EditCreditCardButton({
     lastFour?: string | null;
     isRupay?: boolean;
     status: string;
+    showInPaymentPicker?: boolean | null;
   };
   shareOptions?: ShareLimitOption[];
   /** Compact table action — icon with accessible label. */
@@ -439,6 +459,7 @@ export function EditCreditCardButton({
       lastFour: card.lastFour ?? "",
       isRupay: !!card.isRupay,
       status: card.status === "Inactive" ? "Inactive" : "Active",
+      showInPaymentPicker: card.showInPaymentPicker !== false,
     }),
     [card],
   );

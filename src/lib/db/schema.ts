@@ -95,6 +95,13 @@ export const bankAccounts = pgTable(
     accountType: text("account_type").notNull().default("Savings"),
     status: text("status").notNull().default("Active"),
     /**
+     * When false, hide from transaction / bill-pay payment pickers while
+     * keeping the account on Accounts lists and balances.
+     */
+    showInPaymentPicker: boolean("show_in_payment_picker")
+      .notNull()
+      .default(true),
+    /**
      * Instant when `currentBalance` was last set as an absolute value.
      * Transactions with occurredAt before this do not adjust the balance
      * (expense tracking only).
@@ -159,6 +166,13 @@ export const creditCards = pgTable(
     /** RuPay cards can be used for UPI. */
     isRupay: boolean("is_rupay").notNull().default(false),
     status: text("status").notNull().default("Active"),
+    /**
+     * When false, hide from transaction payment pickers while keeping the
+     * card on Cards lists (alongside Inactive status).
+     */
+    showInPaymentPicker: boolean("show_in_payment_picker")
+      .notNull()
+      .default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

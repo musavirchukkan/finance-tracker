@@ -17,6 +17,7 @@ import {
   listCreditCards,
   listLedgerPaymentWarnings,
 } from "@/lib/card-data";
+import { isShownInPaymentPicker } from "@/lib/credit-cards";
 import { formatINR } from "@/lib/money";
 import { requireUser } from "@/lib/session";
 
@@ -81,7 +82,9 @@ export default async function CardsPage() {
   const user = await requireUser();
   const cards = await listCreditCards(user.id);
   const banks = await listBankAccounts(user.id);
-  const bankOptions = banks.map((a) => ({ id: a.id, name: a.label ?? a.name }));
+  const bankOptions = banks
+    .filter((a) => isShownInPaymentPicker(a.showInPaymentPicker))
+    .map((a) => ({ id: a.id, name: a.label ?? a.name }));
   const paymentWarnings = await listLedgerPaymentWarnings(user.id, cards);
   const billWarnings = paymentWarnings.filter(
     (w) => w.href?.startsWith("/cards"),
@@ -286,8 +289,16 @@ export default async function CardsPage() {
                       ) : (
                         <span
                           className="status-icon status-icon-active has-tip"
-                          data-tip="Active"
-                          aria-label="Active"
+                          data-tip={
+                            c.showInPaymentPicker === false
+                              ? "Active · Hidden from payment lists"
+                              : "Active"
+                          }
+                          aria-label={
+                            c.showInPaymentPicker === false
+                              ? "Active, hidden from payment lists"
+                              : "Active"
+                          }
                         >
                           <IconStatusActive />
                         </span>

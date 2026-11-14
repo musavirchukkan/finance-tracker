@@ -311,6 +311,7 @@ export type CreditCardOption = {
   label: string;
   status: string;
   isRupay: boolean;
+  showInPaymentPicker: boolean;
 };
 
 /** Dropdown-shaped cards (no outstanding / EMI). Redis when configured. */
@@ -326,6 +327,7 @@ export const listCreditCardOptions = cache(async (userId: string) => {
           lastFour: creditCards.lastFour,
           status: creditCards.status,
           isRupay: creditCards.isRupay,
+          showInPaymentPicker: creditCards.showInPaymentPicker,
         })
         .from(creditCards)
         .where(eq(creditCards.userId, userId))

@@ -2,17 +2,25 @@ import Link from "next/link";
 import { AccountSettings } from "@/components/account-settings";
 import { ExportDataCard } from "@/components/export-data";
 import { InfoTip } from "@/components/info-tip";
+import { PaymentPickerSettings } from "@/components/payment-picker-settings";
 import { PwaInstallCard } from "@/components/pwa-install-card";
 import { SettingsForms } from "@/components/settings-forms";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   listCategories,
 } from "@/lib/budget-data";
+import { listBankAccountOptions } from "@/lib/bank-data";
+import { listCreditCardOptions } from "@/lib/card-data";
+import { isActiveCardStatus } from "@/lib/credit-cards";
 import { requireUser } from "@/lib/session";
 
 export default async function SettingsPage() {
   const user = await requireUser();
-  const cats = await listCategories(user.id);
+  const [cats, banks, cards] = await Promise.all([
+    listCategories(user.id),
+    listBankAccountOptions(user.id),
+    listCreditCardOptions(user.id),
+  ]);
   const expenses = cats.filter((c) => c.kind !== "income");
   const incomes = cats.filter((c) => c.kind === "income");
 
@@ -24,8 +32,8 @@ export default async function SettingsPage() {
         </div>
         <InfoTip title="Settings" label="About settings">
           <p>
-            Manage your account, theme, home-screen install, categories, and
-            offline export.
+            Manage your account, theme, home-screen install, payment lists,
+            categories, and offline export.
           </p>
         </InfoTip>
       </div>
@@ -33,6 +41,23 @@ export default async function SettingsPage() {
       <AccountSettings
         email={user.email ?? ""}
         name={user.name ?? "there"}
+      />
+
+      <PaymentPickerSettings
+        banks={banks.map((a) => ({
+          id: a.id,
+          label: a.label,
+          showInPaymentPicker: a.showInPaymentPicker !== false,
+        }))}
+        cards={cards.map((c) => ({
+          id: c.id,
+          label: c.label,
+          showInPaymentPicker: c.showInPaymentPicker !== false,
+          note:
+            !isActiveCardStatus(c.status)
+              ? "Inactive — already hidden from new pickers"
+              : null,
+        }))}
       />
 
       <section className="panel">

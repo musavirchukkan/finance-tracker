@@ -7,6 +7,7 @@ import { WRITE_RATE_LIMIT } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { bankAccounts, transactions } from "@/lib/db/schema";
 import {
+  formCheckbox,
   formString,
   parseOrThrow,
   zNonEmpty,
@@ -26,6 +27,7 @@ function revalidateBanks(accountId?: string) {
   revalidatePath("/overview");
   revalidatePath("/quick-add");
   revalidatePath("/cards");
+  revalidatePath("/settings");
 }
 
 const bankExtrasSchema = z.object({
@@ -78,6 +80,7 @@ export async function createBankAccount(formData: FormData) {
     allowNegative: true,
   });
   const { minBalance, balanceRules, lastFour } = parseBankExtras(formData);
+  const showInPaymentPicker = formCheckbox(formData, "showInPaymentPicker");
   const { balanceAsOfNow } = await import("@/lib/bank-account-cashflow");
 
   const [row] = await db
@@ -92,6 +95,7 @@ export async function createBankAccount(formData: FormData) {
       lastFour,
       accountType: parsed.data.accountType || "Savings",
       status: parsed.data.status || "Active",
+      showInPaymentPicker,
     })
     .returning();
 
@@ -128,6 +132,7 @@ export async function updateBankAccount(formData: FormData) {
     allowNegative: true,
   });
   const { minBalance, balanceRules, lastFour } = parseBankExtras(formData);
+  const showInPaymentPicker = formCheckbox(formData, "showInPaymentPicker");
 
   const [existing] = await db
     .select({ currentBalance: bankAccounts.currentBalance })
@@ -151,6 +156,7 @@ export async function updateBankAccount(formData: FormData) {
       lastFour,
       accountType: parsed.data.accountType || "Savings",
       status: parsed.data.status || "Active",
+      showInPaymentPicker,
       updatedAt: new Date(),
     })
     .where(and(eq(bankAccounts.id, id), eq(bankAccounts.userId, user.id)));

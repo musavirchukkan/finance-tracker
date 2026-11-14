@@ -20,6 +20,7 @@ type BankFormValues = {
   lastFour: string;
   accountType: string;
   status: string;
+  showInPaymentPicker: boolean;
 };
 
 const emptyBank: BankFormValues = {
@@ -30,6 +31,7 @@ const emptyBank: BankFormValues = {
   lastFour: "",
   accountType: "Savings",
   status: "Active",
+  showInPaymentPicker: true,
 };
 
 function BankFields({
@@ -148,6 +150,23 @@ function BankFields({
           onChange={(e) => set("status", e.target.value)}
         />
       </div>
+      <div className="field">
+        <label className="debt-check-label" htmlFor="bank-show-picker">
+          <input
+            id="bank-show-picker"
+            name="showInPaymentPicker"
+            type="checkbox"
+            value="true"
+            checked={values.showInPaymentPicker}
+            onChange={(e) => set("showInPaymentPicker", e.target.checked)}
+          />
+          Show in transaction payment lists
+        </label>
+        <p className="muted page-sub" style={{ margin: "0.35rem 0 0" }}>
+          Uncheck to keep this account on Accounts without cluttering Add /
+          transfer / bill-pay dropdowns.
+        </p>
+      </div>
     </>
   );
 }
@@ -205,6 +224,7 @@ export function EditBankAccountButton({
     lastFour?: string | null;
     accountType: string;
     status: string;
+    showInPaymentPicker?: boolean | null;
     balanceAsOf?: Date | string | null;
   };
 }) {
@@ -219,6 +239,7 @@ export function EditBankAccountButton({
     lastFour: account.lastFour ?? "",
     accountType: account.accountType,
     status: account.status,
+    showInPaymentPicker: account.showInPaymentPicker !== false,
   });
 
   function close() {
@@ -238,6 +259,7 @@ export function EditBankAccountButton({
       lastFour: account.lastFour ?? "",
       accountType: account.accountType,
       status: account.status,
+      showInPaymentPicker: account.showInPaymentPicker !== false,
     });
     setOpen(true);
   }

@@ -37,11 +37,13 @@ export default async function QuickAddPage() {
               name: c.name,
               label: c.label,
               isRupay: c.isRupay,
+              showInPaymentPicker: c.showInPaymentPicker,
             }))}
           bankAccounts={banks.map((a) => ({
             id: a.id,
             name: a.name,
             label: a.label,
+            showInPaymentPicker: a.showInPaymentPicker,
           }))}
         />
       </section>

@@ -19,7 +19,7 @@ import {
 import {
   getCreditCardDetail,
 } from "@/lib/card-data";
-import { activityLabel } from "@/lib/credit-cards";
+import { activityLabel, isShownInPaymentPicker } from "@/lib/credit-cards";
 import { formatINR } from "@/lib/money";
 import { requireUser } from "@/lib/session";
 
@@ -36,7 +36,9 @@ export default async function CardDetailPage({
   ]);
   if (!data) notFound();
 
-  const bankOptions = banks.map((a) => ({ id: a.id, name: a.label ?? a.name }));
+  const bankOptions = banks
+    .filter((a) => isShownInPaymentPicker(a.showInPaymentPicker))
+    .map((a) => ({ id: a.id, name: a.label ?? a.name }));
   const { card, activities, warnings, shareOptions } = data;
 
   return (
@@ -51,6 +53,9 @@ export default async function CardDetailPage({
           <h2 className="page-title">{card.label}</h2>
           <p className="muted page-sub">
             {card.status}
+            {card.showInPaymentPicker === false
+              ? " · Hidden from payment lists"
+              : ""}
             {card.isRupay ? " · RuPay UPI" : ""}
             {card.sharesLimit ? " · Shared limit" : ""}
           </p>

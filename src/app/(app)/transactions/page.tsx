@@ -94,19 +94,26 @@ export default async function TransactionsPage({
     kind: c.kind,
     icon: c.icon,
   }));
-  const creditCards = cards
-    .filter((c) => isActiveCardStatus(c.status))
-    .map((c) => ({
-      id: c.id,
-      name: c.name,
-      label: c.label,
-      isRupay: c.isRupay,
-    }));
-  const bankAccounts = banks.map((a) => ({
+  const mapCardOption = (c: (typeof cards)[number]) => ({
+    id: c.id,
+    name: c.name,
+    label: c.label,
+    isRupay: c.isRupay,
+    status: c.status,
+    showInPaymentPicker: c.showInPaymentPicker,
+  });
+  const mapBankOption = (a: (typeof banks)[number]) => ({
     id: a.id,
     name: a.name,
     label: a.label,
-  }));
+    showInPaymentPicker: a.showInPaymentPicker,
+  });
+  const creditCardsAll = cards.map(mapCardOption);
+  const bankAccounts = banks.map(mapBankOption);
+  /** Active cards for Add — includes hidden ones (shown under Other). */
+  const creditCardsForAdd = creditCardsAll.filter((c) =>
+    isActiveCardStatus(c.status),
+  );
   const categoryOptions =
     typeFilter === "all"
       ? cats
@@ -163,7 +170,7 @@ export default async function TransactionsPage({
           </a>
           <AddTransactionButton
             categories={categories}
-            creditCards={creditCards}
+            creditCards={creditCardsForAdd}
             bankAccounts={bankAccounts}
             defaultDate={`${month}-01`}
           />
@@ -214,7 +221,7 @@ export default async function TransactionsPage({
               id: a.id,
               label: a.label,
             }))}
-            cards={creditCards.map((c) => ({
+            cards={creditCardsForAdd.map((c) => ({
               id: c.id,
               label: c.label,
             }))}
@@ -313,7 +320,12 @@ export default async function TransactionsPage({
                             {occurredAtIso ? (
                               <EditTransactionButton
                                 categories={categories}
-                                creditCards={creditCards}
+                                creditCards={creditCardsAll.filter(
+                                  (c) =>
+                                    isActiveCardStatus(c.status) ||
+                                    c.id === row.creditCardId ||
+                                    c.id === row.billPayCardId,
+                                )}
                                 bankAccounts={bankAccounts}
                                 transaction={{
                                   id: row.id,

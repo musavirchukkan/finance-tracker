@@ -37,6 +37,9 @@ export default async function BankAccountDetailPage({
           <h2 className="page-title">{account.label}</h2>
           <p className="muted page-sub">
             {account.accountType} · {account.status}
+            {account.showInPaymentPicker === false
+              ? " · Hidden from payment lists"
+              : ""}
           </p>
         </div>
         <div className="dash-actions">

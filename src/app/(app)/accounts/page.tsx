@@ -127,7 +127,14 @@ export default async function AccountsPage() {
                         "—"
                       )}
                     </td>
-                    <td>{a.status}</td>
+                    <td>
+                      {a.status}
+                      {a.showInPaymentPicker === false ? (
+                        <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                          Hidden from pickers
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="shrink">
                       <div className="row-actions">
                         <Link

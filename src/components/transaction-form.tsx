@@ -22,6 +22,7 @@ import {
   updateTransaction,
 } from "@/lib/transaction-actions";
 import { clientErrorMessage } from "@/lib/safe-error";
+import { partitionPaymentPickerOptions } from "@/lib/credit-cards";
 import {
   localWallClockToUtcIso,
   nowTimeLocal,
@@ -42,6 +43,8 @@ export type CreditCardOption = {
   /** Display label with last-4 when available. */
   label?: string;
   isRupay?: boolean;
+  /** When false, listed under “Other cards” in payment pickers. */
+  showInPaymentPicker?: boolean;
 };
 
 export type BankAccountOption = {
@@ -49,6 +52,8 @@ export type BankAccountOption = {
   name: string;
   /** Display label with last-4 when available. */
   label?: string;
+  /** When false, listed under “Other accounts” in payment pickers. */
+  showInPaymentPicker?: boolean;
 };
 
 export type TransactionEditValues = {
@@ -298,6 +303,31 @@ export function TransactionForm({
     initialWhen?.date ?? defaultDate ?? "",
   );
   const [timeValue, setTimeValue] = useState(initialWhen?.time ?? "");
+  const [revealMoreAccounts, setRevealMoreAccounts] = useState(() => {
+    if (!editing) return false;
+    const hidden = new Set(
+      bankAccounts
+        .filter((a) => a.showInPaymentPicker === false)
+        .map((a) => a.id),
+    );
+    return (
+      (!!editing.bankAccountId && hidden.has(editing.bankAccountId)) ||
+      (!!editing.transferToBankAccountId &&
+        hidden.has(editing.transferToBankAccountId))
+    );
+  });
+  const [revealMoreCards, setRevealMoreCards] = useState(() => {
+    if (!editing) return false;
+    const hidden = new Set(
+      creditCards
+        .filter((c) => c.showInPaymentPicker === false)
+        .map((c) => c.id),
+    );
+    return (
+      (!!editing.creditCardId && hidden.has(editing.creditCardId)) ||
+      (!!editing.cardBillPayId && hidden.has(editing.cardBillPayId))
+    );
+  });
   const clockReady = useSyncExternalStore(
     () => () => {},
     () => true,
@@ -371,12 +401,47 @@ export function TransactionForm({
   const needsUpiSource = paymentMethod === "upi";
   /** POS swipe: debit from bank (for now) or charge a credit card. */
   const needsPosSource = type === "expense" && paymentMethod === "card";
+  const { primary: primaryBanks, more: moreBanks } =
+    partitionPaymentPickerOptions(bankAccounts);
+  const { primary: primaryCards, more: moreCards } =
+    partitionPaymentPickerOptions(creditCards);
+  const { primary: primaryRupay, more: moreRupay } =
+    partitionPaymentPickerOptions(creditCards.filter((c) => c.isRupay));
   const rupayCards = creditCards.filter((c) => c.isRupay);
+
+  const banksInSelect = (() => {
+    if (revealMoreAccounts) return bankAccounts;
+    const keep = new Set(
+      [bankAccountId, transferToBankAccountId].filter(
+        (id): id is string => !!id && id !== "cash",
+      ),
+    );
+    if (keep.size === 0) return primaryBanks;
+    const extras = moreBanks.filter((b) => keep.has(b.id));
+    return extras.length === 0 ? primaryBanks : [...primaryBanks, ...extras];
+  })();
+  const cardsInSelect = (() => {
+    if (revealMoreCards) return creditCards;
+    const keep = new Set([cardId].filter(Boolean));
+    if (keep.size === 0) return primaryCards;
+    const extras = moreCards.filter((c) => keep.has(c.id));
+    return extras.length === 0 ? primaryCards : [...primaryCards, ...extras];
+  })();
+  const rupayInSelect = (() => {
+    if (revealMoreCards) return rupayCards;
+    const keep = new Set([cardId].filter(Boolean));
+    if (keep.size === 0) return primaryRupay;
+    const extras = moreRupay.filter((c) => keep.has(c.id));
+    return extras.length === 0 ? primaryRupay : [...primaryRupay, ...extras];
+  })();
+
   const showUpiOption =
     bankAccounts.length > 0 || (type === "expense" && rupayCards.length > 0);
   const showPosOption =
     type === "expense" &&
     (bankAccounts.length > 0 || creditCards.length > 0);
+  const showBankTransferOption = bankAccounts.length > 0;
+  const showPayBillOption = type === "expense" && creditCards.length > 0;
 
   function cardLabel(c: CreditCardOption) {
     return c.label ?? c.name;
@@ -384,6 +449,92 @@ export function TransactionForm({
 
   function bankLabel(a: BankAccountOption) {
     return a.label ?? a.name;
+  }
+
+  function renderBankOptions(prefix: string, list: BankAccountOption[]) {
+    return list.map((a) => (
+      <option key={`${prefix}-${a.id}`} value={a.id}>
+        {bankLabel(a)}
+      </option>
+    ));
+  }
+
+  function renderCardOptions(prefix: string, list: CreditCardOption[]) {
+    return list.map((c) => (
+      <option key={`${prefix}-${c.id}`} value={c.id}>
+        {cardLabel(c)}
+        {c.isRupay ? " (RuPay)" : ""}
+      </option>
+    ));
+  }
+
+  function renderDualBankOptions(prefix: string, list: BankAccountOption[]) {
+    return list.map((a) => (
+      <option key={`${prefix}-bank-${a.id}`} value={`bank:${a.id}`}>
+        Bank · {bankLabel(a)}
+      </option>
+    ));
+  }
+
+  function renderDualCardOptions(
+    prefix: string,
+    label: string,
+    list: CreditCardOption[],
+  ) {
+    return list.map((c) => (
+      <option key={`${prefix}-card-${c.id}`} value={`card:${c.id}`}>
+        {label} · {cardLabel(c)}
+        {c.isRupay && label !== "RuPay" ? " (RuPay)" : ""}
+      </option>
+    ));
+  }
+
+  function moreAccountsButton() {
+    if (moreBanks.length === 0 || revealMoreAccounts) return null;
+    return (
+      <button
+        type="button"
+        className="qa-more-picker-btn"
+        onClick={() => setRevealMoreAccounts(true)}
+      >
+        Account not listed? Show all ({moreBanks.length} more)
+      </button>
+    );
+  }
+
+  function moreCardsButton() {
+    if (moreCards.length === 0 || revealMoreCards) return null;
+    return (
+      <button
+        type="button"
+        className="qa-more-picker-btn"
+        onClick={() => setRevealMoreCards(true)}
+      >
+        Card not listed? Show all ({moreCards.length} more)
+      </button>
+    );
+  }
+
+  function moreDualSourceButton(includeCards: boolean) {
+    const needBanks = moreBanks.length > 0 && !revealMoreAccounts;
+    const needCards =
+      includeCards && moreCards.length > 0 && !revealMoreCards;
+    if (!needBanks && !needCards) return null;
+    const extra =
+      (needBanks ? moreBanks.length : 0) +
+      (needCards ? moreCards.length : 0);
+    return (
+      <button
+        type="button"
+        className="qa-more-picker-btn"
+        onClick={() => {
+          if (needBanks) setRevealMoreAccounts(true);
+          if (needCards) setRevealMoreCards(true);
+        }}
+      >
+        Not listed? Show all ({extra} more)
+      </button>
+    );
   }
 
   async function refreshPending() {
@@ -846,12 +997,9 @@ export function TransactionForm({
                   Choose…
                 </option>
                 <option value="cash">Cash</option>
-                {bankAccounts.map((a) => (
-                  <option key={`from-${a.id}`} value={a.id}>
-                    {bankLabel(a)}
-                  </option>
-                ))}
+                {renderBankOptions("from", banksInSelect)}
               </select>
+              {moreAccountsButton()}
             </div>
             <div className="qa-field">
               <span className="qa-label">To</span>
@@ -866,12 +1014,9 @@ export function TransactionForm({
                   Choose…
                 </option>
                 <option value="cash">Cash</option>
-                {bankAccounts.map((a) => (
-                  <option key={`to-${a.id}`} value={a.id}>
-                    {bankLabel(a)}
-                  </option>
-                ))}
+                {renderBankOptions("to", banksInSelect)}
               </select>
+              {moreAccountsButton()}
             </div>
           </>
         ) : (
@@ -889,13 +1034,13 @@ export function TransactionForm({
             >
               <option value="cash">Cash</option>
               {showUpiOption ? <option value="upi">UPI</option> : null}
-              {bankAccounts.length > 0 ? (
+              {showBankTransferOption ? (
                 <option value="bank">Bank transfer</option>
               ) : null}
               {showPosOption ? (
                 <option value="card">Card swipe / POS</option>
               ) : null}
-              {type === "expense" && creditCards.length > 0 ? (
+              {showPayBillOption ? (
                 <option value="pay">Pay card bill</option>
               ) : null}
             </select>
@@ -919,19 +1064,12 @@ export function TransactionForm({
                   ? "Choose account…"
                   : "Choose bank or card…"}
               </option>
-              {bankAccounts.map((a) => (
-                <option key={`upi-bank-${a.id}`} value={`bank:${a.id}`}>
-                  Bank · {bankLabel(a)}
-                </option>
-              ))}
+              {renderDualBankOptions("upi", banksInSelect)}
               {type === "expense"
-                ? rupayCards.map((c) => (
-                    <option key={`upi-card-${c.id}`} value={`card:${c.id}`}>
-                      RuPay · {cardLabel(c)}
-                    </option>
-                  ))
+                ? renderDualCardOptions("upi", "RuPay", rupayInSelect)
                 : null}
             </select>
+            {moreDualSourceButton(type === "expense")}
           </div>
         ) : null}
 
@@ -948,18 +1086,10 @@ export function TransactionForm({
               <option value="" disabled>
                 Choose bank or credit card…
               </option>
-              {bankAccounts.map((a) => (
-                <option key={`pos-bank-${a.id}`} value={`bank:${a.id}`}>
-                  Bank · {bankLabel(a)}
-                </option>
-              ))}
-              {creditCards.map((c) => (
-                <option key={`pos-card-${c.id}`} value={`card:${c.id}`}>
-                  Credit · {cardLabel(c)}
-                  {c.isRupay ? " (RuPay)" : ""}
-                </option>
-              ))}
+              {renderDualBankOptions("pos", banksInSelect)}
+              {renderDualCardOptions("pos", "Credit", cardsInSelect)}
             </select>
+            {moreDualSourceButton(true)}
           </div>
         ) : null}
 
@@ -976,13 +1106,9 @@ export function TransactionForm({
               <option value="" disabled>
                 Choose card…
               </option>
-              {creditCards.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {cardLabel(c)}
-                  {c.isRupay ? " (RuPay)" : ""}
-                </option>
-              ))}
+              {renderCardOptions("bill", cardsInSelect)}
             </select>
+            {moreCardsButton()}
           </div>
         ) : null}
 
@@ -1008,17 +1134,18 @@ export function TransactionForm({
             >
               <option value="" disabled={needsBankAccount}>
                 {needsBankAccount
-                  ? bankAccounts.length === 0
-                    ? "Add a bank account first…"
-                    : "Choose account…"
+                  ? banksInSelect.length === 0 && !revealMoreAccounts
+                    ? moreBanks.length > 0
+                      ? "Choose account…"
+                      : "Add a bank account first…"
+                    : banksInSelect.length === 0
+                      ? "Add a bank account first…"
+                      : "Choose account…"
                   : "Optional"}
               </option>
-              {bankAccounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {bankLabel(a)}
-                </option>
-              ))}
+              {renderBankOptions("acct", banksInSelect)}
             </select>
+            {moreAccountsButton()}
           </div>
         ) : null}
 

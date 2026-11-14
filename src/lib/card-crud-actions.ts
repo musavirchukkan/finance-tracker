@@ -40,6 +40,7 @@ function revalidateCards(cardId?: string) {
   revalidatePath("/budget");
   revalidatePath("/debt");
   revalidatePath("/quick-add");
+  revalidatePath("/settings");
 }
 
 async function parseSharesLimitWithId(
@@ -124,6 +125,7 @@ export async function createCreditCard(formData: FormData) {
   const status = normalizeCardStatus(raw.status);
   const lastFour = normalizeLastFour(raw.lastFour);
   const isRupay = formCheckbox(formData, "isRupay");
+  const showInPaymentPicker = formCheckbox(formData, "showInPaymentPicker");
 
   const [row] = await db
     .insert(creditCards)
@@ -141,6 +143,7 @@ export async function createCreditCard(formData: FormData) {
       lastFour,
       isRupay,
       status,
+      showInPaymentPicker,
     })
     .returning();
 
@@ -180,6 +183,7 @@ export async function updateCreditCard(formData: FormData) {
   const status = normalizeCardStatus(raw.status);
   const lastFour = normalizeLastFour(raw.lastFour);
   const isRupay = formCheckbox(formData, "isRupay");
+  const showInPaymentPicker = formCheckbox(formData, "showInPaymentPicker");
 
   // Clear dependents pointing at this card if it starts sharing with another.
   if (sharesLimitWithId) {
@@ -209,6 +213,7 @@ export async function updateCreditCard(formData: FormData) {
       lastFour,
       isRupay,
       status,
+      showInPaymentPicker,
       updatedAt: new Date(),
     })
     .where(and(eq(creditCards.id, id), eq(creditCards.userId, user.id)));
